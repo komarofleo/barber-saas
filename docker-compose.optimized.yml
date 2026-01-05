@@ -1,0 +1,193 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: autoservice_postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-autoservice_db}
+      POSTGRES_USER: ${DB_USER:-autoservice_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - autoservice_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-autoservice_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  redis:
+    image: redis:7-alpine
+    container_name: autoservice_redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - autoservice_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
+
+  bot:
+    build:
+      context: .
+      dockerfile: ./bot/Dockerfile
+    container_name: autoservice_bot
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - autoservice_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
+
+  web:
+    build:
+      context: .
+      dockerfile: ./web/backend/Dockerfile
+    container_name: autoservice_web
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - autoservice_network
+    restart: unless-stopped
+    volumes:
+      - ./web/backend:/app
+      - ./shared:/app/shared
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.75'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  web-frontend:
+    build:
+      context: .
+      dockerfile: ./web/frontend/Dockerfile
+    container_name: autoservice_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - web
+    networks:
+      - autoservice_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: ./web/backend/Dockerfile
+    container_name: autoservice_celery_worker
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - autoservice_network
+    restart: unless-stopped
+    volumes:
+      - ./web/backend:/app
+      - ./shared:/app/shared
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: ./web/backend/Dockerfile
+    container_name: autoservice_celery_beat
+    command: celery -A app.celery_app beat --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - autoservice_network
+    restart: unless-stopped
+    volumes:
+      - ./web/backend:/app
+      - ./shared:/app/shared
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  autoservice_network:
+    driver: bridge
+
+

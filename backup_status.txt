@@ -1,0 +1,6 @@
+Проверка бекапа...
+Выполните команду: bash /opt/avtoservis/create_backup.sh
+Затем проверьте: ls -lh /opt/backups/backup_*.tar.gz
+
+
+
