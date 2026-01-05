@@ -11,7 +11,14 @@ class Settings(BaseSettings):
     HOST: str = os.getenv("WEB_HOST", "0.0.0.0")
     PORT: int = int(os.getenv("WEB_PORT", "8000"))
     CORS_ORIGINS: List[str] = os.getenv("WEB_CORS_ORIGINS", "http://localhost:3000").split(",")
-
+    
+    # Юкасса (Платежная система)
+    YOOKASSA_SHOP_ID: str = os.getenv("YOOKASSA_SHOP_ID", "")
+    YOOKASSA_SECRET_KEY: str = os.getenv("YOOKASSA_SECRET_KEY", "")
+    YOOKASSA_API_URL: str = os.getenv("YOOKASSA_API_URL", "https://api.yookassa.ru/v3")
+    YOOKASSA_RETURN_URL: str = os.getenv("YOOKASSA_RETURN_URL", "https://autoservice-saas.com/success")
+    YOOKASSA_WEBHOOK_URL: str = os.getenv("YOOKASSA_WEBHOOK_URL", "https://autoservice-saas.com/api/public/webhooks/yookassa")
+    
     class Config:
         env_file = ".env"
 
