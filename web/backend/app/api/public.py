@@ -35,7 +35,7 @@ from app.schemas.public_schemas import (
 )
 
 from app.models.public_models import Company, Plan, Payment, Subscription
-from app.services.yookassa_service import YooKassaService
+from app.services.yookassa_service import YooKassaService, create_payment
 
 yookassa_service = YooKassaService()
 

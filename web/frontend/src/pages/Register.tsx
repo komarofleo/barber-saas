@@ -9,6 +9,7 @@
  */
 
 import React from 'react';
+import { Link } from 'react-router-dom';
 import CompanyRegistrationForm from '../components/CompanyRegistrationForm';
 import './Register.css';
 
@@ -40,9 +41,9 @@ const Register: React.FC = () => {
                             <div className="register-footer">
                                 <p className="footer-text">
                                     Уже есть аккаунт? {' '}
-                                    <a href="/login" className="footer-link">
+                                    <Link to="/login" className="footer-link">
                                         Войти в существующий аккаунт
-                                    </a>
+                                    </Link>
                                 </p>
                                 <p className="footer-text-small">
                                     Нажимая кнопку «Зарегистрироваться», вы соглашаетесь с{' '}

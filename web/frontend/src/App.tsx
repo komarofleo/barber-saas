@@ -205,6 +205,7 @@ function AppRoutes() {
       />
       
       {/* Супер-администратор */}
+      <Route path="/super-admin" element={<Navigate to="/super-admin/login" replace />} />
       <Route path="/super-admin/login" element={<SuperAdminLogin />} />
       <Route
         path="/super-admin/dashboard"

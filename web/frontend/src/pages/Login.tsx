@@ -8,14 +8,23 @@ function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login, isAuthenticated } = useAuth()
+  const { login, isAuthenticated, loading: authLoading } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/')
+    // Проверяем токен напрямую, чтобы избежать бесконечного редиректа
+    // Редиректим только если есть токен И пользователь авторизован И загрузка завершена
+    if (authLoading) {
+      return // Ждем завершения загрузки
     }
-  }, [isAuthenticated, navigate])
+    
+    const token = localStorage.getItem('token')
+    const savedUser = localStorage.getItem('user')
+    
+    if (token && savedUser && isAuthenticated) {
+      navigate('/', { replace: true })
+    }
+  }, [isAuthenticated, authLoading, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

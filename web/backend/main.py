@@ -25,7 +25,7 @@ app.add_middleware(
 )
 
 # Middleware для мульти-тенантности
-app.add_middleware(BaseHTTPMiddleware, dispatch=TenantMiddleware())
+app.add_middleware(TenantMiddleware)
 
 # Регистрация роутеров
 app.include_router(auth.router)

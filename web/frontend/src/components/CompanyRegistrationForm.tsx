@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { CompanyRegistration, Plan, publicApi } from '../api/public'
 import PlanSelection from './PlanSelection'
 import './PlanCard.css'
@@ -539,9 +539,9 @@ const CompanyRegistrationForm: React.FC = () => {
       <div className="registration-footer">
         <p className="footer-text">
           Уже есть аккаунт?{' '}
-          <a href="/login" className="footer-link">
+          <Link to="/login" className="footer-link">
             Войти
-          </a>
+          </Link>
         </p>
         <p className="footer-small-text">
           Нажимая кнопку «Зарегистрироваться», вы соглашаетесь с{' '}
