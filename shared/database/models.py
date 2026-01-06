@@ -1,5 +1,9 @@
 """
 SQLAlchemy модели для базы данных AutoService
+
+Поддерживает мульти-тенантность с разными схемами:
+- public схема - для глобальных данных
+- tenant_* схемы - для изолированных данных компаний
 """
 from datetime import datetime, date, time
 from decimal import Decimal
@@ -7,13 +11,31 @@ from typing import Optional
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, DateTime, ForeignKey,
-    Integer, Numeric, String, Text, Time, UniqueConstraint, Index
+    Integer, Numeric, String, Text, Time, UniqueConstraint, Index, func
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.schema import MetaData
 
+# Создаем Base с поддержкой схемы по умолчанию
 Base = declarative_base()
+
+# Создаем MetaData для public схемы
+public_metadata = MetaData(schema='public')
+
+# Создаем MetaData для tenant схем
+def get_tenant_metadata(schema_name: str) -> MetaData:
+    """
+    Получить MetaData для конкретной tenant схемы.
+    
+    Args:
+        schema_name: Имя схемы (например: 'tenant_001')
+        
+    Returns:
+        MetaData с указанной схемой
+    """
+    return MetaData(schema=schema_name)
 
 
 class User(Base):

@@ -101,6 +101,13 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
 @router.message(F.text == "📅 Записаться")
 async def start_booking(message: Message, state: FSMContext):
     """Начать процесс записи"""
+    # Проверяем подписку компании
+    from bot.handlers.booking_subscription_check import check_subscription_before_booking
+    can_book = await check_subscription_before_booking(message, state)
+    if not can_book:
+        # Проверка уже завершена в check_subscription_before_booking
+        return
+    
     async for session in get_session():
         user = await get_user_by_telegram_id(session, message.from_user.id)
         if not user:

@@ -10,7 +10,8 @@ env_path = Path(__file__).parent.parent.parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
 # URL подключения к БД
-DB_HOST = os.getenv("DB_HOST", "localhost")
+# В Docker используем имя сервиса 'postgres', локально - 'localhost'
+DB_HOST = os.getenv("DB_HOST", "postgres")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
 DB_NAME = os.getenv("DB_NAME", "autoservice_db")
 DB_USER = os.getenv("DB_USER", "autoservice_user")

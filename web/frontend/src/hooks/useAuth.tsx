@@ -1,19 +1,39 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { authApi, User } from '../api/auth'
+import { authApi, User, SubscriptionInfo } from '../api/auth'
 
 interface AuthContextType {
   user: User | null
+  company_id: number | null
   isAuthenticated: boolean
   loading: boolean
+  subscription: SubscriptionInfo | null
+  subscriptionLoading: boolean
+  canCreateBookings: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  refreshSubscription: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true)
+
+  const refreshSubscription = async () => {
+    try {
+      setSubscriptionLoading(true)
+      const subInfo = await authApi.getSubscriptionInfo()
+      setSubscription(subInfo)
+    } catch (error) {
+      console.error('Failed to fetch subscription info:', error)
+      setSubscription(null)
+    } finally {
+      setSubscriptionLoading(false)
+    }
+  }
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -21,7 +41,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     if (token && savedUser) {
       try {
-        setUser(JSON.parse(savedUser))
+        const parsedUser = JSON.parse(savedUser)
+        setUser(parsedUser)
+        
+        // Получаем информацию о подписке
+        refreshSubscription()
+        
         // Проверяем токен
         authApi.getMe().catch(() => {
           localStorage.removeItem('token')
@@ -32,8 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('token')
         localStorage.removeItem('user')
       }
+    } else {
+      setLoading(false)
+      setSubscriptionLoading(false)
     }
-    setLoading(false)
   }, [])
 
   const login = async (username: string, password: string) => {
@@ -48,8 +75,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       localStorage.setItem('token', response.access_token)
       localStorage.setItem('user', JSON.stringify(response.user))
+      
       // Синхронно обновляем state
       setUser(response.user)
+      
+      // Получаем информацию о подписке
+      await refreshSubscription()
+      
       console.log('Login successful, user set:', response.user)
       
       // Даем время React обновить state
@@ -57,6 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Login failed:', error)
       throw error
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -65,16 +99,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     setUser(null)
+    setSubscription(null)
   }
+
+  const canCreateBookings = subscription?.can_create_bookings ?? false
+  const company_id = user?.company_id ?? null
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        company_id,
         isAuthenticated: !!user,
         loading,
+        subscription,
+        subscriptionLoading,
+        canCreateBookings,
         login,
         logout,
+        refreshSubscription,
       }}
     >
       {children}
@@ -89,4 +132,3 @@ export function useAuth() {
   }
   return context
 }
-

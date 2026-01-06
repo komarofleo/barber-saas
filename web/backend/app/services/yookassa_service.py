@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any
 from decimal import Decimal
 from datetime import datetime
 
-from web.backend.app.config import settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 

@@ -8,6 +8,7 @@ export interface LoginRequest {
 
 export interface User {
   id: number
+  company_id: number | null
   telegram_id: number | null
   username: string | null
   first_name: string | null
@@ -22,6 +23,16 @@ export interface LoginResponse {
   user: User
 }
 
+export interface SubscriptionInfo {
+  id: number
+  company_id: number
+  plan_name: string
+  status: 'active' | 'expired' | 'blocked' | 'cancelled'
+  start_date: string
+  end_date: string
+  can_create_bookings: boolean
+}
+
 export const authApi = {
   login: async (data: LoginRequest): Promise<LoginResponse> => {
     const params = new URLSearchParams()
@@ -30,7 +41,6 @@ export const authApi = {
     
     console.log('Sending login request to /api/auth/login')
     try {
-      // Используем относительный путь, который проксируется через nginx
       const response = await axios.post('/api/auth/login', params.toString(), {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -52,6 +62,19 @@ export const authApi = {
       throw new Error('No token')
     }
     const response = await axios.get('/api/auth/me', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    })
+    return response.data
+  },
+
+  getSubscriptionInfo: async (): Promise<SubscriptionInfo> => {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      throw new Error('No token')
+    }
+    const response = await axios.get('/api/auth/subscription', {
       headers: {
         'Authorization': `Bearer ${token}`,
       },

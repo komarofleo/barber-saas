@@ -26,10 +26,17 @@ import SuperAdminPayments from './pages/SuperAdminPayments'
 import Layout from './components/Layout'
 import SuperAdminLayout from './components/SuperAdminLayout'
 import { AuthProvider, useAuth } from './hooks/useAuth'
+import SubscriptionBarrier from './components/SubscriptionBarrier'
 import './App.css'
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, loading, user } = useAuth()
+function ProtectedRoute({
+  children,
+  requireSubscription = false
+}: {
+  children: React.ReactNode
+  requireSubscription?: boolean
+}) {
+  const { isAuthenticated, loading, user, canCreateBookings } = useAuth()
   
   if (loading) {
     return <div className="loading-screen">Загрузка...</div>
@@ -44,6 +51,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // Если есть токен, но user еще не загружен, ждем
   if (token && !user) {
     return <div className="loading-screen">Загрузка пользователя...</div>
+  }
+  
+  // Если нужна подписка и она неактивна, показываем барьер
+  if (requireSubscription && !canCreateBookings) {
+    return <SubscriptionBarrier />
   }
   
   return <Layout>{children}</Layout>
@@ -69,7 +81,7 @@ function AppRoutes() {
       <Route path="/payment/success" element={<PaymentSuccess />} />
       <Route path="/payment/error" element={<PaymentError />} />
       
-      {/* Супер-администратор */}
+      {/* Основные маршруты - требуют подписку для создания записей */}
       <Route
         path="/"
         element={
@@ -81,15 +93,7 @@ function AppRoutes() {
       <Route
         path="/bookings"
         element={
-          <ProtectedRoute>
-            <Bookings />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/bookings"
-        element={
-          <ProtectedRoute>
+          <ProtectedRoute requireSubscription>
             <Bookings />
           </ProtectedRoute>
         }
@@ -97,7 +101,7 @@ function AppRoutes() {
       <Route
         path="/calendar"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requireSubscription>
             <Calendar />
           </ProtectedRoute>
         }
@@ -224,4 +228,3 @@ function App() {
 }
 
 export default App
-

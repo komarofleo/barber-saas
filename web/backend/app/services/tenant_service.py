@@ -1,366 +1,314 @@
 """
-Сервис для управления tenant схемами (мульти-тенантность).
+Сервис для управления мульти-тенантностью.
 
-Этот модуль предоставляет методы для:
-- Создания tenant схем в PostgreSQL
-- Клонирования таблиц в tenant схемы
-- Получения tenant сессий для работы с изолированными данными
+Этот модуль обеспечивает:
+- Создание tenant схем для каждой компании
+- Клонирование таблиц в tenant схемы
+- Управление tenant сессиями
+- Переключение между схемами
 """
 
 import logging
-from typing import AsyncGenerator
-from textwrap import dedent
+from typing import Optional, AsyncGenerator
+from contextlib import asynccontextmanager
 
-from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine, async_sessionmaker
 from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker, AsyncEngine
+from sqlalchemy.orm import Session
 
-from app.database import async_session_maker, engine
+from app.config import settings
 from app.models.public_models import Company
 
 logger = logging.getLogger(__name__)
 
 
 class TenantService:
-    """
-    Сервис для управления tenant схемами.
+    """Сервис для управления tenant-схемами."""
     
-    Предоставляет методы для создания и управления изолированными
-    схемами для каждой компании.
-    """
+    def __init__(self):
+        """Инициализация сервиса."""
+        self._engine: Optional[AsyncEngine] = None
+        self._async_session_maker: Optional[async_sessionmaker] = None
     
-    def __init__(self, base_engine: AsyncEngine):
-        """Инициализация сервиса с базовым engine."""
-        self.base_engine = base_engine
-        self.tenant_engines: dict[int, AsyncEngine] = {}
-        self.tenant_session_makers: dict[int, sessionmaker] = {}
+    async def _get_engine(self) -> AsyncEngine:
+        """
+        Получить или создать engine для tenant схем.
         
-        logger.info("TenantService инициализирован")
+        Returns:
+            AsyncEngine для работы с tenant схемами
+        """
+        if self._engine is None:
+            # Формируем URL базы данных
+            # Используем postgresql:// для поддержки search_path
+            db_url = (
+                f"postgresql+asyncpg://{settings.DB_USER}:{settings.DB_PASSWORD}"
+                f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+            )
+            
+            # Создаем engine без echo для production
+            self._engine = create_async_engine(
+                db_url,
+                echo=False,
+                pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=20,
+            )
+            
+            self._async_session_maker = async_sessionmaker(
+                self._engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+            
+            logger.info("Tenant engine создан")
+        
+        return self._engine
+    
+    async def _get_async_session_maker(self) -> async_sessionmaker:
+        """
+        Получить async session maker.
+        
+        Returns:
+            AsyncSessionMaker для tenant схем
+        """
+        await self._get_engine()
+        return self._async_session_maker
+    
+    async def tenancy_schema_exists(self, company_id: int) -> bool:
+        """
+        Проверить, существует ли tenant схема для компании.
+        
+        Args:
+            company_id: ID компании
+        
+        Returns:
+            True, если схема существует, иначе False
+        """
+        logger.info(f"Проверка существования tenant схемы для компании {company_id}")
+        
+        engine = await self._get_engine()
+        
+        try:
+            # Создаем временную сессию для проверки
+            async with self._async_session_maker() as session:
+                # Выполняем SQL запрос для проверки существования схемы
+                schema_name = f"tenant_{company_id}"
+                result = await session.execute(
+                    text(f"""
+                        SELECT EXISTS (
+                            SELECT 1 
+                            FROM information_schema.schemata 
+                            WHERE schema_name = '{schema_name}'
+                        )
+                    """)
+                )
+                exists = result.scalar()
+                
+                if exists:
+                    logger.info(f"Tenant схема '{schema_name}' существует")
+                else:
+                    logger.info(f"Tenant схема '{schema_name}' не существует")
+                
+                return exists
+        except Exception as e:
+            logger.error(f"Ошибка при проверке tenant схемы '{schema_name}': {e}")
+            return False
     
     async def create_tenant_schema(self, company_id: int) -> bool:
         """
-        Создать tenant схему в PostgreSQL.
+        Создать tenant схему для компании.
         
         Args:
-            company_id: ID компании для создания схемы
+            company_id: ID компании
         
         Returns:
-            True если схема создана успешно, False в противном случае
-        
-        Example:
-            >>> await tenant_service.create_tenant_schema(1)
-            >>> # Создана схема tenant_001
+            True, если схема успешно создана, иначе False
         """
-        schema_name = f"tenant_{company_id:03d}"
-        logger.info(f"Создание tenant схемы: {schema_name}")
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"Создание tenant схемы '{schema_name}' для компании {company_id}")
+        
+        engine = await self._get_engine()
         
         try:
-            async with self.base_engine.connect() as conn:
-                await conn.execute(
-                    text(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
-                )
-                await conn.commit()
+            # Создаем схему
+            async with self._async_session_maker() as session:
+                await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
+                await session.commit()
             
-            logger.info(f"Tenant схема {schema_name} создана успешно")
+            logger.info(f"Tenant схема '{schema_name}' успешно создана")
             return True
-            
         except Exception as e:
-            logger.error(f"Ошибка создания tenant схемы {schema_name}: {e}")
+            logger.error(f"Ошибка при создании tenant схемы '{schema_name}': {e}")
             return False
     
-    async def clone_table_to_tenant(
-        self,
-        company_id: int,
-        table_name: str,
-        public_schema: str = "public"
-    ) -> bool:
+    async def clone_table_to_tenant(self, company_id: int, table_name: str) -> bool:
         """
         Клонировать таблицу из public схемы в tenant схему.
         
         Args:
             company_id: ID компании
             table_name: Имя таблицы для клонирования
-            public_schema: Схема-источник (по умолчанию public)
         
         Returns:
-            True если таблица склонирована, False в противном случае
-        
-        Example:
-            >>> await tenant_service.clone_table_to_tenant(1, "users")
-            >>> # Таблица public.users скопирована в tenant_001.users
+            True, если таблица успешно склонирована, иначе False
         """
-        schema_name = f"tenant_{company_id:03d}"
-        logger.info(f"Клонирование таблицы {table_name} в схему {schema_name}")
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"Клонирование таблицы '{table_name}' в '{schema_name}'")
+        
+        engine = await self._get_engine()
         
         try:
-            async with self.base_engine.connect() as conn:
-                # Клонируем структуру таблицы в tenant схему
-                sql = dedent(f"""
-                    CREATE TABLE IF NOT EXISTS {schema_name}.{table_name} (
-                        LIKE {public_schema}.template_{table_name}
-                        INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES
-                    );
-                """)
-                await conn.execute(text(sql))
-                await conn.commit()
+            async with self._async_session_maker() as session:
+                # Клонируем таблицу (структуру + данные)
+                # Если таблица существует в tenant, сначала удаляем
+                await session.execute(
+                    text(f'DROP TABLE IF EXISTS "{schema_name}"."{table_name} CASCADE')
+                )
+                
+                # Клонируем таблицу из public в tenant схему
+                await session.execute(
+                    text(f'CREATE TABLE "{schema_name}"."{table_name}" '
+                          f'AS SELECT * FROM public."{table_name}')
+                )
+                
+                # Восстанавливаем последовательности
+                await session.execute(
+                    text(f"SELECT setval(pg_get_serial_sequence('{schema_name}.{table_name}_id_seq'::regclass), max(id)) "
+                          f"FROM \"{schema_name}\".{table_name}")
+                )
+                
+                await session.commit()
             
-            logger.info(f"Таблица {table_name} скопирована в {schema_name} успешно")
+            logger.info(f"Таблица '{table_name}' успешно склонирована в '{schema_name}'")
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка при клонировании таблицы '{table_name}' в '{schema_name}': {e}")
+            return False
+    
+    async def initialize_tenant_for_company(self, company_id: int) -> bool:
+        """
+        Инициализировать tenant схему для новой компании.
+        
+        Args:
+            company_id: ID компании
+        
+        Returns:
+            True, если инициализация успешна, иначе False
+        """
+        logger.info(f"Инициализация tenant схемы для компании {company_id}")
+        
+        # Список таблиц для клонирования
+        # В будущем можно добавить больше таблиц
+        tables_to_clone = [
+            "users",
+            "services",
+            "masters",
+            "bookings",
+            "clients",
+            "posts",
+            "slots",
+            "notifications",
+            "settings",
+            "blocks",
+            "promocodes",
+            "promotions",
+        ]
+        
+        try:
+            # 1. Создаем tenant схему
+            if not await self.tenancy_schema_exists(company_id):
+                if not await self.create_tenant_schema(company_id):
+                    logger.error(f"Не удалось создать tenant схему для компании {company_id}")
+                    return False
+            
+            # 2. Клонируем все таблицы
+            success_count = 0
+            for table_name in tables_to_clone:
+                if await self.clone_table_to_tenant(company_id, table_name):
+                    success_count += 1
+                else:
+                    logger.error(f"Не удалось склонировать таблицу '{table_name}'")
+            
+            logger.info(f"Инициализация tenant схемы завершена: {success_count}/{len(tables_to_clone)} таблиц склонировано")
             return True
             
         except Exception as e:
-            logger.error(f"Ошибка клонирования таблицы {table_name} в {schema_name}: {e}")
+            logger.error(f"Ошибка при инициализации tenant схемы для компании {company_id}: {e}")
             return False
-    
-    async def clone_all_tables_to_tenant(
-        self,
-        company_id: int
-    ) -> bool:
-        """
-        Клонировать все необходимые таблицы в tenant схему.
-        
-        Args:
-            company_id: ID компании
-        
-        Returns:
-            True если все таблицы склонированы, False если ошибка
-        
-        Example:
-            >>> await tenant_service.clone_all_tables_to_tenant(1)
-            >>> # Все таблицы склонированы в tenant_001
-        """
-        schema_name = f"tenant_{company_id:03d}"
-        logger.info(f"Клонирование всех таблиц в схему {schema_name}")
-        
-        # Список таблиц для клонирования (из public.template_* в tenant_*)
-        tables_to_clone = [
-            "users",  # template_users -> tenant_001.users
-            "clients",
-            "masters",
-            "bookings",
-            "services",
-            "posts",
-            "promocodes",
-            "promotions",
-            "notifications",
-            "blocked_slots",
-            "master_services",
-            "settings"
-        ]
-        
-        success_count = 0
-        for table_name in tables_to_clone:
-            is_cloned = await self.clone_table_to_tenant(company_id, table_name)
-            if is_cloned:
-                success_count += 1
-        
-        total_count = len(tables_to_clone)
-        logger.info(f"Успешно склонировано {success_count}/{total_count} таблиц")
-        
-        return success_count == total_count
-    
-    async def get_tenant_engine(self, company_id: int) -> AsyncEngine:
-        """
-        Получить или создать engine для tenant схемы.
-        
-        Args:
-            company_id: ID компании
-        
-        Returns:
-            AsyncEngine для tenant схемы
-        """
-        if company_id not in self.tenant_engines:
-            # Создаем новый engine для tenant схемы с search_path
-            from app.database import DATABASE_URL
-            tenant_database_url = f"{DATABASE_URL}?options=-csearch_path=tenant_{company_id:03d}"
-            
-            self.tenant_engines[company_id] = create_async_engine(
-                tenant_database_url,
-                echo=False
-            )
-            
-            logger.info(f"Engine создан для tenant_{company_id:03d}")
-        
-        return self.tenant_engines[company_id]
-    
-    async def get_tenant_session_maker(self, company_id: int) -> sessionmaker:
-        """
-        Получить или создать session maker для tenant схемы.
-        
-        Args:
-            company_id: ID компании
-        
-        Returns:
-            SessionMaker для tenant схемы
-        """
-        if company_id not in self.tenant_session_makers:
-            engine = await self.get_tenant_engine(company_id)
-            self.tenant_session_makers[company_id] = async_sessionmaker(
-                engine,
-                class_=AsyncSession,
-                expire_on_commit=False
-            )
-            
-            logger.info(f"Session maker создан для tenant_{company_id:03d}")
-        
-        return self.tenant_session_makers[company_id]
-    
-    async def get_tenant_session(
-        self,
-        company_id: int
-    ) -> AsyncGenerator[AsyncSession, None, None]:
-        """
-        Получить сессию для работы с tenant схемой.
-        
-        Args:
-            company_id: ID компании
-        
-        Yields:
-            AsyncSession для tenant схемы
-            
-        Example:
-            >>> async for session in tenant_service.get_tenant_session(1):
-            ...     result = await session.execute(select(User))
-            ...     users = result.scalars().all()
-        """
-        session_maker = await self.get_tenant_session_maker(company_id)
-        
-        async with session_maker() as session:
-            yield session
-    
-    async def initialize_tenant_for_company(
-        self,
-        company_id: int
-    ) -> bool:
-        """
-        Полностью инициализировать tenant для компании.
-        
-        Включает:
-        - Создание tenant схемы
-        - Клонирование всех таблиц
-        - Подготовка к использованию
-        
-        Args:
-            company_id: ID компании
-        
-        Returns:
-            True если tenant инициализирован успешно, False в противном случае
-        """
-        logger.info(f"Инициализация tenant для компании {company_id}")
-        
-        # 1. Создать tenant схему
-        schema_created = await self.create_tenant_schema(company_id)
-        
-        if not schema_created:
-            logger.error(f"Не удалось создать tenant схему для компании {company_id}")
-            return False
-        
-        # 2. Клонировать все таблицы
-        tables_cloned = await self.clone_all_tables_to_tenant(company_id)
-        
-        if not tables_cloned:
-            logger.error(f"Не удалось склонировать таблицы для компании {company_id}")
-            return False
-        
-        logger.info(f"Tenant для компании {company_id} инициализирован успешно")
-        return True
     
     async def drop_tenant_schema(self, company_id: int) -> bool:
         """
-        Удалить tenant схему (опасная операция!).
+        Удалить tenant схему компании.
         
         Args:
             company_id: ID компании
         
         Returns:
-            True если схема удалена, False в противном случае
-        
-        WARNING:
-            Эта операция удалит все данные компании!
+            True, если схема успешно удалена, иначе False
         """
-        schema_name = f"tenant_{company_id:03d}"
-        logger.warning(f"Удаление tenant схемы: {schema_name}")
+        schema_name = f"tenant_{company_id}"
+        logger.warning(f"Удаление tenant схемы '{schema_name}' для компании {company_id}")
+        
+        engine = await self._get_engine()
         
         try:
-            async with self.base_engine.connect() as conn:
-                await conn.execute(
-                    text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
+            async with self._async_session_maker() as session:
+                # Удаляем схему и все данные
+                await session.execute(
+                    text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
                 )
-                await conn.commit()
+                await session.commit()
             
-            # Удаляем кэшированные engine и session maker
-            if company_id in self.tenant_engines:
-                del self.tenant_engines[company_id]
-            
-            if company_id in self.tenant_session_makers:
-                del self.tenant_session_makers[company_id]
-            
-            logger.warning(f"Tenant схема {schema_name} удалена")
+            logger.info(f"Tenant схема '{schema_name}' удалена")
             return True
-            
         except Exception as e:
-            logger.error(f"Ошибка удаления tenant схемы {schema_name}: {e}")
+            logger.error(f"Ошибка при удалении tenant схемы '{schema_name}': {e}")
             return False
+    
+    @asynccontextmanager
+    async def get_tenant_session(self, company_id: int):
+        """
+        Получить асинхронную сессию для работы с tenant схемой компании.
+        
+        Args:
+            company_id: ID компании
+            
+        Yields:
+            AsyncSession для tenant схемы
+        """
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"Получение tenant сессии для компании {company_id} (схема: {schema_name})")
+        
+        async_session_maker = await self._get_async_session_maker()
+        async with async_session_maker() as session:
+            # Устанавливаем search_path для tenant схемы
+            await session.execute(
+                text(f"SET search_path TO \"{schema_name}\"")
+            )
+            await session.commit()
+        
+        async with async_session_maker() as session:
+            # Устанавливаем search_path для каждой транзакции
+            await session.execute(
+                text(f"SET search_path TO \"{schema_name}\"")
+            )
+            
+            yield session
 
 
-# Создание экземпляра сервиса (singleton)
+# Глобальный экземпляр сервиса
 _tenant_service: Optional[TenantService] = None
 
 
 def get_tenant_service() -> TenantService:
     """
-    Получить или создать экземпляр TenantService.
+    Получить глобальный экземпляр TenantService.
     
     Returns:
-        Экземпляр TenantService
+        Экемпляр TenantService
     """
     global _tenant_service
-    
     if _tenant_service is None:
-        from app.database import engine
-        _tenant_service = TenantService(engine)
-    
+        _tenant_service = TenantService()
+        logger.info("TenantService создан")
     return _tenant_service
-
-
-async def initialize_tenant_for_company(company_id: int) -> bool:
-    """
-    Удобная функция для инициализации tenant компании.
-    
-    Args:
-        company_id: ID компании
-    
-    Returns:
-        True если tenant инициализирован успешно, False в противном случае
-    """
-    service = get_tenant_service()
-    return await service.initialize_tenant_for_company(company_id)
-
-
-async def get_tenant_session(company_id: int) -> AsyncGenerator[AsyncSession, None, None]:
-    """
-    Удобная функция для получения tenant сессии.
-    
-    Args:
-        company_id: ID компании
-    
-    Yields:
-        AsyncSession для tenant схемы
-    """
-    service = get_tenant_service()
-    async for session in service.get_tenant_session(company_id):
-        yield session
-
-
-async def create_tenant_schema(company_id: int) -> bool:
-    """
-    Удобная функция для создания tenant схемы.
-    
-    Args:
-        company_id: ID компании
-    
-    Returns:
-        True если схема создана, False в противном случае
-    """
-    service = get_tenant_service()
-    return await service.create_tenant_schema(company_id)
-

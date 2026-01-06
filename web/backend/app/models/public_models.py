@@ -11,14 +11,18 @@
 
 from datetime import date
 from typing import Optional
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Date, Numeric, Text, ARRAY
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship, declarative_base
-from sqlalchemy.sql import func
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Date, Numeric, Text, ARRAY, func
+from sqlalchemy.orm import relationship
+from sqlalchemy.schema import MetaData
 import enum
 
-# Создаем собственный Base для public схемы
-Base = declarative_base()
+# Импортируем Base и metadata из shared models
+import sys
+import os
+# Правильный путь: от web/backend/app/models до shared = 4 уровня вверх
+shared_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../shared'))
+sys.path.insert(0, shared_path)
+from shared.database.models import Base, public_metadata
 
 
 class SubscriptionStatus(str, enum.Enum):
@@ -129,7 +133,7 @@ class Subscription(Base):
     status = Column(SQLEnum(SubscriptionStatus, name="subscriptionstatus"), default="active", index=True)
     trial_used = Column(Boolean, default=False)
     auto_renewal = Column(Boolean, default=False)
-    metadata = Column(JSONB, nullable=True)
+    metadata = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -163,13 +167,13 @@ class Payment(Base):
     yookassa_return_url = Column(String(500), nullable=True)
     
     # Webhook данные
-    webhook_payload = Column(JSONB, nullable=True)
+    webhook_payload = Column(Text, nullable=True)
     webhook_received_at = Column(DateTime(timezone=True), nullable=True)
     webhook_signature_verified = Column(Boolean, default=False)
     
     # Описание
     description = Column(String(500), nullable=True)
-    metadata = Column(JSONB, nullable=True)
+    metadata = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     

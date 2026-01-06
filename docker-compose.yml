@@ -59,6 +59,9 @@ services:
     container_name: autoservice_web
     env_file:
       - .env
+    environment:
+      # В Docker используем имя сервиса 'postgres' вместо 'localhost'
+      DB_HOST: postgres
     ports:
       - "8000:8000"
     depends_on:

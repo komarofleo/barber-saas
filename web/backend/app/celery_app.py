@@ -6,7 +6,7 @@ celery_app = Celery(
     "autoservice",
     broker=f"redis://redis:6379/0",
     backend=f"redis://redis:6379/0",
-    include=["app.tasks.notifications"]
+    include=["app.tasks.notifications", "app.tasks.subscription_notifications"]
 )
 
 celery_app.conf.update(
@@ -20,25 +20,8 @@ celery_app.conf.update(
     task_soft_time_limit=25 * 60,  # 25 минут
 )
 
-# Расписание периодических задач
-celery_app.conf.beat_schedule = {
-    "send-reminders-day-before": {
-        "task": "app.tasks.notifications.send_reminder_day_before_task",
-        "schedule": 3600.0,  # Каждый час
-    },
-    "send-reminders-hour-before": {
-        "task": "app.tasks.notifications.send_reminder_hour_before_task",
-        "schedule": 300.0,  # Каждые 5 минут
-    },
-    "send-work-orders-to-masters": {
-        "task": "app.tasks.notifications.send_work_orders_to_masters_task",
-        "schedule": {"hour": 8, "minute": 0},  # Каждый день в 08:00
-    },
-    "notify-admin-new-bookings": {
-        "task": "app.tasks.notifications.notify_admin_new_bookings_task",
-        "schedule": 300.0,  # Каждые 5 минут
-    },
-}
+# Импортируем расписание из celery_beat
+from celery_beat import beat_schedule
 
 
 
