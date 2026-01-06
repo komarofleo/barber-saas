@@ -27,9 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSubscriptionLoading(true)
       const subInfo = await authApi.getSubscriptionInfo()
       setSubscription(subInfo)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch subscription info:', error)
-      setSubscription(null)
+      // Если подписка не найдена (404), это нормально - просто нет подписки
+      if (error.response?.status === 404) {
+        setSubscription(null)
+      } else {
+        // Для других ошибок, оставляем null
+        setSubscription(null)
+      }
     } finally {
       setSubscriptionLoading(false)
     }

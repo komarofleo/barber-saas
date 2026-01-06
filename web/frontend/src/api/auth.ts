@@ -31,6 +31,7 @@ export interface SubscriptionInfo {
   start_date: string
   end_date: string
   can_create_bookings: boolean
+  days_remaining: number
 }
 
 export const authApi = {
@@ -74,7 +75,7 @@ export const authApi = {
     if (!token) {
       throw new Error('No token')
     }
-    const response = await axios.get('/api/auth/subscription', {
+    const response = await axios.get('/api/subscription', {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
