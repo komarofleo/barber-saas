@@ -34,15 +34,10 @@ from app.schemas.public_schemas import (
     SubscriptionStatus
 )
 
-# Временно закомментировано из-за конфликта моделей
-# from app.models.public_models import Company, Plan, Payment, Subscription
+from app.models.public_models import Company, Plan, Payment, Subscription
+from app.services.yookassa_service import YooKassaService
 
-# Временно не используем ORM, а работаем напрямую с БД через SQL
-# from app.services.yookassa_service import (
-#     create_payment,
-#     get_payment,
-#     verify_webhook_signature
-# )
+yookassa_service = YooKassaService()
 
 logger = logging.getLogger(__name__)
 

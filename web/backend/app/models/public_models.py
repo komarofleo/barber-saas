@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Date, Numeric, Text, ARRAY, func
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import MetaData
+from sqlalchemy.dialects.postgresql import JSONB
 import enum
 
 # Импортируем Base и metadata из shared models
@@ -133,7 +134,7 @@ class Subscription(Base):
     status = Column(SQLEnum(SubscriptionStatus, name="subscriptionstatus"), default="active", index=True)
     trial_used = Column(Boolean, default=False)
     auto_renewal = Column(Boolean, default=False)
-    metadata = Column(Text, nullable=True)
+    extra_data = Column(JSONB, nullable=True)  # Переименовано из metadata (зарезервированное имя), тип JSONB
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -173,14 +174,14 @@ class Payment(Base):
     
     # Описание
     description = Column(String(500), nullable=True)
-    metadata = Column(Text, nullable=True)
+    extra_data = Column(JSONB, nullable=True)  # Переименовано из metadata (зарезервированное имя), тип JSONB
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Отношения
     company = relationship("Company", back_populates="payments")
     plan = relationship("Plan", back_populates="payments")
-    subscription = relationship("Subscription", back_populates="payments", cascade="all, delete-orphan")
+    subscription = relationship("Subscription", back_populates="payments")  # Убран delete-orphan для many-to-one
 
 
 class SuperAdmin(Base):

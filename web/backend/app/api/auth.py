@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
+from dataclasses import dataclass
 
 from app.database import get_db
 from app.schemas.auth import LoginRequest, TokenResponse, UserResponse
@@ -17,10 +18,26 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
+@dataclass
+class UserData:
+    """Простой объект для хранения данных пользователя"""
+    id: int
+    telegram_id: int
+    username: Optional[str]
+    first_name: Optional[str]
+    last_name: Optional[str]
+    phone: Optional[str]
+    is_admin: bool
+    is_master: bool
+    is_blocked: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: AsyncSession = Depends(get_db)
-) -> User:
+) -> UserData:
     """Получить текущего пользователя из токена"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -36,11 +53,34 @@ async def get_current_user(
     except (JWTError, ValueError):
         raise credentials_exception
     
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if user is None:
+    # Используем raw SQL с явным указанием схемы public
+    result = await db.execute(
+        text("""
+            SELECT id, telegram_id, username, first_name, last_name, phone, 
+                   is_admin, is_master, is_blocked, created_at, updated_at
+            FROM public.users 
+            WHERE id = :user_id
+        """),
+        {"user_id": user_id}
+    )
+    row = result.fetchone()
+    if row is None:
         raise credentials_exception
-    return user
+    
+    # Создаем простой объект UserData
+    return UserData(
+        id=row[0],
+        telegram_id=row[1],
+        username=row[2],
+        first_name=row[3],
+        last_name=row[4],
+        phone=row[5],
+        is_admin=row[6],
+        is_master=row[7],
+        is_blocked=row[8],
+        created_at=row[9],
+        updated_at=row[10],
+    )
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -69,17 +109,38 @@ async def login(
             detail="Incorrect username or password"
         )
     
-    # Ищем пользователя по telegram_id
+    # Ищем пользователя по telegram_id в public схеме
     result = await db.execute(
-        select(User).where(User.telegram_id == telegram_id)
+        text("""
+            SELECT id, telegram_id, username, first_name, last_name, phone, 
+                   is_admin, is_master, is_blocked, created_at, updated_at
+            FROM public.users 
+            WHERE telegram_id = :telegram_id
+        """),
+        {"telegram_id": telegram_id}
     )
-    user = result.scalar_one_or_none()
+    row = result.fetchone()
     
-    if not user:
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password"
         )
+    
+    # Создаем простой объект UserData
+    user = UserData(
+        id=row[0],
+        telegram_id=row[1],
+        username=row[2],
+        first_name=row[3],
+        last_name=row[4],
+        phone=row[5],
+        is_admin=row[6],
+        is_master=row[7],
+        is_blocked=row[8],
+        created_at=row[9],
+        updated_at=row[10],
+    )
     
     # Простая проверка: пароль = telegram_id (для начальной версии)
     if form_data.password != str(user.telegram_id):
@@ -110,7 +171,7 @@ async def login(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_user)):
+async def get_me(current_user: UserData = Depends(get_current_user)):
     """Получить информацию о текущем пользователе"""
     return UserResponse(
         id=current_user.id,
