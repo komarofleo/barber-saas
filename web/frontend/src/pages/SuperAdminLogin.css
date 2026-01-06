@@ -174,21 +174,15 @@
   display: block;
 }
 
-/* Поле с иконкой слева */
-.input-wrapper:has(.input-icon) .form-input {
+/* Поле username - иконка слева, нет кнопки справа */
+#username {
   padding-left: 48px;
   padding-right: 16px;
 }
 
-/* Поле с кнопкой справа */
-.input-wrapper:has(.toggle-password) .form-input {
+/* Поле password - нет иконки слева, кнопка справа */
+#password {
   padding-left: 16px;
-  padding-right: 48px;
-}
-
-/* Поле с иконкой слева И кнопкой справа */
-.input-wrapper:has(.input-icon):has(.toggle-password) .form-input {
-  padding-left: 48px;
   padding-right: 48px;
 }
 
@@ -217,17 +211,19 @@
   pointer-events: none;
   z-index: 2;
   color: #999;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   line-height: 1;
+  margin: 0;
+  padding: 0;
 }
 
 .toggle-password {
   position: absolute;
-  right: 16px;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -236,14 +232,17 @@
   cursor: pointer;
   color: #999;
   transition: color 0.3s ease;
-  padding: 4px 8px;
+  padding: 0;
+  margin: 0;
   line-height: 1;
   z-index: 2;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
+  min-width: 32px;
+  min-height: 32px;
 }
 
 .toggle-password:hover {
@@ -547,8 +546,18 @@
   }
 
   .form-input {
-    padding: 12px 42px 12px 42px;
+    padding: 12px 16px;
     font-size: 15px;
+  }
+
+  #username {
+    padding-left: 42px;
+    padding-right: 16px;
+  }
+
+  #password {
+    padding-left: 16px;
+    padding-right: 42px;
   }
 
   .submit-button {
@@ -593,8 +602,18 @@
   }
 
   .form-input {
-    padding: 12px 38px 12px 38px;
+    padding: 12px 16px;
     font-size: 14px;
+  }
+
+  #username {
+    padding-left: 38px;
+    padding-right: 16px;
+  }
+
+  #password {
+    padding-left: 16px;
+    padding-right: 38px;
   }
 
   .security-info,

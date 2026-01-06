@@ -9,18 +9,18 @@
  */
 
 import React, { useState } from 'react'
-import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import './SuperAdminLayout.css'
 
-const SuperAdminLayout: React.FC = () => {
+const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true)
-  const [superAdmin] = useState<any>(null)
+  const [superAdmin, setSuperAdmin] = useState<any>(null)
 
-  // Получаем данные супер-админа из localStorage
+  // Получаем данные супер-админа из хранилища
   React.useEffect(() => {
-    const superAdminData = localStorage.getItem('super_admin')
+    const superAdminData = localStorage.getItem('super_admin') || sessionStorage.getItem('super_admin')
     if (superAdminData) {
       setSuperAdmin(JSON.parse(superAdminData))
     }
@@ -36,7 +36,9 @@ const SuperAdminLayout: React.FC = () => {
       console.error('Ошибка выхода:', error)
       // Удаляем токены локально даже при ошибке API
       localStorage.removeItem('super_admin_token')
+      sessionStorage.removeItem('super_admin_token')
       localStorage.removeItem('super_admin')
+      sessionStorage.removeItem('super_admin')
       navigate('/super-admin/login')
     }
   }
@@ -161,7 +163,7 @@ const SuperAdminLayout: React.FC = () => {
 
         {/* Контент страницы */}
         <main className="page-content">
-          <Outlet />
+          {children}
         </main>
 
         {/* Footer */}

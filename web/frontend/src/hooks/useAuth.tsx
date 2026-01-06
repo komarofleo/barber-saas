@@ -45,6 +45,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem('token')
     const savedUser = localStorage.getItem('user')
     
+    // Если нет токена, сразу устанавливаем loading=false
+    if (!token) {
+      setLoading(false)
+      setSubscriptionLoading(false)
+      setUser(null)
+      return
+    }
+    
     if (token && savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser)

@@ -6,6 +6,13 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     """Настройки приложения"""
+    # База данных
+    DB_HOST: str = os.getenv("DB_HOST", "postgres")
+    DB_PORT: int = int(os.getenv("DB_PORT", "5432"))
+    DB_NAME: str = os.getenv("DB_NAME", "autoservice_db")
+    DB_USER: str = os.getenv("DB_USER", "autoservice_user")
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
+    
     # Web
     SECRET_KEY: str = os.getenv("WEB_SECRET_KEY", "")
     HOST: str = os.getenv("WEB_HOST", "0.0.0.0")

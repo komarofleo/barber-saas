@@ -27,9 +27,9 @@ const SuperAdminLogin: React.FC = () => {
 
   // Проверка авторизации при загрузке
   useEffect(() => {
-    const token = localStorage.getItem('super_admin_token')
+    const token = localStorage.getItem('super_admin_token') || sessionStorage.getItem('super_admin_token')
     if (token) {
-      navigate('/super-admin/dashboard')
+      navigate('/super-admin/dashboard', { replace: true })
     }
   }, [navigate])
 
@@ -85,24 +85,55 @@ const SuperAdminLogin: React.FC = () => {
 
     try {
       const response = await superAdminApi.login(formData)
+      
+      console.log('Успешный вход:', response)
 
       // Сохраняем токен
       if (rememberMe) {
         localStorage.setItem('super_admin_token', response.access_token)
+        localStorage.setItem('super_admin', JSON.stringify(response.super_admin))
       } else {
         sessionStorage.setItem('super_admin_token', response.access_token)
+        sessionStorage.setItem('super_admin', JSON.stringify(response.super_admin))
       }
 
-      // Сохраняем данные супер-админа
-      const storage = rememberMe ? localStorage : sessionStorage
-      storage.setItem('super_admin', JSON.stringify(response.super_admin))
-
+      console.log('Токен сохранен, перенаправление...')
+      
       // Перенаправляем на дашборд
-      navigate('/super-admin/dashboard')
+      // Используем window.location для гарантированного перенаправления
+      window.location.href = '/super-admin/dashboard'
     } catch (error: any) {
       console.error('Ошибка входа:', error)
+      
+      // Извлекаем сообщение об ошибке
+      let errorMessage = 'Неверный логин или пароль'
+      
+      if (error?.message) {
+        if (typeof error.message === 'string') {
+          errorMessage = error.message
+        } else if (typeof error.message === 'object') {
+          // Если message - объект, пытаемся извлечь строку
+          if (error.message.message) {
+            errorMessage = String(error.message.message)
+          } else if (error.message.detail) {
+            errorMessage = String(error.message.detail)
+          } else {
+            errorMessage = 'Произошла ошибка при входе'
+          }
+        }
+      } else if (error?.response?.data) {
+        const data = error.response.data
+        if (typeof data.detail === 'string') {
+          errorMessage = data.detail
+        } else if (typeof data.message === 'string') {
+          errorMessage = data.message
+        } else if (typeof data.error === 'string') {
+          errorMessage = data.error
+        }
+      }
+      
       setErrors({
-        general: error.message || 'Неверный логин или пароль',
+        general: errorMessage,
       })
     } finally {
       setLoading(false)

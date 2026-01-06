@@ -9,6 +9,41 @@
  * - Получение статистики
  */
 
+import axios from 'axios'
+
+// Отдельный клиент для супер-админа
+const superAdminClient = axios.create({
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+// Interceptor для добавления токена супер-админа
+superAdminClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('super_admin_token') || sessionStorage.getItem('super_admin_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  config.baseURL = undefined
+  return config
+})
+
+// Interceptor для обработки ошибок
+superAdminClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('super_admin_token')
+      sessionStorage.removeItem('super_admin_token')
+      localStorage.removeItem('super_admin')
+      sessionStorage.removeItem('super_admin')
+      window.location.href = '/super-admin/login'
+    }
+    return Promise.reject(error)
+  }
+)
+
+// Используем обычный apiClient для логина (без токена)
 import apiClient from './client'
 
 // ==================== Типы данных ====================
@@ -216,23 +251,43 @@ export interface ManualPaymentRequest {
  */
 export async function login(data: SuperAdminLoginRequest): Promise<SuperAdminLoginResponse> {
   try {
-    const params = new URLSearchParams()
-    params.append('username', data.username)
-    params.append('password', data.password)
-
     const response = await apiClient.post<SuperAdminLoginResponse>(
       '/api/super-admin/auth/login',
-      params.toString(),
       {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+        username: data.username,
+        password: data.password,
       }
     )
     return response.data
   } catch (error: any) {
     console.error('Ошибка входа супер-админа:', error)
-    throw new Error(error.response?.data?.detail || 'Неверный логин или пароль')
+    
+    // Извлекаем сообщение об ошибке
+    let errorMessage = 'Неверный логин или пароль'
+    
+    if (error.response?.data) {
+      const data = error.response.data
+      if (typeof data.detail === 'string') {
+        errorMessage = data.detail
+      } else if (typeof data.detail === 'object' && data.detail !== null) {
+        // Если detail - объект, пытаемся извлечь сообщение
+        if (data.detail.message) {
+          errorMessage = String(data.detail.message)
+        } else if (data.detail.msg) {
+          errorMessage = String(data.detail.msg)
+        } else {
+          errorMessage = JSON.stringify(data.detail)
+        }
+      } else if (typeof data.message === 'string') {
+        errorMessage = data.message
+      } else if (typeof data.error === 'string') {
+        errorMessage = data.error
+      }
+    } else if (error.message && typeof error.message === 'string') {
+      errorMessage = error.message
+    }
+    
+    throw new Error(errorMessage)
   }
 }
 
@@ -252,7 +307,7 @@ export async function login(data: SuperAdminLoginRequest): Promise<SuperAdminLog
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
   try {
-    const response = await apiClient.get<DashboardStats>('/api/super-admin/dashboard/stats')
+    const response = await superAdminClient.get<DashboardStats>('/api/super-admin/dashboard/stats')
     return response.data
   } catch (error: any) {
     console.error('Ошибка получения статистики дашборда:', error)
@@ -296,7 +351,7 @@ export async function getCompanies(
     if (filters.sort_order) params.append('sort_order', filters.sort_order)
 
     const queryString = params.toString()
-    const response = await apiClient.get<CompaniesResponse>(
+    const response = await superAdminClient.get<CompaniesResponse>(
       `/api/super-admin/companies${queryString ? `?${queryString}` : ''}`
     )
     return response.data
@@ -327,7 +382,7 @@ export async function getCompanies(
  */
 export async function getCompanyById(companyId: number): Promise<Company> {
   try {
-    const response = await apiClient.get<Company>(`/api/super-admin/companies/${companyId}`)
+    const response = await superAdminClient.get<Company>(`/api/super-admin/companies/${companyId}`)
     return response.data
   } catch (error: any) {
     console.error('Ошибка получения компании:', error)
@@ -355,7 +410,7 @@ export async function updateCompany(
   data: CompanyUpdateData
 ): Promise<Company> {
   try {
-    const response = await apiClient.put<Company>(
+    const response = await superAdminClient.put<Company>(
       `/api/super-admin/companies/${companyId}`,
       data
     )
@@ -380,7 +435,7 @@ export async function updateCompany(
  */
 export async function deactivateCompany(companyId: number): Promise<Company> {
   try {
-    const response = await apiClient.patch<Company>(
+    const response = await superAdminClient.patch<Company>(
       `/api/super-admin/companies/${companyId}/deactivate`
     )
     return response.data
@@ -405,7 +460,7 @@ export async function deactivateCompany(companyId: number): Promise<Company> {
  */
 export async function getCompanySubscriptions(companyId: number): Promise<Subscription[]> {
   try {
-    const response = await apiClient.get<Subscription[]>(
+    const response = await superAdminClient.get<Subscription[]>(
       `/api/super-admin/companies/${companyId}/subscriptions`
     )
     return response.data
@@ -430,7 +485,7 @@ export async function getCompanySubscriptions(companyId: number): Promise<Subscr
  */
 export async function getCompanyPayments(companyId: number): Promise<Payment[]> {
   try {
-    const response = await apiClient.get<Payment[]>(
+    const response = await superAdminClient.get<Payment[]>(
       `/api/super-admin/companies/${companyId}/payments`
     )
     return response.data
@@ -461,7 +516,7 @@ export async function createManualPayment(
   data: ManualPaymentRequest
 ): Promise<Payment> {
   try {
-    const response = await apiClient.post<Payment>(
+    const response = await superAdminClient.post<Payment>(
       '/api/super-admin/companies/manual-payment',
       data
     )
@@ -483,9 +538,11 @@ export async function createManualPayment(
  */
 export async function logout(): Promise<void> {
   try {
-    await apiClient.post('/api/super-admin/auth/logout')
-    localStorage.removeItem('super_admin_token')
-    localStorage.removeItem('super_admin')
+      await superAdminClient.post('/api/super-admin/auth/logout')
+      localStorage.removeItem('super_admin_token')
+      sessionStorage.removeItem('super_admin_token')
+      localStorage.removeItem('super_admin')
+      sessionStorage.removeItem('super_admin')
   } catch (error: any) {
     console.error('Ошибка выхода:', error)
     // Удаляем токен локально даже при ошибке API

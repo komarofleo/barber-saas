@@ -27,12 +27,10 @@
 }
 
 /* Левая часть - форма */
-.register-main {
-    padding: 60px;
-}
-
 .register-left {
-    width: 100%;
+    padding: 60px;
+    overflow-y: auto;
+    max-height: calc(100vh - 80px);
 }
 
 .register-header {
@@ -199,6 +197,11 @@
         max-width: 800px;
     }
 
+    .register-left {
+        max-height: none;
+        overflow-y: visible;
+    }
+
     .register-right {
         border-left: none;
         border-top: 2px solid #e2e8f0;
@@ -208,6 +211,7 @@
     }
 
     .info-cards {
+        display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 16px;
     }
@@ -219,7 +223,7 @@
         padding: 20px 16px;
     }
 
-    .register-main {
+    .register-left {
         padding: 40px 30px;
     }
 
@@ -253,9 +257,8 @@
         padding: 16px 12px;
     }
 
-    .register-main {
+    .register-left {
         padding: 30px 20px;
-        border-radius: 16px;
     }
 
     .page-title {
@@ -295,6 +298,23 @@
 }
 
 .register-right::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+.register-left::-webkit-scrollbar {
+    width: 8px;
+}
+
+.register-left::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.register-left::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.register-left::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
 }
 

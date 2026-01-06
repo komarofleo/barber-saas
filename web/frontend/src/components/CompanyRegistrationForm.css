@@ -1,13 +1,13 @@
 /* Стили для улучшенной формы регистрации компании */
 
 .company-registration-form {
-  background: white;
+  background: transparent;
   border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-  padding: 60px;
+  box-shadow: none;
+  padding: 0;
   width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
 }
 
 /* Заголовок регистрации */

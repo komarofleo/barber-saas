@@ -17,49 +17,49 @@ const Register: React.FC = () => {
         <div className="register-page">
             <div className="register-container">
                 <div className="register-content">
-                    {/* Заголовок страницы */}
-                    <div className="register-header">
-                        <h1 className="page-title">🚀 AutoService SaaS</h1>
-                        <p className="page-subtitle">
-                            Платформа для управления автосервисами с мульти-тенантной архитектурой и полной изоляцией данных
-                        </p>
-                    </div>
-
-                    {/* Основной контент */}
-                    <div className="register-main">
-                        <div className="register-left">
-                            {/* Форма регистрации */}
-                            <div className="register-form-wrapper">
-                                <h2 className="section-title">📋 Регистрация нового автосервиса</h2>
-                                <p className="section-description">
-                                    Заполните форму, чтобы создать свою учетную запись. После успешной регистрации и оплаты вы получите доступ к админ-панели и Telegram боту.
-                                </p>
-
-                                <CompanyRegistrationForm />
-
-                                {/* Информация внизу формы */}
-                                <div className="register-footer">
-                                    <p className="footer-text">
-                                        Уже есть аккаунт? {' '}
-                                        <a href="/login" className="footer-link">
-                                            Войти в существующий аккаунт
-                                        </a>
-                                    </p>
-                                    <p className="footer-text-small">
-                                        Нажимая кнопку «Зарегистрироваться», вы соглашаетесь с{' '}
-                                        <a href="/terms" className="footer-link">
-                                            условиями использования
-                                        </a>{' '}
-                                        и{' '}
-                                        <a href="/privacy" className="footer-link">
-                                            политикой конфиденциальности
-                                        </a>
-                                    </p>
-                                </div>
-                            </div>
+                    {/* Левая часть - форма */}
+                    <div className="register-left">
+                        {/* Заголовок страницы */}
+                        <div className="register-header">
+                            <h1 className="page-title">🚀 AutoService SaaS</h1>
+                            <p className="page-subtitle">
+                                Платформа для управления автосервисами с мульти-тенантной архитектурой и полной изоляцией данных
+                            </p>
                         </div>
 
-                        <div className="register-right">
+                        {/* Форма регистрации */}
+                        <div className="register-form-wrapper">
+                            <h2 className="section-title">📋 Регистрация нового автосервиса</h2>
+                            <p className="section-description">
+                                Заполните форму, чтобы создать свою учетную запись. После успешной регистрации и оплаты вы получите доступ к админ-панели и Telegram боту.
+                            </p>
+
+                            <CompanyRegistrationForm />
+
+                            {/* Информация внизу формы */}
+                            <div className="register-footer">
+                                <p className="footer-text">
+                                    Уже есть аккаунт? {' '}
+                                    <a href="/login" className="footer-link">
+                                        Войти в существующий аккаунт
+                                    </a>
+                                </p>
+                                <p className="footer-text-small">
+                                    Нажимая кнопку «Зарегистрироваться», вы соглашаетесь с{' '}
+                                    <a href="/terms" className="footer-link">
+                                        условиями использования
+                                    </a>{' '}
+                                    и{' '}
+                                    <a href="/privacy" className="footer-link">
+                                        политикой конфиденциальности
+                                    </a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Правая часть - информационные карточки */}
+                    <div className="register-right">
                             {/* Информационные карточки */}
                             <div className="info-cards">
                                 <div className="info-card">
@@ -122,7 +122,6 @@ const Register: React.FC = () => {
                                     </ul>
                                 </div>
                             </div>
-                        </div>
                     </div>
                 </div>
             </div>
