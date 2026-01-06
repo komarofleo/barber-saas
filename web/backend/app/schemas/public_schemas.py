@@ -201,6 +201,7 @@ class CompanyResponse(BaseModel):
     # Метаданные
     is_active: bool
     created_at: datetime
+    updated_at: Optional[datetime] = None  # Исправлено: опциональное поле
     
     class Config:
         from_attributes = True
