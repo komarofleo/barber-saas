@@ -26,8 +26,15 @@ const SuperAdminLogin: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false)
   const [rememberMe, setRememberMe] = useState<boolean>(false)
 
-  // Проверка авторизации при загрузке - убрана, так как SuperAdminProtectedRoute сам проверит токен
-  // Это предотвращает циклы перенаправлений
+  // Проверка авторизации при загрузке
+  useEffect(() => {
+    // Если токен уже есть, перенаправляем на dashboard
+    const superAdminToken = localStorage.getItem('super_admin_token') || sessionStorage.getItem('super_admin_token')
+    if (superAdminToken && !isRedirecting.current) {
+      isRedirecting.current = true
+      navigate('/super-admin/dashboard', { replace: true })
+    }
+  }, [navigate])
 
   // Валидация формы
   const validateForm = (): boolean => {
