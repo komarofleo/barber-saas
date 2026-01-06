@@ -15,6 +15,7 @@ import Promocodes from './pages/Promocodes'
 import Promotions from './pages/Promotions'
 import Clients from './pages/Clients'
 import Broadcasts from './pages/Broadcasts'
+import Register from './pages/Register'
 import Layout from './components/Layout'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import './App.css'
@@ -44,11 +45,20 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route
         path="/"
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bookings"
+        element={
+          <ProtectedRoute>
+            <Bookings />
           </ProtectedRoute>
         }
       />
