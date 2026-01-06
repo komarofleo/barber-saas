@@ -266,6 +266,34 @@ async def register_company(
     )
 
 
+@router.get("/plans/{plan_id}", response_model=PlanResponse)
+async def get_plan_by_id(
+    plan_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Получить тарифный план по ID.
+    
+    Args:
+        plan_id: ID плана
+        db: Асинхронная сессия БД
+        
+    Returns:
+        Объект плана с полной информацией
+    """
+    result = await db.execute(
+        select(Plan).where(Plan.id == plan_id)
+    )
+    plan = result.scalar_one_or_none()
+    
+    if not plan:
+        raise HTTPException(status_code=404, detail="План не найден")
+    
+    logger.info(f"Получение плана: {plan_id}")
+    
+    return PlanResponse.model_validate(plan)
+
+
 @router.get("/plans", response_model=list[PlanResponse])
 async def get_plans(
     db: AsyncSession = Depends(get_db)
