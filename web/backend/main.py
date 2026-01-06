@@ -4,7 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.api import auth, bookings, users, services, masters, posts, clients, settings as settings_api, blocks, promocodes, promotions, broadcasts, export, public, webhooks, super_admin
+
+# Временно закомментированы новые модули из-за проблем с моделями
+from app.api import auth, bookings, users, services, masters, posts, clients, settings as settings_api, blocks, promocodes, promotions, broadcasts, export
+# from app.api import public, webhooks, super_admin
 
 app = FastAPI(title="AutoService API", version="1.0.0")
 
@@ -33,6 +36,7 @@ app.include_router(broadcasts.router)
 app.include_router(export.router)
 # app.include_router(public.router)
 # app.include_router(webhooks.router)
+# app.include_router(super_admin.router)
 
 
 @app.get("/api/health")
@@ -45,4 +49,3 @@ async def health_check():
 async def root():
     """Корневой endpoint"""
     return {"message": "AutoService API"}
-

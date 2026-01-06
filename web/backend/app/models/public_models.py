@@ -13,14 +13,12 @@ from datetime import date
 from typing import Optional
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Date, Numeric, Text, ARRAY
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.sql import func
 import enum
 
-# Импортируем Base из shared моделей (используем тот же Base для всех схем)
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../shared'))
-from database.models import Base
+# Создаем собственный Base для public схемы
+Base = declarative_base()
 
 
 class SubscriptionStatus(str, enum.Enum):
@@ -74,8 +72,8 @@ class Company(Base):
     is_blocked = Column(Boolean, default=False)
     blocked_reason = Column(String(500), nullable=True)
     blocked_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default="now()")
-    updated_at = Column(DateTime(timezone=True), onupdate="now()")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Отношения
     plan = relationship("Plan", back_populates="companies")
@@ -104,8 +102,8 @@ class Plan(Base):
     max_promotions = Column(Integer, default=5)
     display_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True, index=True)
-    created_at = Column(DateTime(timezone=True), server_default="now()")
-    updated_at = Column(DateTime(timezone=True), onupdate="now()")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Отношения
     companies = relationship("Company", back_populates="plan")
@@ -132,8 +130,8 @@ class Subscription(Base):
     trial_used = Column(Boolean, default=False)
     auto_renewal = Column(Boolean, default=False)
     metadata = Column(JSONB, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default="now()")
-    updated_at = Column(DateTime(timezone=True), onupdate="now()")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Отношения
     company = relationship("Company", back_populates="subscriptions")
@@ -172,13 +170,13 @@ class Payment(Base):
     # Описание
     description = Column(String(500), nullable=True)
     metadata = Column(JSONB, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default="now()")
-    updated_at = Column(DateTime(timezone=True), onupdate="now()")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Отношения
     company = relationship("Company", back_populates="payments")
     plan = relationship("Plan", back_populates="payments")
-    subscription = relationship("Subscription", back_populates="payments")
+    subscription = relationship("Subscription", back_populates="payments", cascade="all, delete-orphan")
 
 
 class SuperAdmin(Base):
@@ -206,5 +204,5 @@ class SuperAdmin(Base):
     is_active = Column(Boolean, default=True, index=True)
     
     # Даты
-    created_at = Column(DateTime(timezone=True), server_default="now()")
-    updated_at = Column(DateTime(timezone=True), onupdate="now()")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

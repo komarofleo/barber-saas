@@ -33,12 +33,16 @@ from app.schemas.public_schemas import (
     PaymentStatus,
     SubscriptionStatus
 )
-from app.models.public_models import Company, Plan, Payment, Subscription
-from app.services.yookassa_service import (
-    create_payment,
-    get_payment,
-    verify_webhook_signature
-)
+
+# Временно закомментировано из-за конфликта моделей
+# from app.models.public_models import Company, Plan, Payment, Subscription
+
+# Временно не используем ORM, а работаем напрямую с БД через SQL
+# from app.services.yookassa_service import (
+#     create_payment,
+#     get_payment,
+#     verify_webhook_signature
+# )
 
 logger = logging.getLogger(__name__)
 
