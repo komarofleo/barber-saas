@@ -84,20 +84,22 @@ const SuperAdminDashboard: React.FC = () => {
           <p className="dashboard-subtitle">
             Общая статистика и управление системой AutoService SaaS
           </p>
-          <div className="dashboard-actions">
-            <button
-              className="action-button"
-              onClick={() => fetchStats()}
-            >
-              🔄 Обновить
-            </button>
-            <button
-              className="action-button primary"
-              onClick={() => navigate('/super-admin/companies')}
-            >
-              📋 Компании
-            </button>
-          </div>
+        </div>
+
+        {/* Кнопки действий - перемещены из header внутрь контента */}
+        <div className="dashboard-actions">
+          <button
+            className="action-button"
+            onClick={() => fetchStats()}
+          >
+            🔄 Обновить
+          </button>
+          <button
+            className="action-button primary"
+            onClick={() => navigate('/super-admin/companies')}
+          >
+            📋 Компании
+          </button>
         </div>
 
         {/* Загрузка */}

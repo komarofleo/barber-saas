@@ -198,6 +198,10 @@ const SuperAdminPayments: React.FC = () => {
           <p className="page-subtitle">
             Просмотр и управление всеми платежами в системе
           </p>
+        </div>
+
+        {/* Кнопка создания платежа - перемещена из header внутрь контента */}
+        <div className="page-actions">
           <button
             className="create-payment-button"
             onClick={() => setShowManualPaymentModal(true)}

@@ -27,10 +27,7 @@
 
 /* Заголовок */
 .dashboard-header {
-  margin-bottom: 40px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  margin-bottom: 24px;
 }
 
 .dashboard-title {
@@ -49,9 +46,13 @@
   margin: 8px 0 0 0;
 }
 
+/* Кнопки действий - перемещены внутрь контента */
 .dashboard-actions {
   display: flex;
   gap: 12px;
+  margin-bottom: 32px;
+  padding: 16px 0;
+  border-bottom: 2px solid #e2e8f0;
 }
 
 .action-button {
@@ -564,9 +565,11 @@
   }
 
   .dashboard-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .dashboard-actions {
+    flex-wrap: wrap;
   }
 
   .dashboard-title {

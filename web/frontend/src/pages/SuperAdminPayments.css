@@ -25,10 +25,14 @@
 
 /* Заголовок страницы */
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  margin-bottom: 24px;
+}
+
+/* Кнопки действий - перемещены внутрь контента */
+.page-actions {
   margin-bottom: 32px;
+  padding: 16px 0;
+  border-bottom: 2px solid #e2e8f0;
 }
 
 .page-title {
