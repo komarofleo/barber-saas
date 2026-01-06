@@ -11,10 +11,16 @@
 
 from datetime import date
 from typing import Optional
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Date, Numeric
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Date, Numeric, Text, ARRAY
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import enum
+
+# Импортируем Base из shared моделей (используем тот же Base для всех схем)
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../shared'))
+from database.models import Base
 
 
 class SubscriptionStatus(str, enum.Enum):
@@ -23,14 +29,18 @@ class SubscriptionStatus(str, enum.Enum):
     EXPIRED = "expired"
     BLOCKED = "blocked"
     PENDING = "pending"
+    CANCELLED = "cancelled"
+    SUSPENDED = "suspended"
 
 
 class PaymentStatus(str, enum.Enum):
     """Статусы платежей."""
     PENDING = "pending"
+    PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
     REFUNDED = "refunded"
+    CANCELLED = "cancelled"
 
 
 class Company(Base):
@@ -47,151 +57,154 @@ class Company(Base):
     email = Column(String(255), nullable=False, unique=True, index=True)
     phone = Column(String(20), nullable=True)
     telegram_bot_token = Column(String(500), nullable=False, unique=True)
+    telegram_bot_username = Column(String(100), nullable=True)
     admin_telegram_id = Column(Integer, nullable=True)
-    password_hash = Column(String(255), nullable=True)  # Хэшированный пароль
-    
-    # Поля подписки
-    plan_id = Column(Integer, ForeignKey("public.plans.id"), nullable=True)
-    subscription_status = Column(SQLEnum(SubscriptionStatus), default=SubscriptionStatus.PENDING)
+    telegram_admin_ids = Column(ARRAY(Integer), nullable=True)
+    plan_id = Column(Integer, ForeignKey("public.plans.id"), nullable=True, index=True)
+    subscription_status = Column(SQLEnum(SubscriptionStatus, name="subscriptionstatus"), default="pending", index=True)
+    subscription_end_date = Column(Date, nullable=True, index=True)
     can_create_bookings = Column(Boolean, default=True)
-    subscription_end_date = Column(Date, nullable=True)
+    password_hash = Column(String(255), nullable=True)
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
+    password_reset_token = Column(String(100), nullable=True)
+    password_reset_expires_at = Column(DateTime(timezone=True), nullable=True)
+    webhook_url = Column(String(500), nullable=True)
+    api_key = Column(String(100), nullable=True, unique=True)
+    is_active = Column(Boolean, default=False, index=True)
+    is_blocked = Column(Boolean, default=False)
+    blocked_reason = Column(String(500), nullable=True)
+    blocked_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default="now()")
+    updated_at = Column(DateTime(timezone=True), onupdate="now()")
     
-    # Метаданные
-    is_active = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Связи
+    # Отношения
     plan = relationship("Plan", back_populates="companies")
-    subscriptions = relationship("Subscription", back_populates="company")
-    payments = relationship("Payment", back_populates="company")
+    subscriptions = relationship("Subscription", back_populates="company", cascade="all, delete-orphan")
+    payments = relationship("Payment", back_populates="company", cascade="all, delete-orphan")
 
 
 class Plan(Base):
     """
-    Тарифные планы для подписок.
+    Модель тарифного плана в public схеме.
     
-    Определяют стоимость и доступные возможности для разных уровней подписки.
+    Определяет ценовую политику и лимиты для автосервисов.
     """
     __tablename__ = "plans"
     __table_args__ = {"schema": "public"}
     
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False, unique=True)
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False, unique=True, index=True)
     description = Column(String(500), nullable=True)
-    
-    # Ценообразование
-    price_monthly = Column(Numeric(10, 2), nullable=False)  # Цена за месяц
-    price_yearly = Column(Numeric(10, 2), nullable=False)  # Цена за год
-    
-    # Лимиты и возможности
+    price_monthly = Column(Numeric(10, 2), nullable=False)
+    price_yearly = Column(Numeric(10, 2), nullable=False)
     max_bookings_per_month = Column(Integer, default=100)
     max_users = Column(Integer, default=10)
     max_masters = Column(Integer, default=5)
-    is_active = Column(Boolean, default=True)
-    
-    # Порядок отображения
+    max_posts = Column(Integer, default=10)
+    max_promotions = Column(Integer, default=5)
     display_order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default="now()")
+    updated_at = Column(DateTime(timezone=True), onupdate="now()")
     
-    # Метаданные
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Связи
+    # Отношения
     companies = relationship("Company", back_populates="plan")
     subscriptions = relationship("Subscription", back_populates="plan")
+    payments = relationship("Payment", back_populates="plan")
 
 
 class Subscription(Base):
     """
-    Подписка компании на тарифный план.
+    Модель подписки компании в public схеме.
     
-    Отслеживает историю подписок и их статусы.
+    Связывает компанию с тарифным планом и отслеживает период действия подписки.
     """
     __tablename__ = "subscriptions"
     __table_args__ = {"schema": "public"}
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     company_id = Column(Integer, ForeignKey("public.companies.id"), nullable=False, index=True)
     plan_id = Column(Integer, ForeignKey("public.plans.id"), nullable=False, index=True)
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, nullable=False, index=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(SQLEnum(SubscriptionStatus, name="subscriptionstatus"), default="active", index=True)
+    trial_used = Column(Boolean, default=False)
+    auto_renewal = Column(Boolean, default=False)
+    metadata = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default="now()")
+    updated_at = Column(DateTime(timezone=True), onupdate="now()")
     
-    # Даты подписки
-    start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=False)
-    
-    # Статус
-    status = Column(SQLEnum(SubscriptionStatus), default=SubscriptionStatus.ACTIVE)
-    
-    # Метаданные
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Связи
+    # Отношения
     company = relationship("Company", back_populates="subscriptions")
     plan = relationship("Plan", back_populates="subscriptions")
+    payments = relationship("Payment", back_populates="subscription", cascade="all, delete-orphan")
 
 
 class Payment(Base):
     """
-    Платеж через Юкассу.
+    Модель платежа через Юкассу в public схеме.
     
-    Отслеживает все платежи и их статусы для интеграции с Юкассой.
+    Отслеживает все платежи, связанные с подписками компаний.
     """
     __tablename__ = "payments"
     __table_args__ = {"schema": "public"}
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     company_id = Column(Integer, ForeignKey("public.companies.id"), nullable=True, index=True)
     plan_id = Column(Integer, ForeignKey("public.plans.id"), nullable=False, index=True)
-    
-    # Данные платежа
+    subscription_id = Column(Integer, ForeignKey("public.subscriptions.id"), nullable=True, index=True)
     amount = Column(Numeric(10, 2), nullable=False)
-    currency = Column(String(3), default="RUB")
-    
-    # Статус платежа в нашей системе
-    status = Column(SQLEnum(PaymentStatus), default=PaymentStatus.PENDING, index=True)
+    currency = Column(String(3), default="RUB", nullable=False)
+    status = Column(SQLEnum(PaymentStatus, name="paymentstatus"), default="pending", index=True)
     
     # Данные от Юкассы
-    yookassa_payment_id = Column(String(100), unique=True, index=True, nullable=False)
+    yookassa_payment_id = Column(String(100), unique=True, nullable=False, index=True)
     yookassa_payment_status = Column(String(50), nullable=True)
     yookassa_confirmation_url = Column(String(500), nullable=True)
     yookassa_return_url = Column(String(500), nullable=True)
     
     # Webhook данные
+    webhook_payload = Column(JSONB, nullable=True)
     webhook_received_at = Column(DateTime(timezone=True), nullable=True)
     webhook_signature_verified = Column(Boolean, default=False)
     
-    # Метаданные
+    # Описание
     description = Column(String(500), nullable=True)
-    metadata = Column(String(1000), nullable=True)  # JSON метаданные
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    metadata = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default="now()")
+    updated_at = Column(DateTime(timezone=True), onupdate="now()")
     
-    # Связи
+    # Отношения
     company = relationship("Company", back_populates="payments")
+    plan = relationship("Plan", back_populates="payments")
+    subscription = relationship("Subscription", back_populates="payments")
 
 
 class SuperAdmin(Base):
     """
-    Супер-администратор системы.
+    Модель супер-администратора в public схеме.
     
-    Имеет полный доступ ко всем данным системы и управлению компаниями.
+    Супер-администраторы имеют полный доступ ко всем компаниям.
     """
     __tablename__ = "super_admins"
     __table_args__ = {"schema": "public"}
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
+    
+    # Данные аккаунта
     username = Column(String(100), nullable=False, unique=True, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
     
-    # Telegram для уведомлений
-    telegram_id = Column(Integer, nullable=True, unique=True)
+    # Telegram
+    telegram_id = Column(Integer, unique=True, nullable=True)
+    phone = Column(String(20), nullable=True)
     
     # Права доступа
-    is_active = Column(Boolean, default=True)
+    is_super_admin = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True, index=True)
     
-    # Метаданные
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
+    # Даты
+    created_at = Column(DateTime(timezone=True), server_default="now()")
+    updated_at = Column(DateTime(timezone=True), onupdate="now()")

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.api import auth, bookings, users, services, masters, posts, clients, settings as settings_api, blocks, promocodes, promotions, broadcasts, export, public, webhooks
+from app.api import auth, bookings, users, services, masters, posts, clients, settings as settings_api, blocks, promocodes, promotions, broadcasts, export, public, webhooks, super_admin
 
 app = FastAPI(title="AutoService API", version="1.0.0")
 
@@ -31,8 +31,8 @@ app.include_router(promocodes.router)
 app.include_router(promotions.router)
 app.include_router(broadcasts.router)
 app.include_router(export.router)
-app.include_router(public.router)
-app.include_router(webhooks.router)
+# app.include_router(public.router)
+# app.include_router(webhooks.router)
 
 
 @app.get("/api/health")

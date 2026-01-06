@@ -18,7 +18,13 @@ import Broadcasts from './pages/Broadcasts'
 import Register from './pages/Register'
 import PaymentSuccess from './pages/PaymentSuccess'
 import PaymentError from './pages/PaymentError'
+import SuperAdminLogin from './pages/SuperAdminLogin'
+import SuperAdminDashboard from './pages/SuperAdminDashboard'
+import SuperAdminCompanies from './pages/SuperAdminCompanies'
+import SuperAdminSubscriptions from './pages/SuperAdminSubscriptions'
+import SuperAdminPayments from './pages/SuperAdminPayments'
 import Layout from './components/Layout'
+import SuperAdminLayout from './components/SuperAdminLayout'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import './App.css'
 
@@ -43,13 +49,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <Layout>{children}</Layout>
 }
 
+function SuperAdminProtectedRoute({ children }: { children: React.ReactNode }) {
+  // Проверяем токен супер-админа
+  const superAdminToken = localStorage.getItem('super_admin_token')
+  
+  if (!superAdminToken) {
+    return <Navigate to="/super-admin/login" replace />
+  }
+  
+  return <SuperAdminLayout>{children}</SuperAdminLayout>
+}
+
 function AppRoutes() {
   return (
     <Routes>
+      {/* Публичные маршруты */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/payment/success" element={<PaymentSuccess />} />
       <Route path="/payment/error" element={<PaymentError />} />
+      
+      {/* Супер-администратор */}
       <Route
         path="/"
         element={
@@ -169,6 +189,25 @@ function AppRoutes() {
             <Broadcasts />
           </ProtectedRoute>
         }
+      />
+      
+      {/* Супер-администратор */}
+      <Route path="/super-admin/login" element={<SuperAdminLogin />} />
+      <Route
+        path="/super-admin/dashboard"
+        element={<SuperAdminProtectedRoute><SuperAdminDashboard /></SuperAdminProtectedRoute>}
+      />
+      <Route
+        path="/super-admin/companies"
+        element={<SuperAdminProtectedRoute><SuperAdminCompanies /></SuperAdminProtectedRoute>}
+      />
+      <Route
+        path="/super-admin/subscriptions"
+        element={<SuperAdminProtectedRoute><SuperAdminSubscriptions /></SuperAdminProtectedRoute>}
+      />
+      <Route
+        path="/super-admin/payments"
+        element={<SuperAdminProtectedRoute><SuperAdminPayments /></SuperAdminProtectedRoute>}
       />
     </Routes>
   )

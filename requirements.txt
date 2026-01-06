@@ -13,6 +13,9 @@ sqlalchemy==2.0.23
 asyncpg==0.29.0
 alembic==1.12.1
 
+# HTTP Client (для YooKassa)
+httpx==0.25.2
+
 # Redis & Celery
 redis==4.6.0
 celery==5.3.4
@@ -25,4 +28,5 @@ python-multipart==0.0.6
 # Utilities
 python-dotenv==1.0.0
 pytz==2023.3
+email-validator==2.1.0
 
