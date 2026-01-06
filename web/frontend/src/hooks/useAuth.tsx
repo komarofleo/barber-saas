@@ -42,6 +42,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    // Не загружаем данные, если мы на страницах супер-админа
+    const currentPath = window.location.pathname
+    if (currentPath.startsWith('/super-admin')) {
+      setLoading(false)
+      setSubscriptionLoading(false)
+      setUser(null)
+      return
+    }
+    
     const token = localStorage.getItem('token')
     const savedUser = localStorage.getItem('user')
     
