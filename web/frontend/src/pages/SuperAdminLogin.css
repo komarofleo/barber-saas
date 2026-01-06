@@ -2,21 +2,90 @@
 
 .super-admin-login-page {
   min-height: 100vh;
+  display: flex;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* Левая панель */
+.login-sidebar {
+  flex: 0 0 45%;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 40px 20px;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 60px 40px;
+  box-sizing: border-box;
+  position: relative;
+  min-height: 100vh;
+}
+
+.login-sidebar-content {
+  text-align: center;
+  color: white;
+  z-index: 1;
+  max-width: 500px;
+  width: 100%;
+}
+
+.login-icon {
+  font-size: 120px;
+  margin-bottom: 40px;
+  animation: bounce 1s ease;
+  display: block;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.login-title {
+  font-size: 42px;
+  font-weight: 700;
+  color: white;
+  margin: 0 0 20px 0;
+  line-height: 1.2;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.login-subtitle {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Правая панель */
+.login-main {
+  flex: 1;
+  background: #f5f7fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  min-height: 100vh;
+  width: 55%;
 }
 
 .login-container {
   background: white;
   border-radius: 20px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-  padding: 60px;
+  padding: 50px 60px;
   width: 100%;
-  max-width: 500px;
+  max-width: 600px;
   animation: slideUp 0.6s ease;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 @keyframes slideUp {
@@ -30,37 +99,6 @@
   }
 }
 
-/* Заголовок страницы */
-.login-header {
-  text-align: center;
-  margin-bottom: 40px;
-}
-
-.login-icon {
-  font-size: 64px;
-  margin-bottom: 20px;
-  animation: bounce 1s ease;
-}
-
-@keyframes bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-
-.login-title {
-  font-size: 32px;
-  font-weight: 700;
-  color: #283747;
-  margin: 0 0 12px 0;
-}
-
-.login-subtitle {
-  font-size: 16px;
-  color: #666;
-  margin: 0;
-  line-height: 1.6;
-}
-
 /* Ошибка */
 .error-alert {
   background: #f8d7da;
@@ -72,6 +110,9 @@
   gap: 12px;
   margin-bottom: 30px;
   animation: shake 0.5s ease;
+  box-sizing: border-box;
+  width: 100%;
+  order: 1;
 }
 
 @keyframes shake {
@@ -90,15 +131,21 @@
   font-size: 15px;
   flex: 1;
   line-height: 1.6;
+  word-wrap: break-word;
 }
 
 /* Форма */
 .login-form {
-  margin-bottom: 40px;
+  margin-bottom: 30px;
+  width: 100%;
+  box-sizing: border-box;
+  order: 2;
 }
 
 .form-group {
   margin-bottom: 24px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .form-label {
@@ -111,17 +158,38 @@
 
 .input-wrapper {
   position: relative;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .form-input {
   width: 100%;
-  padding: 14px 48px 14px 16px;
+  padding: 14px 16px;
   border: 2px solid #e2e8f0;
   border-radius: 10px;
   font-size: 16px;
   box-sizing: border-box;
   transition: all 0.3s ease;
   background: white;
+  display: block;
+}
+
+/* Поле с иконкой слева */
+.input-wrapper:has(.input-icon) .form-input {
+  padding-left: 48px;
+  padding-right: 16px;
+}
+
+/* Поле с кнопкой справа */
+.input-wrapper:has(.toggle-password) .form-input {
+  padding-left: 16px;
+  padding-right: 48px;
+}
+
+/* Поле с иконкой слева И кнопкой справа */
+.input-wrapper:has(.input-icon):has(.toggle-password) .form-input {
+  padding-left: 48px;
+  padding-right: 48px;
 }
 
 .form-input:focus {
@@ -147,6 +215,14 @@
   transform: translateY(-50%);
   font-size: 20px;
   pointer-events: none;
+  z-index: 2;
+  color: #999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
 }
 
 .toggle-password {
@@ -160,8 +236,14 @@
   cursor: pointer;
   color: #999;
   transition: color 0.3s ease;
-  padding: 4px;
+  padding: 4px 8px;
   line-height: 1;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
 }
 
 .toggle-password:hover {
@@ -173,6 +255,7 @@
   font-size: 13px;
   margin-top: 6px;
   animation: fadeIn 0.3s ease;
+  display: block;
 }
 
 @keyframes fadeIn {
@@ -186,6 +269,8 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .checkbox-label {
@@ -195,6 +280,7 @@
   cursor: pointer;
   font-size: 14px;
   color: #555;
+  flex-shrink: 0;
 }
 
 .checkbox-input {
@@ -202,6 +288,7 @@
   height: 18px;
   accent-color: #667eea;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .checkbox-text {
@@ -214,6 +301,7 @@
   font-weight: 600;
   transition: color 0.3s ease;
   font-size: 14px;
+  white-space: nowrap;
 }
 
 .forgot-password:hover {
@@ -234,6 +322,11 @@
   cursor: pointer;
   transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-sizing: border-box;
 }
 
 .submit-button:hover:not(:disabled) {
@@ -260,7 +353,7 @@
   border-radius: 50%;
   animation: spin 1s linear infinite;
   display: inline-block;
-  margin-right: 10px;
+  flex-shrink: 0;
 }
 
 @keyframes spin {
@@ -296,6 +389,9 @@
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 24px;
+  box-sizing: border-box;
+  width: 100%;
+  order: 3;
 }
 
 .security-info h3 {
@@ -336,6 +432,9 @@
   border: 2px solid #ffc107;
   border-radius: 12px;
   padding: 24px;
+  box-sizing: border-box;
+  width: 100%;
+  order: 4;
 }
 
 .support-info h3 {
@@ -374,6 +473,7 @@
   align-items: center;
   gap: 8px;
   box-shadow: 0 2px 8px rgba(255, 193, 7, 0.1);
+  box-sizing: border-box;
 }
 
 .support-link:hover {
@@ -384,14 +484,49 @@
 }
 
 /* Адаптивность */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .super-admin-login-page {
-    padding: 20px 16px;
+    flex-direction: column;
+  }
+
+  .login-sidebar {
+    flex: 0 0 auto;
+    min-height: auto;
+    padding: 40px 20px;
+    width: 100%;
+  }
+
+  .login-icon {
+    font-size: 80px;
+    margin-bottom: 20px;
+  }
+
+  .login-title {
+    font-size: 32px;
+  }
+
+  .login-subtitle {
+    font-size: 16px;
+  }
+
+  .login-main {
+    padding: 20px;
+    width: 100%;
   }
 
   .login-container {
-    padding: 40px 30px;
-    border-radius: 16px;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-sidebar {
+    padding: 30px 20px;
+  }
+
+  .login-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
   }
 
   .login-title {
@@ -402,8 +537,17 @@
     font-size: 15px;
   }
 
+  .login-main {
+    padding: 20px 16px;
+  }
+
+  .login-container {
+    padding: 40px 30px;
+    border-radius: 16px;
+  }
+
   .form-input {
-    padding: 12px 42px 12px 14px;
+    padding: 12px 42px 12px 42px;
     font-size: 15px;
   }
 
@@ -423,13 +567,8 @@
 }
 
 @media (max-width: 480px) {
-  .super-admin-login-page {
-    padding: 16px 12px;
-  }
-
-  .login-container {
-    padding: 30px 24px;
-    border-radius: 12px;
+  .login-sidebar {
+    padding: 24px 16px;
   }
 
   .login-icon {
@@ -444,8 +583,17 @@
     font-size: 14px;
   }
 
+  .login-main {
+    padding: 16px 12px;
+  }
+
+  .login-container {
+    padding: 30px 24px;
+    border-radius: 12px;
+  }
+
   .form-input {
-    padding: 12px 38px 12px 14px;
+    padding: 12px 38px 12px 38px;
     font-size: 14px;
   }
 
@@ -458,5 +606,13 @@
   .support-text {
     font-size: 13px;
   }
-}
 
+  .form-options {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .forgot-password {
+    align-self: flex-end;
+  }
+}

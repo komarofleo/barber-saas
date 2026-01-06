@@ -111,15 +111,20 @@ const SuperAdminLogin: React.FC = () => {
 
   return (
     <div className="super-admin-login-page">
-      <div className="login-container">
-        {/* Заголовок страницы */}
-        <div className="login-header">
+      {/* Левая панель с заголовком */}
+      <div className="login-sidebar">
+        <div className="login-sidebar-content">
           <div className="login-icon">🔐</div>
           <h1 className="login-title">Панель супер-администратора</h1>
           <p className="login-subtitle">
             Введите свои учетные данные для доступа к админ-панели
           </p>
         </div>
+      </div>
+
+      {/* Правая панель с формой */}
+      <div className="login-main">
+        <div className="login-container">
 
         {/* Общие ошибки */}
         {errors.general && (
@@ -176,7 +181,6 @@ const SuperAdminLogin: React.FC = () => {
                 type="button"
                 className="toggle-password"
                 onClick={() => setShowPassword(!showPassword)}
-                type="button"
               >
                 {showPassword ? '🙈' : '👁️'}
               </button>
@@ -252,6 +256,7 @@ const SuperAdminLogin: React.FC = () => {
               🤖 Telegram поддержка
             </a>
           </div>
+        </div>
         </div>
       </div>
     </div>

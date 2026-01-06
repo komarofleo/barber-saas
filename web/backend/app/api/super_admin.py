@@ -17,10 +17,10 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, or_
+from sqlalchemy import select, and_, func, or_, text
 from sqlalchemy.orm import selectinload
 from jose import jwt, JWTError
-from passlib.context import CryptContext
+import bcrypt
 
 from app.database import get_db
 from app.models.public_models import (
@@ -28,21 +28,18 @@ from app.models.public_models import (
     Plan,
     Subscription,
     Payment,
-    SuperAdmin
+    SuperAdmin,
+    PaymentStatus,
+    SubscriptionStatus
 )
 from app.schemas.public_schemas import (
-    PlanResponse,
-    SubscriptionStatus,
-    PaymentStatus
+    PlanResponse
 )
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/super-admin", tags=["super-admin"])
-
-# Настройка паролей
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 схема для авторизации
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/super-admin/auth/login")
@@ -61,7 +58,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True, если пароли совпадают, иначе False
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        password_bytes = plain_password.encode('utf-8')
+        hash_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(password_bytes, hash_bytes)
+    except Exception as e:
+        logger.error(f"Ошибка при проверке пароля: {e}")
+        return False
 
 
 def get_password_hash(password: str) -> str:
@@ -74,7 +77,10 @@ def get_password_hash(password: str) -> str:
     Returns:
         Хешированный пароль
     """
-    return pwd_context.hash(password)
+    password_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    hash_bytes = bcrypt.hashpw(password_bytes, salt)
+    return hash_bytes.decode('utf-8')
 
 
 def create_access_token(data: dict) -> str:
@@ -93,7 +99,7 @@ def create_access_token(data: dict) -> str:
     encoded_jwt = jwt.encode(
         to_encode,
         settings.SECRET_KEY,
-        algorithm=settings.ALGORITHM
+        algorithm="HS256"  # Исправлено: используем HS256 вместо settings.ALGORITHM
     )
     return encoded_jwt
 
@@ -125,7 +131,7 @@ async def get_current_super_admin(
         payload = jwt.decode(
             token,
             settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
+            algorithms=["HS256"]  # Исправлено: используем HS256 вместо settings.ALGORITHM
         )
         username: str = payload.get("sub")
         if username is None:
@@ -288,7 +294,7 @@ async def login(
         )
     
     # Проверяем пароль
-    if not verify_password(login_data.password, super_admin.hashed_password):
+    if not verify_password(login_data.password, super_admin.password_hash):
         logger.warning(f"Неверный пароль для супер-админа: {login_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -388,41 +394,43 @@ async def get_dashboard_stats(
     )
     total_subscriptions = total_subscriptions_result.scalar()
     
-    # Количество активных подписок
+    # Количество активных подписок (используем text() для обхода проблемы с enum)
     active_subscriptions_result = await db.execute(
-        select(func.count(Subscription.id)).where(Subscription.status == SubscriptionStatus.ACTIVE)
+        text("SELECT COUNT(*) as count FROM public.subscriptions WHERE status = 'active'")
     )
     active_subscriptions = active_subscriptions_result.scalar()
     
-    # Общий доход
+    # Общий доход (используем text() для обхода проблемы с enum)
     total_revenue_result = await db.execute(
-        select(func.sum(Payment.amount)).where(Payment.status == PaymentStatus.COMPLETED)
+        text("SELECT COALESCE(SUM(amount), 0) as total FROM public.payments WHERE status = 'succeeded'")
     )
-    total_revenue = total_revenue_result.scalar() or Decimal("0")
+    total_revenue = Decimal(str(total_revenue_result.scalar() or 0))
     
-    # Доход за текущий месяц
+    # Доход за текущий месяц (используем text() для обхода проблемы с enum)
     current_month_start = date.today().replace(day=1)
     monthly_revenue_result = await db.execute(
-        select(func.sum(Payment.amount)).where(
-            and_(
-                Payment.status == PaymentStatus.COMPLETED,
-                Payment.created_at >= current_month_start
-            )
-        )
+        text("""
+            SELECT COALESCE(SUM(amount), 0) as total 
+            FROM public.payments 
+            WHERE status = 'succeeded' 
+            AND created_at >= :month_start
+        """),
+        {"month_start": current_month_start}
     )
-    monthly_revenue = monthly_revenue_result.scalar() or Decimal("0")
+    monthly_revenue = Decimal(str(monthly_revenue_result.scalar() or 0))
     
     # Компании с истекающими подписками (через 7 дней)
     expiring_date = date.today() + timedelta(days=7)
     expiring_companies_result = await db.execute(
-        select(func.count(Company.id)).where(
-            and_(
-                Company.is_active == True,
-                Company.subscription_end_date <= expiring_date,
-                Company.subscription_end_date >= date.today(),
-                Company.subscription_status == SubscriptionStatus.ACTIVE
-            )
-        )
+        text("""
+            SELECT COUNT(*) as count 
+            FROM public.companies 
+            WHERE is_active = true 
+            AND subscription_end_date <= :expiring_date
+            AND subscription_end_date >= :today
+            AND subscription_status = 'active'
+        """),
+        {"expiring_date": expiring_date, "today": date.today()}
     )
     companies_with_expiring_subscription = expiring_companies_result.scalar()
     
@@ -1030,10 +1038,10 @@ async def create_manual_payment(
         plan_id=payment_data.plan_id,
         amount=payment_data.amount,
         currency="RUB",
-        status=PaymentStatus.COMPLETED,
+        status="succeeded",  # Исправлено: используем строку "succeeded" вместо enum
         description=payment_data.description,
         yookassa_payment_id=f"manual_{datetime.utcnow().timestamp()}",
-        yookassa_payment_status="completed",
+        yookassa_payment_status="succeeded",  # Исправлено: используем succeeded вместо completed
         webhook_received_at=datetime.utcnow(),
         webhook_signature_verified=True,
         created_at=datetime.utcnow()

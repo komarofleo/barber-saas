@@ -64,7 +64,7 @@ class Company(Base):
     admin_telegram_id = Column(Integer, nullable=True)
     telegram_admin_ids = Column(ARRAY(Integer), nullable=True)
     plan_id = Column(Integer, ForeignKey("public.plans.id"), nullable=True, index=True)
-    subscription_status = Column(SQLEnum(SubscriptionStatus, name="subscriptionstatus"), default="pending", index=True)
+    subscription_status = Column(SQLEnum(SubscriptionStatus, name="subscription_status"), default="pending", index=True)
     subscription_end_date = Column(Date, nullable=True, index=True)
     can_create_bookings = Column(Boolean, default=True)
     password_hash = Column(String(255), nullable=True)
@@ -131,7 +131,7 @@ class Subscription(Base):
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=False, index=True)
     cancelled_at = Column(DateTime(timezone=True), nullable=True)
-    status = Column(SQLEnum(SubscriptionStatus, name="subscriptionstatus"), default="active", index=True)
+    status = Column(SQLEnum(SubscriptionStatus, name="subscription_status"), default="active", index=True)
     trial_used = Column(Boolean, default=False)
     auto_renewal = Column(Boolean, default=False)
     extra_data = Column(JSONB, nullable=True)  # Переименовано из metadata (зарезервированное имя), тип JSONB
@@ -159,7 +159,7 @@ class Payment(Base):
     subscription_id = Column(Integer, ForeignKey("public.subscriptions.id"), nullable=True, index=True)
     amount = Column(Numeric(10, 2), nullable=False)
     currency = Column(String(3), default="RUB", nullable=False)
-    status = Column(SQLEnum(PaymentStatus, name="paymentstatus"), default="pending", index=True)
+    status = Column(SQLEnum(PaymentStatus, name="payment_status"), default="pending", index=True)
     
     # Данные от Юкассы
     yookassa_payment_id = Column(String(100), unique=True, nullable=False, index=True)

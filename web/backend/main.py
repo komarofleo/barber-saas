@@ -7,8 +7,7 @@ from app.config import settings
 from app.api import auth, bookings, users, services, masters, posts, clients, settings as settings_api, blocks, promocodes, promotions, broadcasts, export, subscription
 
 # ✅ Исправлена архитектура моделей - используем полноценные API
-from app.api import public
-from app.api import super_admin_simple as super_admin  # Временно используем упрощенную версию
+from app.api import public, webhooks, super_admin
 
 from app.api import webhooks
 
@@ -39,11 +38,9 @@ app.include_router(promotions.router)
 app.include_router(broadcasts.router)
 app.include_router(export.router)
 
-# ✅ Используем полноценный public API с ORM моделями
+# ✅ Используем полноценные API с ORM моделями
 app.include_router(public.router)
-# ✅ Используем полноценный webhooks API с ORM моделями
 app.include_router(webhooks.router)
-# ⚠️ ВРЕМЕННО: Используем упрощенный super_admin API
 app.include_router(super_admin.router)
 
 
