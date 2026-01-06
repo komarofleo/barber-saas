@@ -90,14 +90,15 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         {/* Навигация */}
         <nav className="sidebar-nav">
           {navItems.map((item) => (
-            <a
+            <button
               key={item.path}
-              href={item.path}
+              onClick={() => navigate(item.path)}
               className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
+              type="button"
             >
               <span className="nav-icon">{item.icon}</span>
               <span className="nav-label">{item.label}</span>
-            </a>
+            </button>
           ))}
         </nav>
 

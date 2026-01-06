@@ -39,9 +39,13 @@ const SuperAdminDashboard: React.FC = () => {
     } catch (err: any) {
       console.error('Ошибка загрузки статистики:', err)
       
-      // Если ошибка 401 (Unauthorized), перенаправляем на логин
+      // Если ошибка 401 (Unauthorized), удаляем токен и позволяем SuperAdminProtectedRoute обработать перенаправление
       if (err.response?.status === 401 || err.message?.includes('401')) {
-        navigate('/super-admin/login', { replace: true })
+        localStorage.removeItem('super_admin_token')
+        sessionStorage.removeItem('super_admin_token')
+        localStorage.removeItem('super_admin')
+        sessionStorage.removeItem('super_admin')
+        // Не перенаправляем здесь - SuperAdminProtectedRoute сам обработает это
         return
       }
       
