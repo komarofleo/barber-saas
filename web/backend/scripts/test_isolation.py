@@ -20,8 +20,12 @@ from sqlalchemy import text
 
 # Добавляем корневую директорию проекта в sys.path
 # Предполагается, что скрипт запускается из web/backend/scripts
-project_root = Path(__file__).parent.parent.parent.parent
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
+
+# Добавляем корневую директорию проекта в sys.path (для контейнера)
+# В контейнере путь /app
+sys.path.insert(0, "/app")
 
 # Загружаем переменные окружения
 load_dotenv(dotenv_path=project_root / '.env')
