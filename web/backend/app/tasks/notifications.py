@@ -101,7 +101,6 @@ async def send_reminder_day_before():
                 
                 # TODO: Сохранять в историю уведомлений (требуется модель Notification)
                 # TODO: Notification block commented out
-            )
             .options(
                 selectinload(Booking.client).selectinload(Client.user),
                 selectinload(Booking.service),
