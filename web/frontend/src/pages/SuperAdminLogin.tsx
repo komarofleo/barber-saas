@@ -5,13 +5,14 @@
  * После успешного входа сохраняет токен и перенаправляет на дашборд
  */
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SuperAdminLoginRequest, superAdminApi } from '../api/superAdmin'
 import './SuperAdminLogin.css'
 
 const SuperAdminLogin: React.FC = () => {
   const navigate = useNavigate()
+  const isRedirecting = useRef(false) // Флаг для предотвращения множественных перенаправлений
 
   // Состояния формы
   const [formData, setFormData] = useState<SuperAdminLoginRequest>({
@@ -25,13 +26,8 @@ const SuperAdminLogin: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false)
   const [rememberMe, setRememberMe] = useState<boolean>(false)
 
-  // Проверка авторизации при загрузке
-  useEffect(() => {
-    const token = localStorage.getItem('super_admin_token') || sessionStorage.getItem('super_admin_token')
-    if (token) {
-      navigate('/super-admin/dashboard', { replace: true })
-    }
-  }, [navigate])
+  // Проверка авторизации при загрузке - убрана, так как SuperAdminProtectedRoute сам проверит токен
+  // Это предотвращает циклы перенаправлений
 
   // Валидация формы
   const validateForm = (): boolean => {
@@ -75,6 +71,11 @@ const SuperAdminLogin: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Защита от множественных отправок
+    if (loading) {
+      return
+    }
+
     // Валидация формы
     if (!validateForm()) {
       return
@@ -99,11 +100,16 @@ const SuperAdminLogin: React.FC = () => {
 
       console.log('Токен сохранен, перенаправление...')
       
-      // Перенаправляем на дашборд
-      // Используем window.location для гарантированного перенаправления
-      window.location.href = '/super-admin/dashboard'
+      // Перенаправляем на дашборд только один раз
+      if (!isRedirecting.current) {
+        isRedirecting.current = true
+        navigate('/super-admin/dashboard', { replace: true })
+      }
     } catch (error: any) {
       console.error('Ошибка входа:', error)
+      
+      // Сбрасываем флаг перенаправления при ошибке
+      isRedirecting.current = false
       
       // Извлекаем сообщение об ошибке
       let errorMessage = 'Неверный логин или пароль'
