@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { authApi, User, SubscriptionInfo } from '../api/auth'
 
 interface AuthContextType {
@@ -17,6 +18,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const location = useLocation()
   const [user, setUser] = useState<User | null>(null)
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -43,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Не загружаем данные, если мы на страницах супер-админа
-    const currentPath = window.location.pathname
+    const currentPath = location.pathname
     if (currentPath.startsWith('/super-admin')) {
       setLoading(false)
       setSubscriptionLoading(false)
@@ -84,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       setSubscriptionLoading(false)
     }
-  }, [])
+  }, [location.pathname])
 
   const login = async (username: string, password: string) => {
     try {
