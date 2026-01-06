@@ -91,7 +91,10 @@ async def get_subscription_info(
     Raises:
         HTTPException: 401 если пользователь не авторизован
         HTTPException: 404 если подписка не найдена
+        
+    Логирование для отладки проблемы с вызовом на странице регистрации.
     """
+    logger.info(f"🔍 get_subscription_info вызван: user_id={current_user.id}, telegram_id={current_user.telegram_id}")
     try:
         from datetime import date
         

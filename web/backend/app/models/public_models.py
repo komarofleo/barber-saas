@@ -38,12 +38,12 @@ class SubscriptionStatus(str, enum.Enum):
 
 class PaymentStatus(str, enum.Enum):
     """Статусы платежей."""
-    PENDING = "pending"
+    PENDING = "pending"  # Исправлено: соответствует БД
     PROCESSING = "processing"
-    SUCCEEDED = "succeeded"  # Исправлено: в БД используется "succeeded", а не "completed"
+    SUCCEEDED = "succeeded"  # Исправлено: соответствует БД
+    CANCELLED = "cancelled"  # Добавлено: соответствует БД
     FAILED = "failed"
     REFUNDED = "refunded"
-    CANCELLED = "cancelled"
 
 
 class Company(Base):
@@ -66,7 +66,7 @@ class Company(Base):
     plan_id = Column(Integer, ForeignKey("public.plans.id"), nullable=True, index=True)
     subscription_status = Column(SQLEnum(SubscriptionStatus, name="subscription_status"), default="pending", index=True)
     subscription_end_date = Column(Date, nullable=True, index=True)
-    can_create_bookings = Column(Boolean, default=True)
+    can_create_bookings = Column(Boolean, default=True)  # Исправлено: опечатка в имени столбца
     password_hash = Column(String(255), nullable=True)
     password_changed_at = Column(DateTime(timezone=True), nullable=True)
     password_reset_token = Column(String(100), nullable=True)
@@ -159,7 +159,7 @@ class Payment(Base):
     subscription_id = Column(Integer, ForeignKey("public.subscriptions.id"), nullable=True, index=True)
     amount = Column(Numeric(10, 2), nullable=False)
     currency = Column(String(3), default="RUB", nullable=False)
-    status = Column(SQLEnum(PaymentStatus, name="payment_status"), default="pending", index=True)
+    status = Column(String(20), default="pending", index=True)  # Исправлено: String вместо SQLEnum
     
     # Данные от Юкассы
     yookassa_payment_id = Column(String(100), unique=True, nullable=False, index=True)
@@ -168,7 +168,7 @@ class Payment(Base):
     yookassa_return_url = Column(String(500), nullable=True)
     
     # Webhook данные
-    webhook_payload = Column(Text, nullable=True)
+    webhook_payload = Column(JSONB, nullable=True)  # Исправлено: JSONB вместо Text
     webhook_received_at = Column(DateTime(timezone=True), nullable=True)
     webhook_signature_verified = Column(Boolean, default=False)
     

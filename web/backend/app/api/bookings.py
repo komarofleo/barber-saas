@@ -31,7 +31,14 @@ async def get_bookings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Получить список записей"""
+    """
+    Получить список записей.
+    
+    Логирование для отладки проблемы с несуществующей таблицей bookings.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔍 get_bookings вызван: company_id={company_id}, page={page}, status={status}")
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать записи")
     

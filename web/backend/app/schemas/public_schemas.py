@@ -71,7 +71,7 @@ class CompanyRegistration(BaseModel):
     )
     telegram_bot_token: str = Field(
         ...,
-        min_length=50,
+        min_length=30,
         max_length=500,
         description="Токен Telegram бота (получить через @BotFather)"
     )

@@ -145,7 +145,7 @@ async def yookassa_webhook(
         payment.webhook_signature_verified = True
         
         # Обработка успешного платежа
-        if webhook_data.event == "payment.succeeded" and payment.status == PaymentStatus.PENDING:
+        if webhook_data.event == "payment.succeeded" and payment.status == "pending":  # Исправлено: используем строку
             logger.info(f"Обработка успешного платежа: {payment.id}")
             
             # Получаем extra_data (переименовано из metadata)
@@ -219,7 +219,7 @@ async def yookassa_webhook(
                 
                 # 4. Обновляем статус платежа
                 payment.company_id = company.id
-                payment.status = PaymentStatus.SUCCEEDED  # Исправлено: используем SUCCEEDED вместо COMPLETED
+                payment.status = "succeeded"  # Исправлено: используем строку вместо enum
                 
                 logger.info(f"Компании {company.id} успешно создана!")
                 
@@ -258,17 +258,17 @@ async def yookassa_webhook(
         # Обработка отмененного платежа
         elif webhook_data.event == "payment.canceled":
             logger.info(f"Платеж {payment.id} отменен")
-            payment.status = PaymentStatus.FAILED
+            payment.status = "failed"  # Исправлено: используем строку
             await db.commit()
         
         # Обработка возврата платежа
         elif webhook_data.event == "payment.refunded":
             logger.info(f"Платеж {payment.id} возвращен")
-            payment.status = PaymentStatus.REFUNDED
+            payment.status = "refunded"  # Исправлено: используем строку
             await db.commit()
         
         # Если платеж уже обработан, игнорируем
-        elif payment.status == PaymentStatus.SUCCEEDED:  # Исправлено: используем SUCCEEDED вместо COMPLETED
+        elif payment.status == "succeeded":  # Исправлено: используем строку
             logger.info(f"Платеж {payment.id} уже обработан, пропускаем")
             return {"success": True}
         

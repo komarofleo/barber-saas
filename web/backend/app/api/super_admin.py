@@ -409,7 +409,7 @@ async def get_dashboard_stats(
     
     # Общий доход
     total_revenue_result = await db.execute(
-        select(func.coalesce(Payment.amount, 0)).where(Payment.status == PaymentStatus.SUCCEEDED)
+        select(func.coalesce(Payment.amount, 0)).where(Payment.status == "succeeded")  # Исправлено: строка вместо enum
     )
     total_revenue = Decimal(str(total_revenue_result.scalar() or 0))
     
@@ -418,7 +418,7 @@ async def get_dashboard_stats(
     monthly_revenue_result = await db.execute(
         select(func.coalesce(func.sum(Payment.amount), 0)).where(
             and_(
-                Payment.status == PaymentStatus.SUCCEEDED,
+                Payment.status == "succeeded",  # Исправлено: строка вместо enum
                 Payment.created_at >= current_month_start
             )
         )

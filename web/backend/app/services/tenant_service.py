@@ -193,7 +193,7 @@ class TenantService:
             "users",
             "services",
             "masters",
-            "bookings",
+            # "bookings",  # Временно закомментировано для MVP (таблицы еще не созданы)
             "clients",
             "posts",
             "slots",
