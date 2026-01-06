@@ -1,5 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { useLocation } from 'react-router-dom'
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react'
 import { authApi, User, SubscriptionInfo } from '../api/auth'
 
 interface AuthContextType {
@@ -18,11 +17,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const location = useLocation()
   const [user, setUser] = useState<User | null>(null)
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [subscriptionLoading, setSubscriptionLoading] = useState(true)
+  const hasChecked = useRef(false)
 
   const refreshSubscription = async () => {
     try {
@@ -44,8 +43,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    // Проверяем только один раз при монтировании
+    if (hasChecked.current) {
+      return
+    }
+    hasChecked.current = true
+    
     // Не загружаем данные, если мы на страницах супер-админа
-    const currentPath = location.pathname
+    const currentPath = window.location.pathname
     if (currentPath.startsWith('/super-admin')) {
       setLoading(false)
       setSubscriptionLoading(false)
@@ -86,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       setSubscriptionLoading(false)
     }
-  }, [location.pathname])
+  }, [])
 
   const login = async (username: string, password: string) => {
     try {
