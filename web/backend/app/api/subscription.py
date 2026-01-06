@@ -1,7 +1,6 @@
 """
 API для работы с подписками в контексте текущего пользователя
 """
-import logging
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,8 +12,6 @@ from app.models.public_models import Company, Subscription, Plan
 from app.api.auth import get_current_user
 from app.config import settings
 from shared.database.models import User
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/subscription", tags=["subscription"])
 
@@ -94,10 +91,7 @@ async def get_subscription_info(
     Raises:
         HTTPException: 401 если пользователь не авторизован
         HTTPException: 404 если подписка не найдена
-        
-    Логирование для отладки проблемы с вызовом на странице регистрации.
     """
-    logger.info(f"🔍 get_subscription_info вызван: user_id={current_user.id}, telegram_id={current_user.telegram_id}")
     try:
         from datetime import date
         

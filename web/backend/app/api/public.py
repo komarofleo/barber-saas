@@ -237,34 +237,18 @@ async def register_company(
     
     # 7. Сохранение платежа в БД
     logger.info(f"Сохранение платежа в БД: {payment_data['id']}")
-    
-    # Получаем metadata из платежа Юкассы
-    metadata_raw = payment_data.get("metadata", {})
-    
-    # Преобразуем в JSON, если это словарь, иначе используем как есть
-    import json
-    if isinstance(metadata_raw, dict):
-        metadata_json = metadata_raw
-    elif isinstance(metadata_raw, str):
-        try:
-            metadata_json = json.loads(metadata_raw)
-        except:
-            metadata_json = {}
-    else:
-        metadata_json = {}
-    
     payment = Payment(
         company_id=None,  # Будет заполнено после успешной оплаты
         plan_id=plan.id,
         amount=payment_data["amount"],
         currency=payment_data.get("currency", "RUB"),
-        status="pending",  # Исправлено: используем строку напрямую
+        status=PaymentStatus.PENDING,
         yookassa_payment_id=payment_data["id"],
         yookassa_payment_status=payment_data.get("status", "pending"),
         yookassa_confirmation_url=payment_data.get("confirmation_url"),
         yookassa_return_url=payment_data.get("return_url"),
         description=f"Подписка на тариф {plan.name}",
-        extra_data=metadata_json  # Используем extra_data (JSONB)
+        metadata=payment_data.get("metadata")
     )
     
     db.add(payment)

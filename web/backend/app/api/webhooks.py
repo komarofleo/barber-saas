@@ -182,7 +182,7 @@ async def yookassa_webhook(
                     admin_telegram_id=extra_data.get("admin_telegram_id"),
                     plan_id=payment.plan_id,
                     password_hash=extra_data.get("password_hash", ""),
-                    subscription_status=SubscriptionStatus.ACTIVE,
+                    subscription_status="active",  # Исправлено: используем строку вместо enum
                     can_create_bookings=True,
                     subscription_end_date=date.today() + timedelta(days=30),
                     is_active=True
@@ -212,7 +212,7 @@ async def yookassa_webhook(
                     plan_id=payment.plan_id,
                     start_date=date.today(),
                     end_date=date.today() + timedelta(days=30),
-                    status=SubscriptionStatus.ACTIVE
+                    status="active"  # Исправлено: используем строку вместо enum
                 )
                 
                 db.add(subscription)
