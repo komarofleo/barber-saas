@@ -227,33 +227,59 @@ async def register_company(
     logger.info(f"Получение тарифного плана: {registration_data.plan_id}")
     plan = await get_active_plan(registration_data.plan_id, db)
     
-    # 6. Создание платежа через Юкассу
+    # 6. Генерация пароля для компании
+    import bcrypt
+    password = generate_password(12)
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    logger.info(f"Сгенерирован пароль для компании: {registration_data.name}")
+    
+    # 7. Создание платежа через Юкассу
     logger.info(f"Создание платежа через Юкассу для {registration_data.name}")
+    # Временно используем payment_id=0, потом заменим на реальный после создания платежа
     payment_data = await create_payment(
         amount=Decimal(str(plan.price_monthly)),
         description=f"Подписка на тариф {plan.name} для автосервиса '{registration_data.name}'",
-        return_url=f"{settings.YOOKASSA_RETURN_URL}?payment_id={{payment_id}}"
+        return_url=f"{settings.YOOKASSA_RETURN_URL}?payment_id=0"  # Будет обновлено после создания платежа
     )
     
-    # 7. Сохранение платежа в БД
+    # 8. Сохранение данных регистрации в extra_data для использования в webhook
+    import json
+    registration_metadata = {
+        "company_name": registration_data.name,
+        "email": registration_data.email,
+        "phone": registration_data.phone,
+        "telegram_bot_token": registration_data.telegram_bot_token,
+        "admin_telegram_id": registration_data.admin_telegram_id,
+        "password": password,  # Сохраняем пароль в открытом виде для отправки на email
+        "password_hash": password_hash  # Сохраняем хеш для сохранения в БД
+    }
+    
+    # 9. Сохранение платежа в БД
     logger.info(f"Сохранение платежа в БД: {payment_data['id']}")
+    logger.info(f"Данные регистрации для сохранения: {registration_metadata}")
     payment = Payment(
         company_id=None,  # Будет заполнено после успешной оплаты
         plan_id=plan.id,
         amount=payment_data["amount"],
         currency=payment_data.get("currency", "RUB"),
-        status=PaymentStatus.PENDING,
+        status="pending",  # Исправлено: используем строку напрямую
         yookassa_payment_id=payment_data["id"],
         yookassa_payment_status=payment_data.get("status", "pending"),
         yookassa_confirmation_url=payment_data.get("confirmation_url"),
         yookassa_return_url=payment_data.get("return_url"),
         description=f"Подписка на тариф {plan.name}",
-        metadata=payment_data.get("metadata")
+        extra_data=registration_metadata  # Сохраняем данные регистрации для webhook
     )
+    logger.info(f"Payment extra_data после создания: {payment.extra_data}")
     
     db.add(payment)
     await db.commit()
     await db.refresh(payment)
+    
+    # Обновляем return_url с реальным payment_id
+    if payment.yookassa_return_url:
+        payment.yookassa_return_url = payment.yookassa_return_url.replace("payment_id=0", f"payment_id={payment.id}")
+        await db.commit()
     
     logger.info(f"Платеж создан успешно: {payment.id}")
     
@@ -328,6 +354,61 @@ async def get_plans(
     plans = result.scalars().all()
     
     return plans
+
+
+@router.get("/payments/{payment_id}/status")
+async def get_payment_status(
+    payment_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Получить статус платежа и данные компании (если создана).
+    
+    Args:
+        payment_id: ID платежа
+        db: Асинхронная сессия БД
+        
+    Returns:
+        Объект со статусом платежа и данными компании (если создана)
+    """
+    logger.info(f"Проверка статуса платежа: {payment_id}")
+    
+    result = await db.execute(
+        select(Payment).where(Payment.id == payment_id)
+    )
+    payment = result.scalar_one_or_none()
+    
+    if not payment:
+        raise HTTPException(status_code=404, detail="Платеж не найден")
+    
+    response = {
+        "payment_id": payment.id,
+        "status": payment.status,
+        "yookassa_payment_status": payment.yookassa_payment_status,
+        "company_created": False,
+        "company_id": None,
+        "company_name": None,
+        "email": None
+    }
+    
+    # Если компания создана, добавляем её данные
+    if payment.company_id:
+        company_result = await db.execute(
+            select(Company).where(Company.id == payment.company_id)
+        )
+        company = company_result.scalar_one_or_none()
+        
+        if company:
+            response.update({
+                "company_created": True,
+                "company_id": company.id,
+                "company_name": company.name,
+                "email": company.email,
+                "subscription_status": company.subscription_status,
+                "can_create_bookings": company.can_create_bookings
+            })
+    
+    return response
 
 
 @router.get("/health")

@@ -315,3 +315,144 @@ async def test_yookassa_webhook(
         "event": "test"
     }
 
+
+@router.post("/yookassa/simulate/{payment_id}", status_code=200)
+async def simulate_payment_success(
+    payment_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Симулировать успешный платеж для тестирования.
+    
+    Этот endpoint создает фейковый webhook от Юкассы для указанного платежа,
+    что позволяет протестировать создание компании без реальной оплаты.
+    
+    Args:
+        payment_id: ID платежа для симуляции
+        db: Асинхронная сессия БД
+        
+    Returns:
+        Результат обработки webhook
+    """
+    logger.info(f"Симуляция успешного платежа для payment_id={payment_id}")
+    
+    # Находим платеж
+    payment_result = await db.execute(
+        select(Payment).where(Payment.id == payment_id)
+    )
+    payment = payment_result.scalar_one_or_none()
+    
+    if not payment:
+        raise HTTPException(status_code=404, detail="Платеж не найден")
+    
+    if payment.status == "succeeded":
+        company_result = await db.execute(
+            select(Company).where(Company.id == payment.company_id)
+        )
+        company = company_result.scalar_one_or_none()
+        return {
+            "success": True,
+            "message": "Платеж уже обработан",
+            "company_id": payment.company_id,
+            "company_name": company.name if company else None
+        }
+    
+    # Обрабатываем успешный платеж (копируем логику из yookassa_webhook)
+    import json
+    extra_data = payment.extra_data or {}
+    if isinstance(extra_data, str):
+        try:
+            extra_data = json.loads(extra_data)
+        except:
+            extra_data = {}
+    
+    # 1. Создаем компанию
+    logger.info("Создание компании...")
+    
+    plan_result = await db.execute(
+        select(Plan).where(Plan.id == payment.plan_id)
+    )
+    plan = plan_result.scalar_one_or_none()
+    
+    if not plan:
+        logger.error(f"План {payment.plan_id} не найден")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Тарифный план не найден"
+        )
+    
+    company = Company(
+        name=extra_data.get("company_name", "Неизвестный автосервис"),
+        email=extra_data.get("email", ""),
+        phone=extra_data.get("phone"),
+        telegram_bot_token=extra_data.get("telegram_bot_token", ""),
+        admin_telegram_id=extra_data.get("admin_telegram_id"),
+        plan_id=payment.plan_id,
+        password_hash=extra_data.get("password_hash", ""),
+        subscription_status="active",
+        can_create_bookings=True,
+        subscription_end_date=date.today() + timedelta(days=30),
+        is_active=True
+    )
+    
+    db.add(company)
+    await db.flush()
+    
+    # 2. Создаем tenant схему
+    logger.info(f"Создание tenant схемы для компании {company.id}...")
+    tenant_service = get_tenant_service()
+    tenant_initialized = await tenant_service.initialize_tenant_for_company(company.id)
+    
+    if not tenant_initialized:
+        logger.error(f"Не удалось инициализировать tenant для компании {company.id}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка создания tenant схемы"
+        )
+    
+    # 3. Создаем подписку
+    logger.info(f"Создание подписки для компании {company.id}...")
+    subscription = Subscription(
+        company_id=company.id,
+        plan_id=payment.plan_id,
+        start_date=date.today(),
+        end_date=date.today() + timedelta(days=30),
+        status="active"
+    )
+    
+    db.add(subscription)
+    
+    # 4. Обновляем статус платежа
+    payment.company_id = company.id
+    payment.status = "succeeded"
+    payment.yookassa_payment_status = "succeeded"
+    payment.webhook_received_at = date.today()
+    payment.webhook_signature_verified = True
+    
+    logger.info(f"Компания {company.id} успешно создана!")
+    
+    await db.commit()
+    
+    # Отправляем уведомления
+    try:
+        password = extra_data.get("password", "GeneratedPassword123")
+        await send_welcome_email(
+            company_name=company.name,
+            email=company.email,
+            password=password,
+            dashboard_url=f"http://localhost:3000/company/{company.id:03d}/dashboard",
+            plan_name=plan.name,
+            subscription_end_date=company.subscription_end_date
+        )
+        logger.info(f"Приветственное email отправлено на {company.email}")
+    except Exception as email_error:
+        logger.error(f"Ошибка отправки email: {email_error}")
+    
+    return {
+        "success": True,
+        "message": "Платеж успешно обработан",
+        "company_id": company.id,
+        "company_name": company.name,
+        "email": company.email
+    }
+
