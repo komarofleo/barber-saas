@@ -8,14 +8,11 @@
 - Переключение между схемами
 
 **ИСПРАВЛЕНИЯ:**
-- get_tenant_session теперь асинхронный генератор (без @asynccontextmanager)
-- Исправлен search_path для tenant схем
+- Исправлена ошибка с self._async_session_maker = None
+- Все методы (create, drop, clone) используют await self._get_async_session_maker()
 """
-
 import logging
 from typing import Optional, AsyncGenerator
-from contextlib import asynccontextmanager
-
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker, AsyncEngine
 from sqlalchemy.orm import Session
@@ -89,7 +86,8 @@ class TenantService:
         engine = await self._get_engine()
         
         try:
-            async with self._async_session_maker() as session:
+            async_session_maker = await self._get_async_session_maker()
+            async with async_session_maker() as session:
                 result = await session.execute(
                     text(f"SELECT schema_name FROM information_schema.schemata WHERE schema_name = :schema_name"),
                     {"schema_name": schema_name}
@@ -115,11 +113,12 @@ class TenantService:
         engine = await self._get_engine()
         
         try:
-            async with self._async_session_maker() as session:
+            async_session_maker = await self._get_async_session_maker()
+            async with async_session_maker() as session:
                 await session.execute(text(f'CREATE SCHEMA "{schema_name}"'))
                 await session.commit()
             
-            logger.info(f"Tenant схема '{schema_name}' успешно создана")
+            logger.info(f"Tenant схема '{schema_name}' создана")
             return True
         except Exception as e:
             logger.error(f"Ошибка при создании tenant схемы '{schema_name}': {e}")
@@ -142,9 +141,9 @@ class TenantService:
         engine = await self._get_engine()
         
         try:
-            async with self._async_session_maker() as session:
-                # Клонируем таблицу (структура + данные)
-                # Если таблица существует в tenant, сначала удаляем
+            async_session_maker = await self._get_async_session_maker()
+            async with async_session_maker() as session:
+                # Удаляем таблицу в tenant схеме, если она существует
                 await session.execute(
                     text(f'DROP TABLE IF EXISTS "{schema_name}"."{table_name}" CASCADE')
                 )
@@ -154,7 +153,8 @@ class TenantService:
                     text(f'CREATE TABLE "{schema_name}"."{table_name}" AS SELECT * FROM public."{table_name}"')
                 )
                 
-                # Восстанавливаем последовательности (если существует)
+                # Восстанавливаем последовательности (если есть)
+                # Проверяем существование последовательности перед setval
                 await session.execute(
                     text(f"""
                         DO $$
@@ -162,10 +162,10 @@ class TenantService:
                             BEGIN
                                 SELECT 'tenant_{company_id}.' || :table_name || '_id_seq' INTO seq_name;
                                 IF EXISTS (SELECT 1 FROM pg_sequences WHERE sequencename = seq_name) THEN
-                                    PERFORM setval(seq_name, COALESCE((SELECT MAX(id) FROM "{schema_name}"."{table_name}"), 1));
+                                    PERFORM setval(seq_name::regclass, COALESCE((SELECT MAX(id) FROM "{schema_name}"."{table_name}"), 1));
                                 END IF;
                             END $$;
-                    """),
+                        """),
                     {"table_name": table_name, "company_id": company_id}
                 )
                 
@@ -189,8 +189,6 @@ class TenantService:
         """
         logger.info(f"Инициализация tenant схемы для компании {company_id}")
         
-        # Список таблиц для клонирования
-        # В будущем можно добавить больше таблиц
         tables_to_clone = [
             "users",
             "services",
@@ -207,13 +205,11 @@ class TenantService:
         ]
         
         try:
-            # 1. Создаем tenant схему
             if not await self.tenancy_schema_exists(company_id):
                 if not await self.create_tenant_schema(company_id):
                     logger.error(f"Не удалось создать tenant схему для компании {company_id}")
                     return False
             
-            # 2. Клонируем все таблицы
             success_count = 0
             for table_name in tables_to_clone:
                 if await self.clone_table_to_tenant(company_id, table_name):
@@ -244,7 +240,8 @@ class TenantService:
         engine = await self._get_engine()
         
         try:
-            async with self._async_session_maker() as session:
+            async_session_maker = await self._get_async_session_maker()
+            async with async_session_maker() as session:
                 # Удаляем схему и все данные
                 await session.execute(
                     text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
@@ -272,19 +269,14 @@ class TenantService:
         
         async_session_maker = await self._get_async_session_maker()
         
-        # Создаем одну сессию с установленным search_path
         async with async_session_maker() as session:
-            # Устанавливаем search_path для каждой транзакции
             await session.execute(
                 text(f'SET search_path TO "{schema_name}"')
             )
-            
             yield session
 
 
-# Глобальный экземпляр сервиса
 _tenant_service: Optional[TenantService] = None
-
 
 def get_tenant_service() -> TenantService:
     """
@@ -297,4 +289,3 @@ def get_tenant_service() -> TenantService:
     if _tenant_service is None:
         _tenant_service = TenantService()
     return _tenant_service
-

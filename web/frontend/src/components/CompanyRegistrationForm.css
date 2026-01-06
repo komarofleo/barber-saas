@@ -335,7 +335,8 @@
   display: flex;
   gap: 16px;
   justify-content: space-between;
-  margin-top: 40px;
+  margin-top: 60px;
+  padding-top: 20px;
 }
 
 .nav-button {
