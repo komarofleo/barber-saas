@@ -26,15 +26,8 @@ const SuperAdminLogin: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false)
   const [rememberMe, setRememberMe] = useState<boolean>(false)
 
-  // Проверка авторизации при загрузке
-  useEffect(() => {
-    // Если токен уже есть, перенаправляем на dashboard
-    const superAdminToken = localStorage.getItem('super_admin_token') || sessionStorage.getItem('super_admin_token')
-    if (superAdminToken && !isRedirecting.current) {
-      isRedirecting.current = true
-      navigate('/super-admin/dashboard', { replace: true })
-    }
-  }, [navigate])
+  // Проверка авторизации при загрузке - убрана, чтобы избежать циклов
+  // SuperAdminProtectedRoute сам проверит токен и перенаправит при необходимости
 
   // Валидация формы
   const validateForm = (): boolean => {
@@ -122,10 +115,10 @@ const SuperAdminLogin: React.FC = () => {
       // Перенаправляем на дашборд только один раз с небольшой задержкой
       if (!isRedirecting.current) {
         isRedirecting.current = true
-        // Небольшая задержка для гарантии сохранения токена
+        // Небольшая задержка для гарантии сохранения токена, используем window.location для надежного перенаправления
         setTimeout(() => {
-          navigate('/super-admin/dashboard', { replace: true })
-        }, 100)
+          window.location.href = '/super-admin/dashboard'
+        }, 200)
       }
     } catch (error: any) {
       console.error('Ошибка входа:', error)
