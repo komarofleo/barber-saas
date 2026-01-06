@@ -2,9 +2,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.api import auth, bookings, users, services, masters, posts, clients, settings as settings_api, blocks, promocodes, promotions, broadcasts, export, subscription
+from app.middleware.tenant import TenantMiddleware
 
 # ✅ Исправлена архитектура моделей - используем полноценные API
 from app.api import public, webhooks, super_admin
@@ -21,6 +23,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Middleware для мульти-тенантности
+app.add_middleware(BaseHTTPMiddleware, dispatch=TenantMiddleware())
 
 # Регистрация роутеров
 app.include_router(auth.router)

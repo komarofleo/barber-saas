@@ -210,10 +210,10 @@ const CompanyRegistrationForm: React.FC = () => {
     }
 
     // Валидация токена бота
-    if (!formData.telegram_bot_token || formData.telegram_bot_token.length < 50) {
+    if (!formData.telegram_bot_token || formData.telegram_bot_token.trim().length < 40) {
       newErrors.push({
         field: 'telegram_bot_token',
-        message: 'Токен бота должен содержать минимум 50 символов',
+        message: 'Токен бота должен содержать минимум 40 символов',
       })
     }
 
@@ -320,9 +320,14 @@ const CompanyRegistrationForm: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Валидация последнего шага
-    const validationErrors = validateStep3()
-    if (validationErrors.length > 0) {
+    // Валидация всех шагов
+    const errors1 = validateStep1()
+    const errors2 = validateStep2()
+    const errors3 = validateStep3()
+    
+    const allErrors = [...errors1, ...errors2, ...errors3]
+    if (allErrors.length > 0) {
+      setErrors(allErrors)
       return
     }
 
@@ -363,16 +368,6 @@ const CompanyRegistrationForm: React.FC = () => {
 
   return (
     <div className="company-registration-form">
-      <div className="registration-header">
-        <h1 className="registration-title">Регистрация автосервиса</h1>
-        <p className="registration-subtitle">
-          Заполните форму для создания вашей учетной записи в SaaS платформе
-        </p>
-      </div>
-
-      {/* Индикатор шагов */}
-      <FormStepIndicator steps={steps} currentStep={currentStep} />
-
       {/* Уведомление об успехе */}
       {successMessage && (
         <SuccessNotification
@@ -394,11 +389,60 @@ const CompanyRegistrationForm: React.FC = () => {
         </div>
       )}
 
-      {/* Форма */}
+      {/* Форма в две колонки */}
       <form onSubmit={handleSubmit} className="registration-form-content">
-        {/* Шаг 1: Данные компании */}
-        {currentStep === 0 && (
-          <div className="form-step-content">
+        {/* Заголовок и описание в две колонки */}
+        <div className="form-header-grid">
+          <div className="form-header-column">
+            <h1 className="registration-title">Регистрация автосервиса</h1>
+          </div>
+          <div className="form-header-column">
+            <p className="registration-subtitle">
+              Заполните форму для создания вашей учетной записи в SaaS платформе
+            </p>
+          </div>
+        </div>
+
+        {/* Выбор тарифа - на самый верх */}
+        <div className="form-section-full">
+          <h3 className="section-heading">
+            💰 Выбор тарифа
+          </h3>
+          <PlanSelection
+            selectedPlanId={formData.plan_id}
+            onPlanSelect={handlePlanSelect}
+          />
+        </div>
+
+        {/* Индикатор шагов в две колонки */}
+        <div className="form-steps-grid">
+          <div className="form-step-column">
+            <div className="step-item">
+              <div className="step-number">1</div>
+              <div className="step-info">
+                <div className="step-title">Данные компании</div>
+                <div className="step-description">Основная информация о вашем автосервисе</div>
+              </div>
+            </div>
+          </div>
+          <div className="form-step-column">
+            <div className="step-item">
+              <div className="step-number">2</div>
+              <div className="step-info">
+                <div className="step-title">Телефон и бот</div>
+                <div className="step-description">Контактные данные и настройка Telegram бота</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Все поля в две колонки */}
+        <div className="form-fields-grid">
+          {/* Левая колонка */}
+          <div className="form-column">
+            <h3 className="section-heading">
+              📋 Данные компании
+            </h3>
             <FormField
               label="Название автосервиса"
               name="name"
@@ -421,12 +465,6 @@ const CompanyRegistrationForm: React.FC = () => {
               required
               error={getFieldError('email')}
             />
-          </div>
-        )}
-
-        {/* Шаг 2: Телефон и бот */}
-        {currentStep === 1 && (
-          <div className="form-step-content">
             <FormField
               label="Телефон"
               name="phone"
@@ -438,6 +476,13 @@ const CompanyRegistrationForm: React.FC = () => {
               error={getFieldError('phone')}
               hint="Формат: +7XXXXXXXXXX (10 цифр)"
             />
+          </div>
+
+          {/* Правая колонка */}
+          <div className="form-column">
+            <h3 className="section-heading">
+              🤖 Telegram настройки
+            </h3>
             <FormField
               label="Токен Telegram бота"
               name="telegram_bot_token"
@@ -448,7 +493,7 @@ const CompanyRegistrationForm: React.FC = () => {
               required
               error={getFieldError('telegram_bot_token')}
               hint="Получите токен через @BotFather в Telegram"
-              min={50}
+              min={40}
               max={500}
             />
             <FormField
@@ -464,47 +509,18 @@ const CompanyRegistrationForm: React.FC = () => {
               min={1}
             />
           </div>
-        )}
+        </div>
 
-        {/* Шаг 3: Выбор тарифа */}
-        {currentStep === 2 && (
-          <div className="form-step-content">
-            <PlanSelection
-              selectedPlanId={formData.plan_id}
-              onPlanSelect={handlePlanSelect}
-            />
-          </div>
-        )}
-
-        {/* Кнопки навигации */}
+        {/* Кнопка отправки */}
         <div className="form-navigation">
-          {currentStep > 0 && (
-            <button
-              type="button"
-              className="nav-button prev-button"
-              onClick={handlePrevStep}
-            >
-              ← Назад
-            </button>
-          )}
-          
-          {currentStep < steps.length - 1 ? (
-            <button
-              type="button"
-              className="nav-button next-button"
-              onClick={handleNextStep}
-            >
-              Далее →
-            </button>
-          ) : (
-            <button
-              type="submit"
-              className="nav-button submit-button"
-              disabled={submitting || loading}
-            >
-              {submitting ? 'Регистрация...' : 'Зарегистрироваться и оплатить'}
-            </button>
-          )}
+          <button
+            type="submit"
+            className="nav-button submit-button"
+            disabled={submitting || loading}
+            style={{ width: '100%' }}
+          >
+            {submitting ? 'Регистрация...' : 'Зарегистрироваться и оплатить'}
+          </button>
         </div>
       </form>
 

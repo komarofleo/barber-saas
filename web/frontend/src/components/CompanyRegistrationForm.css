@@ -1,26 +1,36 @@
 /* Стили для улучшенной формы регистрации компании */
 
 .company-registration-form {
-  background: transparent;
-  border-radius: 20px;
-  box-shadow: none;
-  padding: 0;
+  background: white;
+  border-radius: 24px;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  padding: 48px;
   width: 100%;
-  max-width: none;
-  margin: 0;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
-/* Заголовок регистрации */
-.registration-header {
-  text-align: center;
-  margin-bottom: 40px;
+/* Заголовок регистрации в две колонки */
+.form-header-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  margin-bottom: 32px;
+  align-items: start;
+}
+
+.form-header-column {
+  display: flex;
+  flex-direction: column;
 }
 
 .registration-title {
-  font-size: 36px;
+  font-size: 32px;
   font-weight: 700;
   color: #283747;
-  margin: 0 0 12px 0;
+  margin: 0 0 0 0;
+  line-height: 1.2;
 }
 
 .registration-subtitle {
@@ -30,67 +40,72 @@
   line-height: 1.6;
 }
 
-/* Индикатор шагов */
-.form-steps-indicator {
-  display: flex;
-  justify-content: space-between;
+/* Индикатор шагов в две колонки */
+.form-steps-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
   margin-bottom: 40px;
-  position: relative;
 }
 
-.form-steps-indicator::before {
-  content: '';
-  position: absolute;
-  top: 20px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: #e2e8f0;
-  z-index: 1;
+.form-step-column {
+  display: flex;
+  flex-direction: column;
 }
 
 .step-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
-  position: relative;
-  z-index: 2;
-  flex: 1;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
 }
 
-.step-item.active {
-  opacity: 1;
-}
-
-.step-item:not(.active) {
-  opacity: 0.4;
-}
-
-.step-item.current .step-number {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  transform: scale(1.2);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+.step-item:hover {
+  border-color: #667eea;
+  background: #f0f7ff;
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.2);
+  transform: translateY(-2px);
 }
 
 .step-number {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  background: white;
-  border: 2px solid #e2e8f0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
-  color: #666;
-  transition: all 0.3s ease;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-.step-label {
-  display: none;
+.step-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.step-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #283747;
+  margin: 0;
+}
+
+.step-description {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+  line-height: 1.4;
 }
 
 /* Содержимое формы */
@@ -100,6 +115,55 @@
 
 .form-step-content {
   animation: fadeIn 0.3s ease;
+}
+
+/* Двухколоночная сетка для полей */
+.form-fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  margin-bottom: 40px;
+}
+
+.form-column {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Секции формы */
+.form-section {
+  margin-bottom: 40px;
+  padding-top: 30px;
+  border-top: 2px solid #e2e8f0;
+}
+
+.form-section:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.form-section-full {
+  margin-top: 0;
+  margin-bottom: 40px;
+  padding: 24px;
+  padding-top: 0;
+  padding-bottom: 30px;
+  border-top: none;
+  border-bottom: 3px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fafbfc;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.04);
+  width: 100%;
+}
+
+.section-heading {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 24px;
+  color: #283747;
+  padding-bottom: 12px;
+  border-bottom: 3px solid #e2e8f0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 @keyframes fadeIn {
@@ -115,15 +179,15 @@
 
 /* Поля формы */
 .form-field {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .field-label {
   display: block;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
-  color: #333;
-  margin-bottom: 8px;
+  color: #283747;
+  margin-bottom: 10px;
 }
 
 .required-mark {
@@ -133,35 +197,55 @@
 
 .field-input {
   width: 100%;
-  padding: 14px 16px;
-  border: 2px solid #e2e8f0;
-  border-radius: 10px;
+  padding: 16px 20px;
+  border: 3px solid #667eea;
+  border-radius: 12px;
   font-size: 16px;
   box-sizing: border-box;
   transition: all 0.3s ease;
-  background: white;
+  background: transparent;
+  min-height: 52px;
+  color: #283747;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.field-input::placeholder {
+  color: #999;
+  opacity: 0.7;
+}
+
+.field-input:hover {
+  border-color: #5568d3;
+  background: transparent;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
+  transform: translateY(-1px);
 }
 
 .field-input:focus {
   outline: none;
   border-color: #667eea;
-  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+  background: transparent;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2), 0 4px 16px rgba(102, 126, 234, 0.3);
+  transform: translateY(-1px);
 }
 
 .field-input.error {
   border-color: #dc3545;
-  background: #fff8f8;
+  background: transparent;
+  box-shadow: 0 2px 8px rgba(220, 53, 69, 0.2);
 }
 
 .field-input.error:focus {
   border-color: #dc3545;
-  box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.1);
+  background: transparent;
+  box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.2), 0 4px 16px rgba(220, 53, 69, 0.3);
 }
 
 .field-error {
   color: #dc3545;
-  font-size: 13px;
-  margin-top: 6px;
+  font-size: 14px;
+  margin-top: 8px;
+  font-weight: 500;
   animation: shake 0.3s ease;
 }
 
@@ -173,9 +257,10 @@
 
 .field-hint {
   display: block;
-  font-size: 12px;
-  color: #999;
-  margin-top: 6px;
+  font-size: 14px;
+  color: #666;
+  margin-top: 8px;
+  font-style: italic;
 }
 
 /* Общая ошибка */
@@ -294,6 +379,10 @@
   color: white;
   box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
   flex: 1;
+  padding: 18px 32px;
+  font-size: 18px;
+  font-weight: 700;
+  min-height: 60px;
 }
 
 .submit-button:hover:not(:disabled) {
@@ -334,10 +423,26 @@
 }
 
 /* Адаптивность для мобильных устройств */
+@media (max-width: 968px) {
+  .form-header-grid,
+  .form-steps-grid,
+  .form-fields-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
 @media (max-width: 768px) {
   .company-registration-form {
-    padding: 40px 30px;
+    padding: 32px 24px;
     border-radius: 16px;
+  }
+
+  .form-header-grid,
+  .form-steps-grid,
+  .form-fields-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
   }
 
   .registration-title {
@@ -348,23 +453,14 @@
     font-size: 14px;
   }
 
-  .form-steps-indicator {
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .form-steps-indicator::before {
-    display: none;
-  }
-
   .step-item {
-    width: 100%;
-    justify-content: center;
+    padding: 12px;
   }
 
-  .step-label {
-    display: block;
+  .step-number {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
   }
 
   .form-navigation {

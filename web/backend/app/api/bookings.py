@@ -11,6 +11,7 @@ from app.api.auth import get_current_user
 from app.schemas.booking import BookingResponse, BookingListResponse, BookingCreateRequest, BookingUpdateRequest
 from shared.database.models import Booking, User, Client, Service, Master, Post
 from sqlalchemy.orm import selectinload
+from app.services.tenant_service import get_tenant_service
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 
@@ -26,12 +27,26 @@ async def get_bookings(
     service_id: Optional[int] = None,
     post_id: Optional[int] = None,
     search: Optional[str] = None,
+    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Получить список записей"""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать записи")
+    
+    # TODO: В будущем company_id будет извлекаться из JWT токена через middleware
+    # На данный момент используем company_id из query параметра
+    # Для публичных API company_id может быть None
+    if company_id is None:
+        # Временное решение: используем обычную сессию для публичного API
+        # В будущем здесь будет проверка JWT токена
+        tenant_session = db
+    else:
+        # Используем tenant сессию для конкретной компании
+        tenant_service = get_tenant_service()
+        tenant_session_gen = tenant_service.get_tenant_session(company_id)
+        tenant_session = await tenant_session_gen.__anext__()
     
     query = select(Booking).options(
         selectinload(Booking.client).selectinload(Client.user),
@@ -98,6 +113,7 @@ async def get_bookings(
     print(f"📈 Всего записей в БД (без фильтров): {total_all}")
     
     # Пагинация
+    # Пагинация и сортировка
     query = query.offset((page - 1) * page_size).limit(page_size)
     query = query.order_by(Booking.date.desc(), Booking.time.desc())
     
