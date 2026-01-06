@@ -168,6 +168,59 @@ function Sidebar() {
                 </li>
               )
             })}
+          
+          {/* Дополнительные ссылки */}
+          <li className="nav-divider"></li>
+          
+          {/* Биллинг/Подписка */}
+          <li>
+            <Link
+              to="/billing"
+              className={`nav-link ${
+                location.pathname === '/billing' ? 'active' : ''
+              }`}
+            >
+              <span className="nav-icon">💳</span>
+              <span className="nav-label">Биллинг</span>
+            </Link>
+          </li>
+          
+          {/* Регистрация нового клиента */}
+          <li>
+            <Link
+              to="/register"
+              className={`nav-link ${
+                location.pathname === '/register' ? 'active' : ''
+              }`}
+            >
+              <span className="nav-icon">➕</span>
+              <span className="nav-label">Регистрация</span>
+            </Link>
+          </li>
+          
+          {/* Панель супер-админа (всегда видна, но требует авторизации) */}
+          <li>
+            <a
+              href="/super-admin/login"
+              className="nav-link"
+              onClick={(e) => {
+                // Проверяем, есть ли токен супер-админа
+                const superAdminToken = localStorage.getItem('super_admin_token')
+                if (!superAdminToken) {
+                  // Если нет токена, переходим на страницу входа
+                  e.preventDefault()
+                  window.location.href = '/super-admin/login'
+                } else {
+                  // Если есть токен, переходим на дашборд
+                  e.preventDefault()
+                  window.location.href = '/super-admin/dashboard'
+                }
+              }}
+            >
+              <span className="nav-icon">👑</span>
+              <span className="nav-label">Панель супер-админа</span>
+            </a>
+          </li>
         </ul>
       </nav>
 

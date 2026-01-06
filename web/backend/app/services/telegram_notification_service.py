@@ -232,7 +232,7 @@ class TelegramNotificationService:
         self,
         telegram_id: int,
         company_name: str,
-        amount: float
+        amount: float,
         subscription_end_date
     ) -> bool:
         """

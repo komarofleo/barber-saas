@@ -40,7 +40,7 @@ class PaymentStatus(str, enum.Enum):
     """Статусы платежей."""
     PENDING = "pending"
     PROCESSING = "processing"
-    COMPLETED = "completed"
+    SUCCEEDED = "succeeded"  # Исправлено: в БД используется "succeeded", а не "completed"
     FAILED = "failed"
     REFUNDED = "refunded"
     CANCELLED = "cancelled"

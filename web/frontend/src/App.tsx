@@ -16,6 +16,7 @@ import Promotions from './pages/Promotions'
 import Clients from './pages/Clients'
 import Broadcasts from './pages/Broadcasts'
 import Register from './pages/Register'
+import Billing from './pages/Billing'
 import PaymentSuccess from './pages/PaymentSuccess'
 import PaymentError from './pages/PaymentError'
 import SuperAdminLogin from './pages/SuperAdminLogin'
@@ -191,6 +192,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Broadcasts />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/billing"
+        element={
+          <ProtectedRoute>
+            <Billing />
           </ProtectedRoute>
         }
       />

@@ -15,11 +15,7 @@ from app.api import auth, bookings, users, services, masters, posts, clients, se
 from app.api import public
 from app.api import super_admin_simple as super_admin  # Временно используем упрощенную версию
 
-# ⚠️ ВРЕМЕННО: Закомментирован webhooks из-за проблем с моделями
-# ОБЯЗАТЕЛЬНО НУЖНО ДОДЕЛАТЬ:
-# 1. Исправить импорты в webhooks.py (использовать SQL вместо ORM)
-# 2. Включить обратно webhooks.router
-# from app.api import webhooks
+from app.api import webhooks
 
 app = FastAPI(title="AutoService API", version="1.0.0")
 
@@ -50,14 +46,10 @@ app.include_router(export.router)
 
 # ✅ Используем полноценный public API с ORM моделями
 app.include_router(public.router)
+# ✅ Используем полноценный webhooks API с ORM моделями
+app.include_router(webhooks.router)
 # ⚠️ ВРЕМЕННО: Используем упрощенный super_admin API
 app.include_router(super_admin.router)
-
-# ⚠️ ВРЕМЕННО: Закомментирован webhooks из-за проблем с моделями
-# ОБЯЗАТЕЛЬНО НУЖНО ДОДЕЛАТЬ:
-# 1. Исправить импорты в webhooks.py (использовать SQL вместо ORM)
-# 2. Включить обратно webhooks.router
-# app.include_router(webhooks.router)
 
 
 @app.get("/api/health")

@@ -21,15 +21,11 @@ from app.schemas.public_schemas import (
     WebhookVerificationResponse,
     CompanyCreate,
     SubscriptionCreate,
-    SubscriptionStatus,
-    PaymentStatus
+    SubscriptionStatus
 )
-from app.models.public_models import Company, Plan, Payment, Subscription
+from app.models.public_models import Company, Plan, Payment, Subscription, PaymentStatus
 from app.services.yookassa_service import get_payment, verify_webhook_signature
-from app.services.tenant_service import (
-    get_tenant_service,
-    initialize_tenant_for_company
-)
+from app.services.tenant_service import get_tenant_service
 from app.services.email_service import send_welcome_email
 from app.services.telegram_notification_service import send_activation_notification
 
@@ -152,6 +148,15 @@ async def yookassa_webhook(
         if webhook_data.event == "payment.succeeded" and payment.status == PaymentStatus.PENDING:
             logger.info(f"Обработка успешного платежа: {payment.id}")
             
+            # Получаем extra_data (переименовано из metadata)
+            extra_data = payment.extra_data or {}
+            if isinstance(extra_data, str):
+                import json
+                try:
+                    extra_data = json.loads(extra_data)
+                except:
+                    extra_data = {}
+            
             # Начинаем транзакцию для создания всех сущностей
             async with db.begin():
                 # 1. Создаем компанию
@@ -170,13 +175,13 @@ async def yookassa_webhook(
                     )
                 
                 company = Company(
-                    name=payment.metadata.get("company_name", "Неизвестный автосервис"),
-                    email=payment.metadata.get("email", ""),
-                    phone=payment.metadata.get("phone"),
-                    telegram_bot_token=payment.metadata.get("telegram_bot_token", ""),
-                    admin_telegram_id=payment.metadata.get("admin_telegram_id"),
+                    name=extra_data.get("company_name", "Неизвестный автосервис"),
+                    email=extra_data.get("email", ""),
+                    phone=extra_data.get("phone"),
+                    telegram_bot_token=extra_data.get("telegram_bot_token", ""),
+                    admin_telegram_id=extra_data.get("admin_telegram_id"),
                     plan_id=payment.plan_id,
-                    password_hash=payment.metadata.get("password_hash", ""),
+                    password_hash=extra_data.get("password_hash", ""),
                     subscription_status=SubscriptionStatus.ACTIVE,
                     can_create_bookings=True,
                     subscription_end_date=date.today() + timedelta(days=30),
@@ -214,7 +219,7 @@ async def yookassa_webhook(
                 
                 # 4. Обновляем статус платежа
                 payment.company_id = company.id
-                payment.status = PaymentStatus.COMPLETED
+                payment.status = PaymentStatus.SUCCEEDED  # Исправлено: используем SUCCEEDED вместо COMPLETED
                 
                 logger.info(f"Компании {company.id} успешно создана!")
                 
@@ -223,7 +228,7 @@ async def yookassa_webhook(
                 # 5. Отправляем уведомления (вне транзакции)
                 try:
                     # Email с данными для входа
-                    password = payment.metadata.get("password", "GeneratedPassword123")
+                    password = extra_data.get("password", "GeneratedPassword123")
                     await send_welcome_email(
                         company_name=company.name,
                         email=company.email,
@@ -263,7 +268,7 @@ async def yookassa_webhook(
             await db.commit()
         
         # Если платеж уже обработан, игнорируем
-        elif payment.status == PaymentStatus.COMPLETED:
+        elif payment.status == PaymentStatus.SUCCEEDED:  # Исправлено: используем SUCCEEDED вместо COMPLETED
             logger.info(f"Платеж {payment.id} уже обработан, пропускаем")
             return {"success": True}
         
