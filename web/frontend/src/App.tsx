@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Bookings from './pages/Bookings'
@@ -69,12 +69,41 @@ function ProtectedRoute({
 }
 
 function SuperAdminProtectedRoute({ children }: { children: React.ReactNode }) {
-  // Проверяем токен супер-админа в localStorage или sessionStorage
-  const superAdminToken = localStorage.getItem('super_admin_token') || sessionStorage.getItem('super_admin_token')
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
+  const hasChecked = useRef(false)
   
-  // Если токена нет, перенаправляем на логин
-  if (!superAdminToken) {
-    return <Navigate to="/super-admin/login" replace />
+  useEffect(() => {
+    // Проверяем только один раз
+    if (hasChecked.current) {
+      return
+    }
+    hasChecked.current = true
+    
+    // Проверяем токен супер-админа в localStorage или sessionStorage
+    const superAdminToken = localStorage.getItem('super_admin_token') || sessionStorage.getItem('super_admin_token')
+    
+    if (!superAdminToken) {
+      // Если токена нет и мы не на странице логина, перенаправляем
+      if (location.pathname !== '/super-admin/login') {
+        navigate('/super-admin/login', { replace: true })
+      }
+      setIsAuthorized(false)
+      return
+    }
+    
+    setIsAuthorized(true)
+  }, [navigate, location.pathname])
+  
+  // Показываем загрузку во время проверки
+  if (isAuthorized === null) {
+    return <div className="loading-screen">Загрузка...</div>
+  }
+  
+  // Если не авторизован, не рендерим ничего (перенаправление уже произошло)
+  if (!isAuthorized) {
+    return null
   }
   
   return <SuperAdminLayout>{children}</SuperAdminLayout>

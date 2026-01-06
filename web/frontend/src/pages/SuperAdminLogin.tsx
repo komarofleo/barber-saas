@@ -112,13 +112,11 @@ const SuperAdminLogin: React.FC = () => {
         return
       }
       
-      // Перенаправляем на дашборд только один раз с небольшой задержкой
+      // Перенаправляем на дашборд только один раз
       if (!isRedirecting.current) {
         isRedirecting.current = true
-        // Небольшая задержка для гарантии сохранения токена, используем window.location для надежного перенаправления
-        setTimeout(() => {
-          window.location.href = '/super-admin/dashboard'
-        }, 200)
+        // Используем navigate с replace для предотвращения циклов
+        navigate('/super-admin/dashboard', { replace: true })
       }
     } catch (error: any) {
       console.error('Ошибка входа:', error)
