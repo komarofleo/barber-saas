@@ -1,0 +1,186 @@
+/* Стили для карточки тарифного плана */
+
+.plan-card {
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 32px;
+  position: relative;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.plan-card:hover {
+  border-color: #667eea;
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
+}
+
+.plan-card.featured {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+}
+
+.plan-card.selected {
+  border-color: #28a745;
+  background: linear-gradient(135deg, #f0fff4 0%, #ffffff 100%);
+}
+
+.plan-badge {
+  position: absolute;
+  top: -12px;
+  right: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.plan-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.plan-name {
+  font-size: 28px;
+  font-weight: 700;
+  color: #283747;
+  margin: 0 0 12px 0;
+}
+
+.plan-description {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.plan-pricing {
+  text-align: center;
+  padding: 24px 0;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 24px;
+}
+
+.plan-price-monthly {
+  font-size: 36px;
+  font-weight: 700;
+  color: #283747;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.plan-period {
+  font-size: 16px;
+  font-weight: 400;
+  color: #999;
+}
+
+.plan-price-yearly {
+  font-size: 14px;
+  color: #666;
+  margin-top: 8px;
+}
+
+.plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px 0;
+}
+
+.plan-feature {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  color: #555;
+  font-size: 15px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.plan-feature:last-child {
+  border-bottom: none;
+}
+
+.feature-icon {
+  font-size: 20px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.plan-button {
+  width: 100%;
+  padding: 14px 24px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.plan-button:hover {
+  background: #5568d3;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.plan-button.featured {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.plan-button.featured:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #664293 100%);
+}
+
+.plan-button.selected {
+  background: #28a745;
+  cursor: default;
+}
+
+.plan-button.selected:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .plan-card {
+    padding: 24px;
+  }
+
+  .plan-name {
+    font-size: 24px;
+  }
+
+  .plan-price-monthly {
+    font-size: 28px;
+  }
+
+  .plan-feature {
+    font-size: 14px;
+  }
+
+  .plan-button {
+    padding: 12px 20px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .plan-name {
+    font-size: 20px;
+  }
+
+  .plan-price-monthly {
+    font-size: 24px;
+  }
+}
+

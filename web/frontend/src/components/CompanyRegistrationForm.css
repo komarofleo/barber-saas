@@ -1,0 +1,410 @@
+/* Стили для улучшенной формы регистрации компании */
+
+.company-registration-form {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  padding: 60px;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Заголовок регистрации */
+.registration-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.registration-title {
+  font-size: 36px;
+  font-weight: 700;
+  color: #283747;
+  margin: 0 0 12px 0;
+}
+
+.registration-subtitle {
+  font-size: 16px;
+  color: #666;
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Индикатор шагов */
+.form-steps-indicator {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 40px;
+  position: relative;
+}
+
+.form-steps-indicator::before {
+  content: '';
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #e2e8f0;
+  z-index: 1;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: relative;
+  z-index: 2;
+  flex: 1;
+}
+
+.step-item.active {
+  opacity: 1;
+}
+
+.step-item:not(.active) {
+  opacity: 0.4;
+}
+
+.step-item.current .step-number {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  transform: scale(1.2);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #666;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.step-label {
+  display: none;
+}
+
+/* Содержимое формы */
+.registration-form-content {
+  margin-bottom: 40px;
+}
+
+.form-step-content {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Поля формы */
+.form-field {
+  margin-bottom: 24px;
+}
+
+.field-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.required-mark {
+  color: #dc3545;
+  margin-left: 4px;
+}
+
+.field-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 16px;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+  background: white;
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+}
+
+.field-input.error {
+  border-color: #dc3545;
+  background: #fff8f8;
+}
+
+.field-input.error:focus {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.1);
+}
+
+.field-error {
+  color: #dc3545;
+  font-size: 13px;
+  margin-top: 6px;
+  animation: shake 0.3s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.field-hint {
+  display: block;
+  font-size: 12px;
+  color: #999;
+  margin-top: 6px;
+}
+
+/* Общая ошибка */
+.general-error {
+  background: #f8d7da;
+  border: 2px solid #f5c6cb;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+
+.error-message {
+  color: #721c24;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 4px 0;
+}
+
+/* Уведомление об успехе */
+.success-notification {
+  background: #d4edda;
+  border: 2px solid #c3e6cb;
+  border-radius: 10px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.success-icon {
+  font-size: 24px;
+  color: #28a745;
+  margin-right: 12px;
+}
+
+.success-message {
+  color: #155724;
+  font-size: 15px;
+  flex: 1;
+}
+
+.success-close {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: #155724;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: opacity 0.3s ease;
+}
+
+.success-close:hover {
+  opacity: 0.6;
+}
+
+/* Навигация формы */
+.form-navigation {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-top: 40px;
+}
+
+.nav-button {
+  padding: 14px 32px;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.nav-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.prev-button {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.prev-button:hover:not(:disabled) {
+  background: #e0e0e0;
+  transform: translateX(-4px);
+}
+
+.next-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.next-button:hover:not(:disabled) {
+  transform: translateX(4px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.submit-button {
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+  flex: 1;
+}
+
+.submit-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(40, 167, 69, 0.4);
+}
+
+/* Подвал регистрации */
+.registration-footer {
+  margin-top: 40px;
+  padding-top: 30px;
+  border-top: 2px solid #e2e8f0;
+  text-align: center;
+}
+
+.footer-text {
+  font-size: 15px;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+.footer-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+
+.footer-link:hover {
+  color: #5568d3;
+  text-decoration: underline;
+}
+
+.footer-small-text {
+  font-size: 13px;
+  color: #999;
+  margin: 0;
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .company-registration-form {
+    padding: 40px 30px;
+    border-radius: 16px;
+  }
+
+  .registration-title {
+    font-size: 28px;
+  }
+
+  .registration-subtitle {
+    font-size: 14px;
+  }
+
+  .form-steps-indicator {
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .form-steps-indicator::before {
+    display: none;
+  }
+
+  .step-item {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .step-label {
+    display: block;
+  }
+
+  .form-navigation {
+    flex-direction: column;
+  }
+
+  .nav-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .company-registration-form {
+    padding: 30px 20px;
+    border-radius: 12px;
+  }
+
+  .registration-title {
+    font-size: 24px;
+  }
+
+  .field-input {
+    padding: 12px 14px;
+    font-size: 15px;
+  }
+
+  .nav-button {
+    padding: 12px 24px;
+    font-size: 15px;
+  }
+}
+
+/* Анимация загрузки */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.loading {
+  animation: pulse 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+

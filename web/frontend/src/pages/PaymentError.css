@@ -1,0 +1,333 @@
+/* Стили для страницы неуспешной оплаты */
+
+.payment-error-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+  padding: 40px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.payment-error-container {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  padding: 60px;
+  width: 100%;
+  max-width: 800px;
+  text-align: center;
+}
+
+.error-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+  color: white;
+  font-size: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 30px;
+  box-shadow: 0 8px 24px rgba(220, 53, 69, 0.3);
+  animation: shake 0.5s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.error-title {
+  font-size: 36px;
+  font-weight: 700;
+  color: #dc3545;
+  margin: 0 0 16px 0;
+  animation: slideUp 0.5s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.error-message {
+  background: #f8d7da;
+  border: 2px solid #f5c6cb;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 40px;
+  text-align: left;
+  animation: slideUp 0.5s ease 0.1s both;
+}
+
+.error-message p {
+  font-size: 16px;
+  color: #721c24;
+  line-height: 1.8;
+  margin: 8px 0;
+}
+
+.error-details {
+  background: #fff5f5;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 16px;
+}
+
+.error-details code {
+  background: #f8d7da;
+  color: #dc3545;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+}
+
+/* Предложения */
+.error-suggestions {
+  text-align: left;
+  margin-bottom: 40px;
+  animation: slideUp 0.5s ease 0.2s both;
+}
+
+.error-suggestions h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #283747;
+  margin: 0 0 16px 0;
+}
+
+.suggestions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.suggestions-list li {
+  padding: 12px 0 12px 36px;
+  position: relative;
+  font-size: 15px;
+  color: #555;
+  line-height: 1.6;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.suggestions-list li::before {
+  content: '•';
+  position: absolute;
+  left: 12px;
+  color: #dc3545;
+  font-size: 24px;
+  line-height: 1;
+  top: 8px;
+}
+
+.suggestions-list li:last-child {
+  border-bottom: none;
+}
+
+/* Кнопки действий */
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 40px;
+  animation: slideUp 0.5s ease 0.3s both;
+}
+
+.action-button {
+  padding: 16px 32px;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 100%;
+}
+
+.action-button.primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.action-button.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.action-button.secondary {
+  background: #667eea;
+  color: white;
+}
+
+.action-button.secondary:hover {
+  background: #5568d3;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.action-button.tertiary {
+  background: transparent;
+  color: #667eea;
+  border: 2px solid #667eea;
+}
+
+.action-button.tertiary:hover {
+  background: #667eea;
+  color: white;
+  transform: translateY(-2px);
+}
+
+/* Секция помощи */
+.help-section {
+  background: #fff3cd;
+  border: 2px solid #ffc107;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 30px;
+  text-align: left;
+  animation: slideUp 0.5s ease 0.4s both;
+}
+
+.help-section h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #856404;
+  margin: 0 0 20px 0;
+}
+
+.help-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.help-option {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.help-option-icon {
+  font-size: 36px;
+  flex-shrink: 0;
+}
+
+.help-option-content h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #856404;
+  margin: 0 0 8px 0;
+}
+
+.help-option-content p {
+  font-size: 14px;
+  color: #997404;
+  margin: 0 0 8px 0;
+}
+
+.help-link {
+  color: #ffc107;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+
+.help-link:hover {
+  color: #e0a800;
+  text-decoration: underline;
+}
+
+/* Подвал */
+.error-footer {
+  background: #e2e3e5;
+  border-radius: 10px;
+  padding: 20px;
+  animation: slideUp 0.5s ease 0.5s both;
+}
+
+.footer-text {
+  font-size: 14px;
+  color: #495057;
+  margin: 0 0 12px 0;
+  line-height: 1.6;
+}
+
+.footer-small {
+  font-size: 12px;
+  color: #6c757d;
+  margin: 0;
+  font-family: 'Courier New', monospace;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .payment-error-container {
+    padding: 40px 30px;
+    border-radius: 16px;
+  }
+
+  .error-title {
+    font-size: 28px;
+  }
+
+  .error-icon {
+    width: 64px;
+    height: 64px;
+    font-size: 36px;
+  }
+
+  .error-message {
+    padding: 20px;
+  }
+
+  .help-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .payment-error-page {
+    padding: 20px 16px;
+  }
+
+  .payment-error-container {
+    padding: 30px 24px;
+    border-radius: 12px;
+  }
+
+  .error-title {
+    font-size: 24px;
+  }
+
+  .error-icon {
+    width: 56px;
+    height: 56px;
+    font-size: 32px;
+  }
+
+  .error-message p {
+    font-size: 15px;
+  }
+
+  .action-button {
+    padding: 14px 24px;
+    font-size: 15px;
+  }
+
+  .help-section {
+    padding: 20px;
+  }
+}
+

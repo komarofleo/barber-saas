@@ -32,17 +32,31 @@ docker compose build
 docker compose up -d
 ```
 
-4. **Инициализируйте базу данных:**
+4. **Примените миграции БД (мульти-тенантность):**
 ```bash
-# Применение миграций (если есть)
+# Вариант 1: Через Python скрипты (рекомендуется)
+docker compose exec web python scripts/migrate.py
+docker compose exec web python scripts/seed.py
+
+# Вариант 2: Через SQL скрипты (альтернатива)
+docker exec -i autoservice_postgres psql -U autoservice_user -d autoservice_db < sql/create_multi_tenant_tables.sql
+docker exec -i autoservice_postgres psql -U autoservice_user -d autoservice_db < sql/seed_data.sql
+
+# Вариант 3: Через Alembic CLI
 docker compose exec web alembic upgrade head
 
-# Создание начальных данных
+# Создание начальных данных для tenant схем (если нужно)
 docker compose exec bot python scripts/init_data.py
 
-# Создание администратора (если нужно)
+# Создание администратора для первой компании (если нужно)
 docker compose exec web python scripts/create_admin.py --telegram-id 329621295
 ```
+
+📚 **Подробнее о миграциях:**
+- Полное руководство: [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
+- Настройка переменных: [ENV_SETUP_GUIDE.md](ENV_SETUP_GUIDE.md)
+- Сводка по миграциям: [MIGRATION_SUMMARY.md](MIGRATION_SUMMARY.md)
+- SQL скрипты: [sql/README.md](sql/README.md)
 
 5. **Проверка работы:**
 ```bash

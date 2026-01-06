@@ -16,6 +16,8 @@ import Promotions from './pages/Promotions'
 import Clients from './pages/Clients'
 import Broadcasts from './pages/Broadcasts'
 import Register from './pages/Register'
+import PaymentSuccess from './pages/PaymentSuccess'
+import PaymentError from './pages/PaymentError'
 import Layout from './components/Layout'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import './App.css'
@@ -46,6 +48,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/payment/success" element={<PaymentSuccess />} />
+      <Route path="/payment/error" element={<PaymentError />} />
       <Route
         path="/"
         element={
