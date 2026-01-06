@@ -1,6 +1,7 @@
 """
 API для работы с подписками в контексте текущего пользователя
 """
+import logging
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,8 @@ from app.models.public_models import Company, Subscription, Plan
 from app.api.auth import get_current_user
 from app.config import settings
 from shared.database.models import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/subscription", tags=["subscription"])
 

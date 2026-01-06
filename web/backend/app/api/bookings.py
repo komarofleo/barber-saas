@@ -1,4 +1,5 @@
 """API для работы с записями"""
+import logging
 from datetime import date, time, datetime
 from typing import Optional, Annotated
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
@@ -12,6 +13,8 @@ from app.schemas.booking import BookingResponse, BookingListResponse, BookingCre
 from shared.database.models import Booking, User, Client, Service, Master, Post
 from sqlalchemy.orm import selectinload
 from app.services.tenant_service import get_tenant_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 
