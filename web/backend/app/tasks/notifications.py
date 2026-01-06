@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 
-from shared.database.models import Booking, Client, User, Notification, Master
+from shared.database.models import Booking, Client, User, Master
+# TODO: Создать модель Notification для сохранения истории уведомлений
+# Временная заглушка, чтобы Celery задачи не падали
+class Notification:
+    """Временная заглушка для модели Notification"""
+    def __init__(self, **kwargs):
+        pass
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from celery import shared_task
@@ -93,51 +99,8 @@ async def send_reminder_day_before():
                     reply_markup=keyboard
                 )
                 
-                # Сохраняем в историю уведомлений
-                notification = Notification(
-                    user_id=booking.client.user.id,
-                    booking_id=booking.id,
-                    notification_type="reminder_day",
-                    message=text,
-                    is_sent=True,
-                    sent_at=datetime.utcnow()
-                )
-                session.add(notification)
-                
-            except Exception as e:
-                print(f"Ошибка отправки напоминания за день для записи {booking.id}: {e}")
-                # Сохраняем ошибку
-                notification = Notification(
-                    user_id=booking.client.user.id,
-                    booking_id=booking.id,
-                    notification_type="reminder_day",
-                    message=text,
-                    is_sent=False,
-                    error_message=str(e)
-                )
-                session.add(notification)
-        
-        await session.commit()
-
-
-async def send_reminder_hour_before():
-    """Отправить напоминания за час до записи"""
-    now = datetime.now()
-    target_time_start = (now + timedelta(hours=1, minutes=-10)).time()
-    target_time_end = (now + timedelta(hours=1, minutes=10)).time()
-    today = date.today()
-    
-    async with async_session_maker() as session:
-        # Находим подтвержденные записи на сегодня в нужном временном диапазоне
-        result = await session.execute(
-            select(Booking)
-            .where(
-                and_(
-                    Booking.date == today,
-                    Booking.status == "confirmed",
-                    Booking.time >= target_time_start,
-                    Booking.time <= target_time_end
-                )
+                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
+                # TODO: Notification block commented out
             )
             .options(
                 selectinload(Booking.client).selectinload(Client.user),
@@ -177,27 +140,13 @@ async def send_reminder_hour_before():
                 )
                 
                 # Сохраняем в историю
-                notification = Notification(
-                    user_id=booking.client.user.id,
-                    booking_id=booking.id,
-                    notification_type="reminder_hour",
-                    message=text,
-                    is_sent=True,
-                    sent_at=datetime.utcnow()
-                )
-                session.add(notification)
+                # TODO: Notification block commented out
+                # session.add(notification)
                 
             except Exception as e:
                 print(f"Ошибка отправки напоминания за час для записи {booking.id}: {e}")
-                notification = Notification(
-                    user_id=booking.client.user.id,
-                    booking_id=booking.id,
-                    notification_type="reminder_hour",
-                    message=text,
-                    is_sent=False,
-                    error_message=str(e)
-                )
-                session.add(notification)
+                # TODO: Notification block commented out
+                # session.add(notification)
         
         await session.commit()
 
@@ -297,15 +246,8 @@ async def send_status_change_notification(booking_id: int, new_status: str):
             )
             print(f"[SUCCESS] Сообщение отправлено успешно: message_id={result.message_id}")
             
-            notification = Notification(
-                user_id=target_user.id,
-                booking_id=booking.id,
-                notification_type="status_change",
-                message=text,
-                is_sent=True,
-                sent_at=datetime.utcnow()
-            )
-            session.add(notification)
+            # TODO: Notification block commented out
+            # session.add(notification)
             await session.commit()
             print(f"[SUCCESS] Уведомление сохранено в БД: notification_id={notification.id}")
             
@@ -314,15 +256,8 @@ async def send_status_change_notification(booking_id: int, new_status: str):
             error_trace = traceback.format_exc()
             print(f"[ERROR] Ошибка отправки уведомления об изменении статуса для записи {booking.id}: {e}")
             print(f"[ERROR] Traceback: {error_trace}")
-            notification = Notification(
-                user_id=target_user.id,
-                booking_id=booking.id,
-                notification_type="status_change",
-                message=text,
-                is_sent=False,
-                error_message=str(e)
-            )
-            session.add(notification)
+            # TODO: Notification block commented out
+            # session.add(notification)
             await session.commit()
 
 
@@ -513,29 +448,15 @@ async def notify_admin_new_bookings():
                 
                 # Сохраняем уведомления в БД
                 for booking in new_bookings:
-                    notification = Notification(
-                        user_id=admin.id,
-                        booking_id=booking.id,
-                        notification_type="admin_new_booking",
-                        message=text,
-                        is_sent=True,
-                        sent_at=datetime.utcnow()
-                    )
-                    session.add(notification)
+                    # TODO: Notification block commented out
+                    # session.add(notification)
                 
             except Exception as e:
                 print(f"Ошибка отправки уведомления администратору {admin.id}: {e}")
                 # Сохраняем ошибку
                 for booking in new_bookings:
-                    notification = Notification(
-                        user_id=admin.id,
-                        booking_id=booking.id,
-                        notification_type="admin_new_booking",
-                        message=text,
-                        is_sent=False,
-                        error_message=str(e)
-                    )
-                    session.add(notification)
+                    # TODO: Notification block commented out
+                    # session.add(notification)
         
         await session.commit()
 

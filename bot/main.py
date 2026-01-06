@@ -34,6 +34,9 @@ from bot.handlers.admin.menu import router as admin_menu_router
 from bot.handlers.admin.bookings import router as admin_bookings_router
 from bot.handlers.master.work_order import router as master_router
 
+# Импортируем middleware
+from bot.middleware.subscription import SubscriptionMiddleware
+
 # Инициализируем сервис tenant
 tenant_service = TenantService()
 
@@ -129,6 +132,13 @@ async def run_bot_for_company(company: Company) -> Optional[Dict[str, any]]:
             f"can_create_bookings={company.can_create_bookings}, "
             f"subscription_status={company.subscription_status}"
         )
+        
+        # Применяем middleware для проверки статуса подписки
+        subscription_middleware = SubscriptionMiddleware()
+        dp.message.middleware(subscription_middleware)
+        dp.callback_query.middleware(subscription_middleware)
+        
+        logger.info(f"SubscriptionMiddleware применен для компании '{company.name}'")
         
         # Регистрируем роутеры
         dp.include_router(start_router)

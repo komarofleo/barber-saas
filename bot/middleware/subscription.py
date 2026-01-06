@@ -6,30 +6,34 @@ Middleware для проверки статуса подписки в Telegram �
 - Может ли пользователь создавать записи
 - Добавляет информацию о подписке в состояние
 """
+import logging
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject
-from typing import Optional
+from aiogram.types import Message, CallbackQuery
+from typing import Optional, Callable, Awaitable, Any
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class SubscriptionMiddleware(BaseMiddleware):
     """
     Middleware для проверки статуса подписки.
     
-    Добавляет в update следующие данные:
+    Добавляет в event следующие данные:
     - can_create_bookings: bool - может ли создавать записи
     - subscription_status: str - статус подписки
-    - days_left: int или None - дней до окончания
-    - subscription_plan_id: int или None - ID тарифного плана
+    - subscription_end_date: datetime или None - дата окончания
+    - company_id: int - ID компании
+    - company_name: str - название компании
     """
     
     async def __call__(
         self,
-        handler: TelegramObject,
-        event: TelegramObject,
+        handler: Callable[[Any], Awaitable[Any]],
+        event: Message | CallbackQuery,
         data: dict,
-    ) -> Optional[dict]:
+    ) -> Any:
         """
         Проверяет статус подписки перед выполнением хендлера.
         
@@ -39,42 +43,87 @@ class SubscriptionMiddleware(BaseMiddleware):
             data: Данные события
             
         Returns:
-            Обновленные данные для события или None
+            Результат хендлера или None если заблокирован
         """
-        # Получаем данные о подписке из контекста
-        can_create_bookings = data.get('can_create_bookings', True)
-        subscription_status = data.get('subscription_status', 'no_subscription')
-        days_left = data.get('days_left', None)
-        subscription_plan_id = data.get('subscription_plan_id', None)
+        # Получаем диспетчер
+        dispatcher = event.bot
         
-        # Логируем для отладки
-        # from app.services.tenant_service import get_tenant_service  # Не можем импортировать здесь (цирка)
-        # tenant_service = get_tenant_service()
-        # company_id = data.get('company_id')
-        # if company_id:
-        #     subscription_info = await check_company_subscription(tenant_service, company_id)
-        #     subscription_status = subscription_info.get('status', 'no_subscription')
-        #     days_left = subscription_info.get('days_left', None)
-        #     can_create_bookings = subscription_info.get('can_create_bookings', False)
+        if not hasattr(dispatcher, 'data'):
+            # Если диспетчер не имеет атрибута data (старый aiogram)
+            return await handler(event, data)
         
-        # Обновляем данные для события
-        event.can_create_bookings = can_create_bookings
-        event.subscription_status = subscription_status
-        event.days_left = days_left
-        event.subscription_plan_id = subscription_plan_id
+        # Получаем данные о подписке из контекста диспетчера
+        can_create_bookings = dispatcher.data.get('can_create_bookings', True)
+        subscription_status = dispatcher.data.get('subscription_status', 'no_subscription')
+        subscription_end_date = dispatcher.data.get('subscription_end_date', None)
+        company_id = dispatcher.data.get('company_id', None)
+        company_name = dispatcher.data.get('company_name', 'Unknown')
         
-        # Логирование
-        # if company_id:
-        #     logger.info(
-        #         f"SubscriptionMiddleware: company_id={company_id}, "
-        #         f"status={subscription_status}, days_left={days_left}, "
-        #         f"can_create={can_create_bookings}"
-        #     )
+        # Проверяем подписку только для команд, связанных с созданием записей
+        command = event.text if isinstance(event, Message) and event.text else None
         
-        # Если подписка истекла или истекает - отправляем уведомление
-        if subscription_status == 'expired' or (days_left is not None and days_left <= 7):
-            # TODO: Добавить логирование уведомления
-            pass
+        # Список команд, требующих активной подписки
+        booking_commands = ['/start', 'Записаться', 'Запись']
         
-        return event
+        # Проверяем, нужно ли блокировать эту команду
+        should_block = False
+        if command:
+            for booking_cmd in booking_commands:
+                if booking_cmd in command and not can_create_bookings:
+                    should_block = True
+                    break
+        
+        if should_block:
+            # Логируем блокировку
+            logger.warning(
+                f"Подписка истекла для компании '{company_name}' (ID: {company_id}). "
+                f"Статус подписки: {subscription_status}, "
+                f"Дата окончания: {subscription_end_date}"
+            )
+            
+            # Отправляем сообщение об истекшей подписке
+            if isinstance(event, Message):
+                await event.answer(
+                    f"⚠️ **Подписка истекла**\n\n"
+                    f"Ваша подписка компании '{company_name}' истекла.\n"
+                    f"Пожалуйста, продлите подписку для создания записей.\n\n"
+                    f"Для продления подписки обратитесь к администратору."
+                )
+            elif isinstance(event, CallbackQuery):
+                await event.answer(
+                    "Подписка истекла. Создание записей заблокировано.",
+                    show_alert=True
+                )
+            
+            return None
+        
+        # Если подписка истекает через 7 дней или меньше - отправляем предупреждение
+        if subscription_end_date:
+            from datetime import datetime, date, timedelta
+            
+            days_left = (subscription_end_date - date.today()).days
+            
+            if days_left <= 7 and days_left > 0 and command and 'Запис' in command:
+                logger.info(
+                    f"Подписка истекает для компании '{company_name}' (ID: {company_id}). "
+                    f"Осталось {days_left} дней."
+                )
+                
+                if isinstance(event, Message):
+                    await event.answer(
+                        f"⚠️ **Подписка истекает через {days_left} дней!**\n\n"
+                        f"Пожалуйста, продлите подписку для продолжения работы."
+                    )
+        
+        # Логирование успешной проверки
+        if company_id:
+            logger.info(
+                f"SubscriptionMiddleware: company_id={company_id}, "
+                f"company_name={company_name}, "
+                f"status={subscription_status}, "
+                f"can_create_bookings={can_create_bookings}"
+            )
+        
+        # Продолжаем выполнение хендлера
+        return await handler(event, data)
 

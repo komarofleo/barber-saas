@@ -27,7 +27,8 @@ from app.models.public_models import (
     Payment,
     Plan
 )
-from app.models.shared_models import Notification
+# TODO: Создать модель Notification для сохранения истории уведомлений
+# from app.models.public_models import Notification
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -321,17 +322,17 @@ async def _send_reminder_7_days_before():
             except Exception as e:
                 logger.error(f"Ошибка отправки напоминания за 7 дней компании {company.id}: {e}")
                 
-                # Сохраняем в историю уведомлений
-                notification = Notification(
-                    user_id=None,  # Для SaaS не привязано к конкретному пользователю
-                    booking_id=None,
-                    notification_type="subscription_reminder_7d",
-                    message=text,
-                    is_sent=False,
-                    error_message=str(e),
-                    sent_at=datetime.utcnow()
-                )
-                db.add(notification)
+                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
+                # notification = Notification(
+                #     user_id=None,  # Для SaaS не привязано к конкретному пользователю
+                #     booking_id=None,
+                #     notification_type="subscription_reminder_7d",
+                #     message=text,
+                #     is_sent=False,
+                #     error_message=str(e),
+                #     sent_at=datetime.utcnow()
+                # )
+                # db.add(notification)
 
 
 async def _send_reminder_day_before():
@@ -384,17 +385,17 @@ async def _send_reminder_day_before():
             except Exception as e:
                 logger.error(f"Ошибка отправки напоминания за 1 день компании {company.id}: {e}")
                 
-                # Сохраняем в историю уведомлений
-                notification = Notification(
-                    user_id=None,
-                    booking_id=None,
-                    notification_type="subscription_reminder_1d",
-                    message=text,
-                    is_sent=False,
-                    error_message=str(e),
-                    sent_at=datetime.utcnow()
-                )
-                db.add(notification)
+                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
+                # notification = Notification(
+                #     user_id=None,
+                #     booking_id=None,
+                #     notification_type="subscription_reminder_1d",
+                #     message=text,
+                #     is_sent=False,
+                #     error_message=str(e),
+                #     sent_at=datetime.utcnow()
+                # )
+                # db.add(notification)
 
 
 async def _send_expired_notification():
@@ -450,17 +451,17 @@ async def _send_expired_notification():
             except Exception as e:
                 logger.error(f"Ошибка отправки уведомления об истечении компании {company.id}: {e}")
                 
-                # Сохраняем в историю уведомлений
-                notification = Notification(
-                    user_id=None,
-                    booking_id=None,
-                    notification_type="subscription_expired",
-                    message=text,
-                    is_sent=False,
-                    error_message=str(e),
-                    sent_at=datetime.utcnow()
-                )
-                db.add(notification)
+                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
+                # notification = Notification(
+                #     user_id=None,
+                #     booking_id=None,
+                #     notification_type="subscription_expired",
+                #     message=text,
+                #     is_sent=False,
+                #     error_message=str(e),
+                #     sent_at=datetime.utcnow()
+                # )
+                # db.add(notification)
 
 
 async def _send_inactive_subscription_notification():
@@ -514,17 +515,17 @@ async def _send_inactive_subscription_notification():
             except Exception as e:
                 logger.error(f"Ошибка отправки уведомления о неактивной подписке компании {company.id}: {e}")
                 
-                # Сохраняем в историю уведомлений
-                notification = Notification(
-                    user_id=None,
-                    booking_id=None,
-                    notification_type="subscription_inactive",
-                    message=text,
-                    is_sent=False,
-                    error_message=str(e),
-                    sent_at=datetime.utcnow()
-                )
-                db.add(notification)
+                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
+                # notification = Notification(
+                #     user_id=None,
+                #     booking_id=None,
+                #     notification_type="subscription_inactive",
+                #     message=text,
+                #     is_sent=False,
+                #     error_message=str(e),
+                #     sent_at=datetime.utcnow()
+                # )
+                # db.add(notification)
 
 
 async def _send_failed_payment_notification():
@@ -584,15 +585,15 @@ async def _send_failed_payment_notification():
             except Exception as e:
                 logger.error(f"Ошибка отправки уведомления о неудачном платеже компании {company.id}: {e}")
                 
-                # Сохраняем в историю уведомлений
-                notification = Notification(
-                    user_id=None,
-                    booking_id=None,
-                    notification_type="payment_failed",
-                    message=text,
-                    is_sent=False,
-                    error_message=str(e),
-                    sent_at=datetime.utcnow()
-                )
-                db.add(notification)
+                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
+                # notification = Notification(
+                #     user_id=None,
+                #     booking_id=None,
+                #     notification_type="payment_failed",
+                #     message=text,
+                #     is_sent=False,
+                #     error_message=str(e),
+                #     sent_at=datetime.utcnow()
+                # )
+                # db.add(notification)
 

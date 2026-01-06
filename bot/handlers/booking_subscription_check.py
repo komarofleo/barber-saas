@@ -32,10 +32,10 @@ async def check_subscription_before_booking(
     try:
         # Получаем контекст диспетчера
         dp = state.resolve_dp()
-        can_create_bookings = dp.get('can_create_bookings', True)
-        company_name = dp.get('company_name', '')
-        subscription_status = dp.get('subscription_status', '')
-        subscription_end_date = dp.get('subscription_end_date', None)
+        can_create_bookings = dp.data.get('can_create_bookings', True)
+        company_name = dp.data.get('company_name', '')
+        subscription_status = dp.data.get('subscription_status', '')
+        subscription_end_date = dp.data.get('subscription_end_date', None)
         
         logger.info(
             f"Проверка подписки для компании '{company_name}': "
