@@ -374,6 +374,13 @@ async def get_dashboard_stats(
     Returns:
         Статистика дашборда
     """
+    # Проверяем авторизацию
+    if not current_admin:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Требуется авторизация"
+        )
+    
     logger.info(f"Получение статистики дашборда от: {current_admin.username}")
     
     # Общее количество компаний
@@ -394,28 +401,27 @@ async def get_dashboard_stats(
     )
     total_subscriptions = total_subscriptions_result.scalar()
     
-    # Количество активных подписок (используем text() для обхода проблемы с enum)
+    # Количество активных подписок
     active_subscriptions_result = await db.execute(
-        text("SELECT COUNT(*) as count FROM public.subscriptions WHERE status = 'active'")
+        select(func.count(Subscription.id)).where(Subscription.status == 'active')
     )
     active_subscriptions = active_subscriptions_result.scalar()
     
-    # Общий доход (используем text() для обхода проблемы с enum)
+    # Общий доход
     total_revenue_result = await db.execute(
-        text("SELECT COALESCE(SUM(amount), 0) as total FROM public.payments WHERE status = 'succeeded'")
+        select(func.coalesce(Payment.amount, 0)).where(Payment.status == PaymentStatus.SUCCEEDED)
     )
     total_revenue = Decimal(str(total_revenue_result.scalar() or 0))
     
-    # Доход за текущий месяц (используем text() для обхода проблемы с enum)
+    # Доход за текущий месяц
     current_month_start = date.today().replace(day=1)
     monthly_revenue_result = await db.execute(
-        text("""
-            SELECT COALESCE(SUM(amount), 0) as total 
-            FROM public.payments 
-            WHERE status = 'succeeded' 
-            AND created_at >= :month_start
-        """),
-        {"month_start": current_month_start}
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            and_(
+                Payment.status == PaymentStatus.SUCCEEDED,
+                Payment.created_at >= current_month_start
+            )
+        )
     )
     monthly_revenue = Decimal(str(monthly_revenue_result.scalar() or 0))
     
