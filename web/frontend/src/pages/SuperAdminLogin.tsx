@@ -100,10 +100,25 @@ const SuperAdminLogin: React.FC = () => {
 
       console.log('Токен сохранен, перенаправление...')
       
-      // Перенаправляем на дашборд только один раз
+      // Проверяем, что токен действительно сохранился
+      const savedToken = rememberMe 
+        ? localStorage.getItem('super_admin_token')
+        : sessionStorage.getItem('super_admin_token')
+      
+      if (!savedToken) {
+        console.error('Ошибка: токен не был сохранен!')
+        setErrors({ general: 'Ошибка сохранения токена. Попробуйте снова.' })
+        setLoading(false)
+        return
+      }
+      
+      // Перенаправляем на дашборд только один раз с небольшой задержкой
       if (!isRedirecting.current) {
         isRedirecting.current = true
-        navigate('/super-admin/dashboard', { replace: true })
+        // Небольшая задержка для гарантии сохранения токена
+        setTimeout(() => {
+          navigate('/super-admin/dashboard', { replace: true })
+        }, 100)
       }
     } catch (error: any) {
       console.error('Ошибка входа:', error)

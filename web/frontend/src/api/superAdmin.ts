@@ -33,11 +33,13 @@ superAdminClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // Удаляем токен при ошибке 401, но не перенаправляем автоматически
+      // Компоненты сами обработают ошибку и перенаправят при необходимости
       localStorage.removeItem('super_admin_token')
       sessionStorage.removeItem('super_admin_token')
       localStorage.removeItem('super_admin')
       sessionStorage.removeItem('super_admin')
-      window.location.href = '/super-admin/login'
+      // Не перенаправляем автоматически, чтобы избежать циклов
     }
     return Promise.reject(error)
   }

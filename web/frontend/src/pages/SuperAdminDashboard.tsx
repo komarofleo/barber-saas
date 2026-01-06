@@ -38,6 +38,13 @@ const SuperAdminDashboard: React.FC = () => {
       setStats(fetchedStats)
     } catch (err: any) {
       console.error('Ошибка загрузки статистики:', err)
+      
+      // Если ошибка 401 (Unauthorized), перенаправляем на логин
+      if (err.response?.status === 401 || err.message?.includes('401')) {
+        navigate('/super-admin/login', { replace: true })
+        return
+      }
+      
       setError(err.message || 'Не удалось загрузить статистику')
     } finally {
       setLoading(false)

@@ -63,8 +63,8 @@ function ProtectedRoute({
 }
 
 function SuperAdminProtectedRoute({ children }: { children: React.ReactNode }) {
-  // Проверяем токен супер-админа
-  const superAdminToken = localStorage.getItem('super_admin_token')
+  // Проверяем токен супер-админа в localStorage или sessionStorage
+  const superAdminToken = localStorage.getItem('super_admin_token') || sessionStorage.getItem('super_admin_token')
   
   if (!superAdminToken) {
     return <Navigate to="/super-admin/login" replace />
