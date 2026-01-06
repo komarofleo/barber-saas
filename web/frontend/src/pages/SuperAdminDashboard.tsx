@@ -89,27 +89,20 @@ const SuperAdminDashboard: React.FC = () => {
   return (
     <div className="super-admin-dashboard">
       <div className="dashboard-container">
-        {/* Заголовок страницы */}
+        {/* Заголовок страницы - элегантный и минималистичный */}
         <div className="dashboard-header">
-          <h1 className="dashboard-title">📊 Дашборд супер-администратора</h1>
-          <p className="dashboard-subtitle">
-            Общая статистика и управление системой AutoService SaaS
-          </p>
-        </div>
-
-        {/* Кнопки действий - перемещены из header внутрь контента */}
-        <div className="dashboard-actions">
+          <div className="header-content">
+            <h1 className="dashboard-title">Дашборд</h1>
+            <p className="dashboard-subtitle">
+              Общая статистика и управление системой
+            </p>
+          </div>
           <button
-            className="action-button"
+            className="refresh-button"
             onClick={() => fetchStats()}
+            title="Обновить данные"
           >
-            🔄 Обновить
-          </button>
-          <button
-            className="action-button primary"
-            onClick={() => navigate('/super-admin/companies')}
-          >
-            📋 Компании
+            <span className="refresh-icon">↻</span>
           </button>
         </div>
 
