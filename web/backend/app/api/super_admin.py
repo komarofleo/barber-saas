@@ -33,7 +33,8 @@ from app.models.public_models import (
     SubscriptionStatus
 )
 from app.schemas.public_schemas import (
-    PlanResponse
+    PlanResponse,
+    CompanyResponse
 )
 from app.config import settings
 
@@ -178,26 +179,6 @@ class DashboardStats(BaseModel):
     monthly_revenue: Decimal = Decimal("0")
     companies_with_expiring_subscription: int = 0
     new_companies_this_month: int = 0
-
-
-class CompanyResponse(BaseModel):
-    """Ответ с данными компании"""
-    id: int
-    name: str
-    email: str
-    phone: Optional[str]
-    telegram_bot_token: str
-    admin_telegram_id: Optional[int]
-    plan_id: Optional[int]
-    subscription_status: Optional[str]
-    can_create_bookings: bool
-    subscription_end_date: Optional[date]
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
-    plan: Optional[PlanResponse]
-    subscriptions: List[dict]
-    payments: List[dict]
 
 
 class CompaniesResponse(BaseModel):
@@ -563,7 +544,6 @@ async def get_companies(
             "subscription_end_date": company.subscription_end_date,
             "is_active": company.is_active,
             "created_at": company.created_at,
-            "updated_at": company.updated_at,
             "plan": None,
             "subscriptions": [],
             "payments": []
@@ -621,7 +601,8 @@ async def get_companies(
                 "created_at": payment.created_at
             })
         
-        company_responses.append(CompanyResponse(**company_data))
+        # Используем model_validate для правильной обработки опциональных полей
+        company_responses.append(CompanyResponse.model_validate(company_data))
     
     total_pages = (total + page_size - 1) // page_size
     

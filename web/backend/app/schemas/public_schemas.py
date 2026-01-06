@@ -6,7 +6,7 @@ Pydantic схемы для публичного API (регистрация ко
 """
 
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field, validator
 from enum import Enum
 import re
@@ -190,7 +190,9 @@ class CompanyResponse(BaseModel):
     name: str
     email: str
     phone: Optional[str] = None
+    telegram_bot_token: Optional[str] = None
     admin_telegram_id: Optional[int] = None
+    plan_id: Optional[int] = None
     
     # Данные подписки
     plan: Optional[PlanResponse] = None
@@ -201,7 +203,11 @@ class CompanyResponse(BaseModel):
     # Метаданные
     is_active: bool
     created_at: datetime
-    updated_at: Optional[datetime] = None  # Исправлено: опциональное поле
+    # updated_at убран из схемы, так как может быть None и не критичен для MVP
+    
+    # Дополнительные данные
+    subscriptions: List[dict] = Field(default_factory=list)
+    payments: List[dict] = Field(default_factory=list)
     
     class Config:
         from_attributes = True
