@@ -105,20 +105,30 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         {/* Информация о пользователе */}
         {superAdmin && (
           <div className="sidebar-user">
-            <div className="user-avatar">
-              {superAdmin.username.charAt(0).toUpperCase()}
+            <div className="user-header">
+              <div className="user-avatar">
+                {superAdmin.username.charAt(0).toUpperCase()}
+              </div>
+              <div className="user-info">
+                <div className="user-name">{superAdmin.username}</div>
+                <div className="user-role">Супер-администратор</div>
+              </div>
             </div>
-            <div className="user-info">
-              <div className="user-name">{superAdmin.username}</div>
-              <div className="user-role">Супер-администратор</div>
-            </div>
+            <button
+              className="sidebar-logout-button"
+              onClick={handleLogout}
+              title="Выход"
+            >
+              <span className="logout-icon">🚪</span>
+              <span className="logout-text">Выход</span>
+            </button>
           </div>
         )}
       </div>
 
       {/* Основной контент */}
       <div className="main-content">
-        {/* Верхний бар */}
+        {/* Верхний бар - минималистичный */}
         <header className="top-bar">
           <button
             className="sidebar-toggle"
@@ -130,35 +140,6 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
           <div className="top-bar-title">
             {navItems.find(item => location.pathname.startsWith(item.path))?.label || 'AutoService SaaS'}
-          </div>
-
-          <div className="top-bar-actions">
-            {/* Уведомления */}
-            <button
-              className="icon-button"
-              title="Уведомления"
-            >
-              🔔
-              <span className="notification-badge">3</span>
-            </button>
-
-            {/* Настройки */}
-            <button
-              className="icon-button"
-              title="Настройки"
-              onClick={() => navigate('/super-admin/settings')}
-            >
-              ⚙️
-            </button>
-
-            {/* Выход */}
-            <button
-              className="logout-button"
-              onClick={handleLogout}
-              title="Выход"
-            >
-              🚪
-            </button>
           </div>
         </header>
 
