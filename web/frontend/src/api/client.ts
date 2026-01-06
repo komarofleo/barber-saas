@@ -26,7 +26,15 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      
+      // Не перенаправляем, если мы на публичных страницах или страницах супер-админа
+      const currentPath = window.location.pathname
+      const publicPaths = ['/login', '/register', '/payment/success', '/payment/error']
+      const superAdminPaths = ['/super-admin/login']
+      
+      if (!publicPaths.includes(currentPath) && !superAdminPaths.includes(currentPath)) {
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }
