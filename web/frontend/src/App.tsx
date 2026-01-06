@@ -37,6 +37,12 @@ function ProtectedRoute({
   children: React.ReactNode
   requireSubscription?: boolean
 }) {
+  // Не проверяем авторизацию для страниц супер-админа
+  const currentPath = window.location.pathname
+  if (currentPath.startsWith('/super-admin')) {
+    return <>{children}</>
+  }
+  
   const { isAuthenticated, loading, user, canCreateBookings } = useAuth()
   
   if (loading) {

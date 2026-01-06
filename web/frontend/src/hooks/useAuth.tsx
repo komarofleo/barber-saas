@@ -24,6 +24,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasChecked = useRef(false)
 
   const refreshSubscription = async () => {
+    // Не загружаем данные, если мы на страницах супер-админа
+    const currentPath = window.location.pathname
+    if (currentPath.startsWith('/super-admin')) {
+      setSubscriptionLoading(false)
+      return
+    }
+    
     try {
       setSubscriptionLoading(true)
       const subInfo = await authApi.getSubscriptionInfo()
@@ -74,15 +81,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const parsedUser = JSON.parse(savedUser)
         setUser(parsedUser)
         
-        // Получаем информацию о подписке
-        refreshSubscription()
-        
-        // Проверяем токен
-        authApi.getMe().catch(() => {
-          localStorage.removeItem('token')
-          localStorage.removeItem('user')
-          setUser(null)
-        })
+        // Получаем информацию о подписке только если не на страницах супер-админа
+        if (!currentPath.startsWith('/super-admin')) {
+          refreshSubscription()
+          
+          // Проверяем токен только если не на страницах супер-админа
+          authApi.getMe().catch(() => {
+            localStorage.removeItem('token')
+            localStorage.removeItem('user')
+            setUser(null)
+          })
+        }
       } catch (e) {
         localStorage.removeItem('token')
         localStorage.removeItem('user')
