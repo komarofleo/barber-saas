@@ -121,59 +121,6 @@ const PlanSelection: React.FC<PlanSelectionProps> = ({
           💡 Вы можете изменить тарифный план в любой момент в настройках
         </p>
       </div>
-
-      {/* Дополнительная форма с 4 полями в два столбца */}
-      <div className="additional-form-section">
-        <div className="additional-form-grid">
-          {/* Левая колонка */}
-          <div className="additional-form-column">
-            <div className="additional-form-field">
-              <label className="additional-field-label">
-                Дополнительное поле 1
-              </label>
-              <input
-                type="text"
-                className="additional-field-input"
-                placeholder="Введите значение..."
-              />
-            </div>
-            <div className="additional-form-field">
-              <label className="additional-field-label">
-                Дополнительное поле 2
-              </label>
-              <input
-                type="text"
-                className="additional-field-input"
-                placeholder="Введите значение..."
-              />
-            </div>
-          </div>
-
-          {/* Правая колонка */}
-          <div className="additional-form-column">
-            <div className="additional-form-field">
-              <label className="additional-field-label">
-                Дополнительное поле 3
-              </label>
-              <input
-                type="text"
-                className="additional-field-input"
-                placeholder="Введите значение..."
-              />
-            </div>
-            <div className="additional-form-field">
-              <label className="additional-field-label">
-                Дополнительное поле 4
-              </label>
-              <input
-                type="text"
-                className="additional-field-input"
-                placeholder="Введите значение..."
-              />
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

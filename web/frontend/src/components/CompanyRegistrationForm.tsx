@@ -412,102 +412,113 @@ const CompanyRegistrationForm: React.FC = () => {
             selectedPlanId={formData.plan_id}
             onPlanSelect={handlePlanSelect}
           />
-        </div>
+          
+          {/* Дополнительная форма с полями в два столбца после фразы о тарифах */}
+          <div className="additional-form-section">
+            <div className="additional-form-grid">
+              {/* Левая колонка */}
+              <div className="additional-form-column">
+                <div className="additional-form-field">
+                  <label className="additional-field-label">
+                    Название автосервиса<span className="required-mark">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    className={`additional-field-input ${getFieldError('name') ? 'error' : ''}`}
+                    placeholder="ООО 'Точка'"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    required
+                    minLength={3}
+                    maxLength={255}
+                  />
+                  {getFieldError('name') && (
+                    <div className="field-error">{getFieldError('name')}</div>
+                  )}
+                </div>
+                <div className="additional-form-field">
+                  <label className="additional-field-label">
+                    Телефон<span className="required-mark">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    className={`additional-field-input ${getFieldError('phone') ? 'error' : ''}`}
+                    placeholder="+79001234567"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    required
+                  />
+                  <div className="field-hint">Формат: +7XXXXXXXXXX (10 цифр)</div>
+                  {getFieldError('phone') && (
+                    <div className="field-error">{getFieldError('phone')}</div>
+                  )}
+                </div>
+              </div>
 
-        {/* Индикатор шагов в две колонки */}
-        <div className="form-steps-grid">
-          <div className="form-step-column">
-            <div className="step-item">
-              <div className="step-number">1</div>
-              <div className="step-info">
-                <div className="step-title">Данные компании</div>
-                <div className="step-description">Основная информация о вашем автосервисе</div>
+              {/* Правая колонка */}
+              <div className="additional-form-column">
+                <div className="additional-form-field">
+                  <label className="additional-field-label">
+                    Email<span className="required-mark">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    className={`additional-field-input ${getFieldError('email') ? 'error' : ''}`}
+                    placeholder="admin@avtoservis.ru"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    required
+                  />
+                  {getFieldError('email') && (
+                    <div className="field-error">{getFieldError('email')}</div>
+                  )}
+                </div>
+                <div className="additional-form-field">
+                  <label className="additional-field-label">
+                    Токен Telegram бота<span className="required-mark">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="telegram_bot_token"
+                    className={`additional-field-input ${getFieldError('telegram_bot_token') ? 'error' : ''}`}
+                    placeholder="8332803813:AAGOpLJdSj5P6cKqseQPfcOAiypTxgVZSt4"
+                    value={formData.telegram_bot_token}
+                    onChange={handleInputChange}
+                    required
+                    minLength={40}
+                    maxLength={500}
+                  />
+                  <div className="field-hint">Получите токен через @BotFather в Telegram</div>
+                  {getFieldError('telegram_bot_token') && (
+                    <div className="field-error">{getFieldError('telegram_bot_token')}</div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-          <div className="form-step-column">
-            <div className="step-item">
-              <div className="step-number">2</div>
-              <div className="step-info">
-                <div className="step-title">Телефон и бот</div>
-                <div className="step-description">Контактные данные и настройка Telegram бота</div>
-              </div>
+            
+            {/* Telegram ID - на всю ширину */}
+            <div className="additional-form-field-full">
+              <label className="additional-field-label">
+                Telegram ID владельца<span className="required-mark">*</span>
+              </label>
+              <input
+                type="number"
+                name="admin_telegram_id"
+                className={`additional-field-input ${getFieldError('admin_telegram_id') ? 'error' : ''}`}
+                placeholder="329621295"
+                value={formData.admin_telegram_id}
+                onChange={handleInputChange}
+                required
+                min={1}
+              />
+              <div className="field-hint">Ваш Telegram ID для получения уведомлений</div>
+              {getFieldError('admin_telegram_id') && (
+                <div className="field-error">{getFieldError('admin_telegram_id')}</div>
+              )}
             </div>
-          </div>
-        </div>
-
-        {/* Все поля в две колонки */}
-        <div className="form-fields-grid">
-          {/* Левая колонка */}
-          <div className="form-column">
-            <h3 className="section-heading">
-              📋 Данные компании
-            </h3>
-            <FormField
-              label="Название автосервиса"
-              name="name"
-              type="text"
-              placeholder="ООО 'Точка'"
-              value={formData.name}
-              onChange={handleInputChange}
-              required
-              error={getFieldError('name')}
-              min={3}
-              max={255}
-            />
-            <FormField
-              label="Email"
-              name="email"
-              type="email"
-              placeholder="admin@avtoservis.ru"
-              value={formData.email}
-              onChange={handleInputChange}
-              required
-              error={getFieldError('email')}
-            />
-            <FormField
-              label="Телефон"
-              name="phone"
-              type="tel"
-              placeholder="+79001234567"
-              value={formData.phone}
-              onChange={handleInputChange}
-              required
-              error={getFieldError('phone')}
-              hint="Формат: +7XXXXXXXXXX (10 цифр)"
-            />
-          </div>
-
-          {/* Правая колонка */}
-          <div className="form-column">
-            <h3 className="section-heading">
-              🤖 Telegram настройки
-            </h3>
-            <FormField
-              label="Токен Telegram бота"
-              name="telegram_bot_token"
-              type="text"
-              placeholder="8332803813:AAGOpLJdSj5P6cKqseQPfcOAiypTxgVZSt4"
-              value={formData.telegram_bot_token}
-              onChange={handleInputChange}
-              required
-              error={getFieldError('telegram_bot_token')}
-              hint="Получите токен через @BotFather в Telegram"
-              min={40}
-              max={500}
-            />
-            <FormField
-              label="Telegram ID владельца"
-              name="admin_telegram_id"
-              type="number"
-              placeholder="329621295"
-              value={formData.admin_telegram_id}
-              onChange={handleInputChange}
-              required
-              error={getFieldError('admin_telegram_id')}
-              hint="Ваш Telegram ID для получения уведомлений"
-              min={1}
-            />
           </div>
         </div>
 

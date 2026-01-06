@@ -242,15 +242,26 @@ async def test_isolation():
 
 
 if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Тестирование изоляции данных между tenant схемами")
+    parser.add_argument("--auto", action="store_true", help="Автоматический режим без вопросов")
+    args = parser.parse_args()
+    
     print()
     print("⚠️  ВНИМАНИЕ: Этот скрипт создаст и удалит тестовые tenant схемы!")
     print("⚠️  Убедитесь, что вы на тестовой базе данных!")
     print()
     
-    confirm = input("Продолжить? (yes/no): ")
-    if confirm.lower() not in ["yes", "y"]:
-        print("❌ Тест отменен")
-        sys.exit(0)
+    # Автоматический режим
+    if args.auto:
+        print("🚀 Автоматический режим запущен...")
+        confirm = "yes"
+    else:
+        confirm = input("Продолжить? (yes/no): ")
+        if confirm.lower() not in ["yes", "y"]:
+            print("❌ Тест отменен")
+            sys.exit(0)
     
     print()
     print("🚀 Запуск теста изоляции...")
