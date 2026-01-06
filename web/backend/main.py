@@ -4,12 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.api import auth, bookings, users, services, masters, posts, clients, settings as settings_api, blocks, promocodes, promotions, broadcasts, export
-# ⚠️ ВРЕМЕННО: Закомментирован subscription из-за проблем с моделями
-# ОБЯЗАТЕЛЬНО НУЖНО ДОДЕЛАТЬ:
-# 1. Исправить импорты в subscription.py (использовать SQL вместо ORM)
-# 2. Включить обратно subscription.router
-# from app.api import subscription
+from app.api import auth, bookings, users, services, masters, posts, clients, settings as settings_api, blocks, promocodes, promotions, broadcasts, export, subscription
 
 # ✅ Исправлена архитектура моделей - используем полноценные API
 from app.api import public
@@ -30,7 +25,7 @@ app.add_middleware(
 
 # Регистрация роутеров
 app.include_router(auth.router)
-# app.include_router(subscription.router)  # Временно закомментирован
+app.include_router(subscription.router)
 app.include_router(bookings.router)
 app.include_router(users.router)
 app.include_router(services.router)
