@@ -13,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import selectinload
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram import Bot
 
 from app.database import get_db
 from app.services.tenant_service import get_tenant_service
@@ -469,4 +470,69 @@ async def get_dashboard_stats(
     logger.info(f"Статистика дэшборда получена: {stats}")
     
     return stats
+
+
+@router.post("/send-notification", response_model=dict)
+async def send_notification_to_company(
+    company_id: int = Query(..., description="ID компании"),
+    message: str = Query(..., description="Текст уведомления"),
+    target_chat_id: int = Query(None, description="ID чата для отправки"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Отправить уведомление через бот компании.
+    
+    Args:
+        company_id: ID компании
+        message: Текст уведомления
+        target_chat_id: ID чата для отправки
+        db: Асинхронная сессия БД
+        
+    Returns:
+        Результат отправки
+    """
+    # Получаем компанию
+    result = await db.execute(
+        select(Company).where(Company.id == company_id)
+    )
+    company = result.scalar_one_or_none()
+    
+    if not company:
+        raise HTTPException(status_code=404, detail="Компания не найдена")
+    
+    if not company.telegram_bot_token:
+        raise HTTPException(status_code=400, detail="У компании нет токена Telegram бота")
+    
+    if not company.is_active:
+        raise HTTPException(status_code=400, detail="Компания не активна")
+    
+    # Если не указан target_chat_id, используем admin_telegram_id компании
+    chat_id = target_chat_id or company.admin_telegram_id
+    
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="Не указан target_chat_id и нет admin_telegram_id у компании")
+    
+    # Отправляем уведомление через Telegram Bot API
+    try:
+        bot = Bot(token=company.telegram_bot_token)
+        
+        await bot.send_message(
+            chat_id=chat_id,
+            text=message,
+            parse_mode="HTML"
+        )
+        
+        await bot.session.close()
+        
+        logger.info(f"Уведомление отправлено компании {company.name} (ID: {company_id})")
+        
+        return {
+            "success": True,
+            "message": "Уведомление отправлено",
+            "company_id": company_id,
+            "chat_id": chat_id,
+        }
+    except Exception as e:
+        logger.error(f"Ошибка отправки уведомления компании {company.name}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки уведомления: {str(e)}")
 

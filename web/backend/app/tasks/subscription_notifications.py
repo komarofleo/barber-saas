@@ -1,599 +1,644 @@
 """
-Задачи для отправки уведомлений о подписках для SaaS архитектуры.
+Celery задачи для напоминаний о подписках и обработки webhook от Юкассы.
 
-Этот модуль содержит Celery задачи для:
-- Напоминаний за 7 дней до окончания подписки
-- Напоминаний за 1 день до окончания подписки
-- Уведомлений об истечении подписки
-- Уведомлений о неактивных подписках
-- Уведомлений о просроченных платежах
+Этот модуль обеспечивает:
+- Асинхронную отправку напоминаний о подписках
+- Периодическую проверку статуса подписок
+- Автоматическое обновление статуса подписок
+- Отправку уведомлений через Telegram Bot API
+- Обработку webhook от Юкассы
 """
-
-import asyncio
 import logging
-from datetime import date, datetime, timedelta
-from typing import List
-
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from datetime import date, timedelta, datetime
+from typing import List, Optional
 
 from celery import shared_task
-from aiogram import Bot
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_, or_, func
+from sqlalchemy.orm import selectinload
 
-from app.database import get_db
-from app.models.public_models import (
-    Company,
-    Subscription,
-    Payment,
-    Plan
-)
-# TODO: Создать модель Notification для сохранения истории уведомлений
-# from app.models.public_models import Notification
 from app.config import settings
+from app.database import get_async_session_maker
+from app.models.public_models import Company, Subscription, Plan
+from web.backend.app.api.bot_manager import get_bot_manager
 
 logger = logging.getLogger(__name__)
 
 
 # ==================== Helper функции ====================
 
-_bot_instance = None
-
-def get_bot():
-    """Получить экземпляр бота (lazy initialization)"""
-    global _bot_instance
-    if _bot_instance is None:
-        _bot_instance = Bot(token=settings.BOT_TOKEN)
-    return _bot_instance
-
-
-async def get_companies_with_expiring_subscriptions(
-    db: AsyncSession,
-    days_before: int
-) -> List[tuple]:
+async def get_active_companies() -> List[Company]:
     """
-    Получить компании с истекающими подписками.
+    Получить список всех активных компаний.
     
-    Args:
-        db: Сессия базы данных
-        days_before: Количество дней до истечения
-        
     Returns:
-        Список кортежей (Company, Subscription, days_remaining)
+        Список активных компаний
     """
-    target_date = date.today() + timedelta(days=days_before)
-    result = await db.execute(
-        select(Company, Subscription)
-        .join(Subscription, Company.id == Subscription.company_id)
-        .join(Plan, Subscription.plan_id == Plan.id)
-        .where(
-            and_(
-                Company.is_active == True,
-                Company.subscription_status == "active",
-                Company.admin_telegram_id.isnot(None),
-                Subscription.status == "active",
-                Subscription.end_date <= target_date,
-                Subscription.end_date >= date.today()
+    async_session_maker = get_async_session_maker()
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(Company).where(
+                and_(
+                    Company.is_active == True,
+                    Company.telegram_bot_token.isnot(None)
+                )
             )
         )
-    )
-    companies_with_subs = result.all()
+        companies = result.scalars().all()
     
-    # Добавляем информацию о днях до истечения
-    result_list = []
-    for company, subscription in companies_with_subs:
-        days_remaining = (subscription.end_date - date.today()).days
-        result_list.append((company, subscription, days_remaining))
-    
-    return result_list
+    logger.info(f"Найдено {len(companies)} активных компаний")
+    return companies
 
 
-async def get_companies_with_expired_subscriptions(
-    db: AsyncSession
-) -> List[tuple]:
+async def get_company_subscription(session: AsyncSession, company_id: int) -> Optional[Subscription]:
     """
-    Получить компании с истекшими подписками.
+    Получить текущую подписку компании.
     
     Args:
-        db: Сессия базы данных
-        
+        session: Асинхронная сессия БД
+        company_id: ID компании
+    
     Returns:
-        Список кортежей (Company, Subscription, days_expired)
+        Объект подписки или None
     """
-    yesterday = date.today() - timedelta(days=1)
-    result = await db.execute(
-        select(Company, Subscription)
-        .join(Subscription, Company.id == Subscription.company_id)
-        .where(
-            and_(
-                Company.is_active == True,
-                Company.subscription_status == "active",
-                Company.admin_telegram_id.isnot(None),
-                Subscription.end_date < yesterday  # Истекла вчера или раньше
-            )
-        )
+    result = await session.execute(
+        select(Subscription)
+        .where(Subscription.company_id == company_id)
+        .order_by(Subscription.start_date.desc())
+        .limit(1)
     )
-    companies_with_subs = result.all()
+    subscription = result.scalar_one_or_none()
     
-    # Добавляем информацию о днях с момента истечения
-    result_list = []
-    for company, subscription in companies_with_subs:
-        days_expired = (date.today() - subscription.end_date).days
-        result_list.append((company, subscription, days_expired))
+    if subscription:
+        logger.info(f"Подписка компании {company_id}: статус={subscription.status}, окончание={subscription.end_date}")
     
-    return result_list
+    return subscription
 
 
-async def get_companies_with_inactive_subscriptions(
-    db: AsyncSession
-) -> List[tuple]:
+async def update_company_can_create_bookings(session: AsyncSession, company_id: int, can_create: bool) -> None:
     """
-    Получить компании с неактивными подписками (block/expired).
+    Обновить флаг can_create_bookings компании.
     
     Args:
-        db: Сессия базы данных
-        
-    Returns:
-        Список кортежей (Company, Subscription)
-    """
-    result = await db.execute(
-        select(Company, Subscription)
-        .join(Subscription, Company.id == Subscription.company_id)
-        .join(Plan, Subscription.plan_id == Plan.id)
-        .where(
-            and_(
-                Company.is_active == True,
-                Company.admin_telegram_id.isnot(None),
-                Subscription.status.in_(["blocked", "expired"])
-            )
-        )
-    )
-    companies_with_subs = result.all()
+        session: Асинхронная сессия БД
+        company_id: ID компании
+        can_create: Может ли создавать записи
     
-    return companies_with_subs
-
-
-async def get_failed_payments(
-    db: AsyncSession
-) -> List[tuple]:
+    Returns:
+        None
     """
-    Получить неудачные платежи за последние 7 дней.
+    result = await session.execute(
+            select(Company).where(Company.id == company_id)
+        )
+    company = result.scalar_one_or_none()
+    
+    if company:
+        company.can_create_bookings = can_create
+        await session.commit()
+        
+        logger.info(f"Компания {company_id}: can_create_bookings обновлен на {can_create}")
+    else:
+        logger.warning(f"Компания {company_id} не найдена")
+
+
+def format_reminder_text(company_name: str, days_left: int, end_date: date) -> str:
+    """
+    Сформировать текст напоминания.
     
     Args:
-        db: Сессия базы данных
-        
-    Returns:
-        Список кортежей (Company, Payment)
-    """
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
-    result = await db.execute(
-        select(Company, Payment)
-        .join(Payment, Company.id == Payment.company_id)
-        .where(
-            and_(
-                Company.is_active == True,
-                Company.admin_telegram_id.isnot(None),
-                Payment.status == "failed",
-                Payment.created_at >= seven_days_ago
-            )
-        )
-    )
-    companies_with_payments = result.all()
+        company_name: Название компании
+        days_left: Дней до окончания
+        end_date: Дата окончания подписки
     
-    return companies_with_payments
+    Returns:
+        Текст напоминания
+    """
+    formatted_date = end_date.strftime("%d.%m.%Y")
+    
+    if days_left <= 0:
+        return f"""⚠️ **Напоминание о подписке**
+
+💼 Компания: {company_name}
+
+📅 Ваша подписка истекла!
+
+Дата окончания: {formatted_date}
+
+Пожалуйста, продлите подписку для продолжения работы сервиса.
+
+🔗 Для оплаты перейдите в админ-панель.
+"""
+    else:
+        return f"""📋 **Напоминание о подписке**
+
+💼 Компания: {company_name}
+
+⏰ Ваша подписка истекает через {days_left} дней!
+
+Дата окончания: {formatted_date}
+
+Пожалуйста, продлите подписку для продолжения работы сервиса.
+
+🔗 Для оплаты перейдите в админ-панель.
+"""
 
 
 # ==================== Celery задачи ====================
 
-@shared_task
-def send_reminder_7_days_before():
+@shared_task(name="tasks.send_reminder_7_days_before", bind=True)
+async def send_reminder_7_days_before():
     """
-    Отправить напоминания за 7 дней до окончания подписки.
+    Отправить напоминание за 7 дней до окончания подписки.
     
-    Запускается ежедневно в 9:00.
+    Процесс:
+    1. Получить список всех активных компаний
+    2. Для каждой компании проверить подписку
+    3. Если до окончания ≤ 7 дней → отправить напоминание
     """
-    logger.info("Начало задачи напоминаний за 7 дней")
+    logger.info("Запуск задачи: send_reminder_7_days_before")
     
     try:
-        asyncio.run(_send_reminder_7_days_before())
-        logger.info("Задача напоминаний за 7 дней завершена успешно")
+        # Получаем активные компании
+        companies = await get_active_companies()
+        
+        reminders_sent = 0
+        
+        async_session_maker = get_async_session_maker()
+        async with async_session_maker() as session:
+            for company in companies:
+                # Получаем текущую подписку
+                subscription = await get_company_subscription(session, company.id)
+                
+                if not subscription:
+                    logger.warning(f"У компании {company.name} нет подписки")
+                    continue
+                
+                # Проверяем дату окончания
+                if subscription.end_date:
+                    days_left = (subscription.end_date - date.today()).days
+                    
+                    # Отправляем напоминание, если осталось 7 дней или меньше
+                    if days_left <= 7 and days_left > 0:
+                        # Получаем bot manager для получения токена бота
+                        bot_manager = get_bot_manager()
+                        bot_status = await bot_manager.get_bot_status(company.id)
+                        
+                        if bot_status.get("status") == "running" and company.admin_telegram_id:
+                            try:
+                                # Получаем токен бота компании
+                                result = await session.execute(
+                                    select(Company).where(Company.id == company.id)
+                                )
+                                company_obj = result.scalar_one_or_none()
+                                
+                                if company_obj and company_obj.telegram_bot_token:
+                                    from aiogram import Bot
+                                    
+                                    bot = Bot(token=company_obj.telegram_bot_token)
+                                    
+                                    # Формируем текст напоминания
+                                    reminder_text = format_reminder_text(
+                                        company.name,
+                                        days_left,
+                                        subscription.end_date
+                                    )
+                                    
+                                    # Отправляем напоминание через Telegram Bot API
+                                    from web.backend.app.api.bot_manager import bot_manager
+                                    
+                                    # Получаем токен супер-админа
+                                    super_admin_token = None
+                                    
+                                    # Создаем запрос через HTTP к боту компании
+                                    import httpx
+                                    
+                                    response = await httpx.post(
+                                        f"http://localhost:8000/api/bot-manager/send-notification",
+                                        headers={
+                                            "Authorization": f"Bearer {super_admin_token}",
+                                            "Content-Type": "application/json"
+                                        },
+                                        json={
+                                            "company_id": company.id,
+                                            "message": reminder_text,
+                                            "target_chat_id": company.admin_telegram_id
+                                        }
+                                    )
+                                    
+                                    if response.status_code == 200:
+                                        logger.info(f"Напоминание отправлено компании {company.name} (за 7 дней)")
+                                        reminders_sent += 1
+                                    else:
+                                        logger.error(f"Ошибка отправки напоминания компании {company.name}: {response.status_code}")
+                            except Exception as e:
+                                logger.error(f"Ошибка отправки напоминания компании {company.name}: {e}")
+                        else:
+                            logger.warning(f"Бот компании {company.name} не запущен или нет admin_telegram_id")
+                    else:
+                        logger.info(f"У компании {company.name} подписка истекла или нет даты окончания")
+        
+        logger.info(f"Завершено: отправлено {reminders_sent} напоминаний из {len(companies)} компаний")
+        return f"Отправлено {reminders_sent} напоминаний"
+    
     except Exception as e:
-        logger.error(f"Ошибка в задаче напоминаний за 7 дней: {e}", exc_info=True)
+        logger.error(f"Ошибка в задаче send_reminder_7_days_before: {e}", exc_info=True)
         raise
 
 
-@shared_task
-def send_reminder_day_before():
+@shared_task(name="tasks.send_reminder_3_days_before", bind=True)
+async def send_reminder_3_days_before():
     """
-    Отправить напоминания за 1 день до окончания подписки.
+    Отправить напоминание за 3 дня до окончания подписки.
     
-    Запускается ежедневно в 9:00.
+    Процесс:
+    1. Получить список всех активных компаний
+    2. Для каждой компании проверить подписку
+    3. Если до окончания ≤ 3 дней → отправить напоминание
     """
-    logger.info("Начало задачи напоминаний за 1 день")
+    logger.info("Запуск задачи: send_reminder_3_days_before")
     
     try:
-        asyncio.run(_send_reminder_day_before())
-        logger.info("Задача напоминаний за 1 день завершена успешно")
+        # Получаем активные компании
+        companies = await get_active_companies()
+        
+        reminders_sent = 0
+        
+        async_session_maker = get_async_session_maker()
+        async with async_session_maker() as session:
+            for company in companies:
+                # Получаем текущую подписку
+                subscription = await get_company_subscription(session, company.id)
+                
+                if not subscription:
+                    logger.warning(f"У компании {company.name} нет подписки")
+                    continue
+                
+                # Проверяем дату окончания
+                if subscription.end_date:
+                    days_left = (subscription.end_date - date.today()).days
+                    
+                    # Отправляем напоминание, если осталось 3 дня или меньше
+                    if days_left <= 3 and days_left > 0:
+                        # Получаем bot manager
+                        bot_manager = get_bot_manager()
+                        bot_status = await bot_manager.get_bot_status(company.id)
+                        
+                        if bot_status.get("status") == "running" and company.admin_telegram_id:
+                            try:
+                                from aiogram import Bot
+                                
+                                # Получаем токен бота
+                                result = await session.execute(
+                                    select(Company).where(Company.id == company.id)
+                                )
+                                company_obj = result.scalar_one_or_none()
+                                
+                                if company_obj and company_obj.telegram_bot_token:
+                                    bot = Bot(token=company_obj.telegram_bot_token)
+                                    
+                                    # Формируем текст напоминания
+                                    reminder_text = format_reminder_text(
+                                        company.name,
+                                        days_left,
+                                        subscription.end_date
+                                    )
+                                    
+                                    # Отправляем через HTTP
+                                    import httpx
+                                    
+                                    response = await httpx.post(
+                                        f"http://localhost:8000/api/bot-manager/send-notification",
+                                        headers={
+                                            "Authorization": f"Bearer {None}",
+                                            "Content-Type": "application/json"
+                                        },
+                                        json={
+                                            "company_id": company.id,
+                                            "message": reminder_text,
+                                            "target_chat_id": company.admin_telegram_id
+                                        }
+                                    )
+                                    
+                                    if response.status_code == 200:
+                                        logger.info(f"Напоминание отправлено компании {company.name} (за 3 дня)")
+                                        reminders_sent += 1
+                                    else:
+                                        logger.error(f"Ошибка отправки напоминания компании {company.name}: {response.status_code}")
+                            except Exception as e:
+                                logger.error(f"Ошибка отправки напоминания компании {company.name}: {e}")
+                        else:
+                            logger.warning(f"Бот компании {company.name} не запущен или нет admin_telegram_id")
+                    else:
+                        logger.info(f"У компании {company.name} подписка истекла или нет даты окончания")
+        
+        logger.info(f"Завершено: отправлено {reminders_sent} напоминаний из {len(companies)} компаний")
+        return f"Отправлено {reminders_sent} напоминаний"
+    
     except Exception as e:
-        logger.error(f"Ошибка в задаче напоминаний за 1 день: {e}", exc_info=True)
+        logger.error(f"Ошибка в задаче send_reminder_3_days_before: {e}", exc_info=True)
         raise
 
 
-@shared_task
-def send_expired_notification():
+@shared_task(name="tasks.send_reminder_1_day_before", bind=True)
+async def send_reminder_1_day_before():
     """
-    Отправить уведомления об истекших подписках.
+    Отправить напоминание за 1 день до окончания подписки.
     
-    Запускается ежедневно в 9:00.
+    Процесс:
+    1. Получить список всех активных компаний
+    2. Для каждой компании проверить подписку
+    3. Если до окончания ≤ 1 день → отправить напоминание
     """
-    logger.info("Начало задачи уведомлений об истечении")
+    logger.info("Запуск задачи: send_reminder_1_day_before")
     
     try:
-        asyncio.run(_send_expired_notification())
-        logger.info("Задача уведомлений об истечении завершена успешно")
+        # Получаем активные компании
+        companies = await get_active_companies()
+        
+        reminders_sent = 0
+        
+        async_session_maker = get_async_session_maker()
+        async with async_session_maker() as session:
+            for company in companies:
+                # Получаем текущую подписку
+                subscription = await get_company_subscription(session, company.id)
+                
+                if not subscription:
+                    logger.warning(f"У компании {company.name} нет подписки")
+                    continue
+                
+                # Проверяем дату окончания
+                if subscription.end_date:
+                    days_left = (subscription.end_date - date.today()).days
+                    
+                    # Отправляем напоминание, если остался 1 день или сегодня
+                    if days_left <= 1:
+                        # Получаем bot manager
+                        bot_manager = get_bot_manager()
+                        bot_status = await bot_manager.get_bot_status(company.id)
+                        
+                        if bot_status.get("status") == "running" and company.admin_telegram_id:
+                            try:
+                                from aiogram import Bot
+                                
+                                # Получаем токен бота
+                                result = await session.execute(
+                                    select(Company).where(Company.id == company.id)
+                                )
+                                company_obj = result.scalar_one_or_none()
+                                
+                                if company_obj and company_obj.telegram_bot_token:
+                                    bot = Bot(token=company_obj.telegram_bot_token)
+                                    
+                                    # Формируем текст напоминания
+                                    reminder_text = f"""🚨 **Последний день!**
+
+💼 Компания: {company.name}
+
+📅 Ваша подписка истекает сегодня!
+
+Дата окончания: {subscription.end_date.strftime("%d.%m.%Y")}
+
+⚠️ Срочно продлите подписку!
+
+🔗 Для оплаты перейдите в админ-панель."""
+                                    
+                                    # Отправляем через HTTP
+                                    import httpx
+                                    
+                                    response = await httpx.post(
+                                        f"http://localhost:8000/api/bot-manager/send-notification",
+                                        headers={
+                                            "Authorization": f"Bearer {None}",
+                                            "Content-Type": "application/json"
+                                        },
+                                        json={
+                                            "company_id": company.id,
+                                            "message": reminder_text,
+                                            "target_chat_id": company.admin_telegram_id
+                                        }
+                                    )
+                                    
+                                    if response.status_code == 200:
+                                        logger.info(f"Напоминание отправлено компании {company.name} (за 1 день)")
+                                        reminders_sent += 1
+                                    else:
+                                        logger.error(f"Ошибка отправки напоминания компании {company.name}: {response.status_code}")
+                            except Exception as e:
+                                logger.error(f"Ошибка отправки напоминания компании {company.name}: {e}")
+                        else:
+                            logger.warning(f"Бот компании {company.name} не запущен или нет admin_telegram_id")
+                    else:
+                        logger.info(f"У компании {company.name} подписка истекла или нет даты окончания")
+        
+        logger.info(f"Завершено: отправлено {reminders_sent} напоминаний из {len(companies)} компаний")
+        return f"Отправлено {reminders_sent} напоминаний"
+    
     except Exception as e:
-        logger.error(f"Ошибка в задаче уведомлений об истечении: {e}", exc_info=True)
+        logger.error(f"Ошибка в задаче send_reminder_1_day_before: {e}", exc_info=True)
         raise
 
 
-@shared_task
-def send_inactive_subscription_notification():
+@shared_task(name="tasks.send_reminder_expiration", bind=True)
+async def send_reminder_expiration():
     """
-    Отправить уведомления о неактивных подписках.
+    Отправить напоминание об окончании подписки.
     
-    Запускается ежедневно в 9:00.
+    Процесс:
+    1. Получить список всех активных компаний
+    2. Для каждой компании проверить подписку
+    3. Если подписка истекла сегодня → отправить напоминание
     """
-    logger.info("Начало задачи уведомлений о неактивных подписках")
+    logger.info("Запуск задачи: send_reminder_expiration")
     
     try:
-        asyncio.run(_send_inactive_subscription_notification())
-        logger.info("Задача уведомлений о неактивных подписках завершена успешно")
+        # Получаем активные компании
+        companies = await get_active_companies()
+        
+        reminders_sent = 0
+        
+        async_session_maker = get_async_session_maker()
+        async with async_session_maker() as session:
+            for company in companies:
+                # Получаем текущую подписку
+                subscription = await get_company_subscription(session, company.id)
+                
+                if not subscription:
+                    logger.warning(f"У компании {company.name} нет подписки")
+                    continue
+                
+                # Проверяем дату окончания
+                if subscription.end_date:
+                    days_left = (subscription.end_date - date.today()).days
+                    
+                    # Отправляем напоминание, если подписка истекла сегодня
+                    if days_left <= 0:
+                        # Получаем bot manager
+                        bot_manager = get_bot_manager()
+                        bot_status = await bot_manager.get_bot_status(company.id)
+                        
+                        if bot_status.get("status") == "running" and company.admin_telegram_id:
+                            try:
+                                from aiogram import Bot
+                                
+                                # Получаем токен бота
+                                result = await session.execute(
+                                    select(Company).where(Company.id == company.id)
+                                )
+                                company_obj = result.scalar_one_or_none()
+                                
+                                if company_obj and company_obj.telegram_bot_token:
+                                    bot = Bot(token=company_obj.telegram_bot_token)
+                                    
+                                    # Формируем текст напоминания
+                                    reminder_text = f"""🚫 **Подписка истекла!**
+
+💼 Компания: {company.name}
+
+❌ Ваша подписка истекла!
+
+Дата окончания: {subscription.end_date.strftime("%d.%m.%Y")}
+
+⚠️ Сервис создания записей заблокирован!
+
+🔗 Для продления подписки перейдите в админ-панель:
+https://autoservice-saas.com/admin/billing"""
+                                    
+                                    # Отправляем через HTTP
+                                    import httpx
+                                    
+                                    response = await httpx.post(
+                                        f"http://localhost:8000/api/bot-manager/send-notification",
+                                        headers={
+                                            "Authorization": f"Bearer {None}",
+                                            "Content-Type": "application/json"
+                                        },
+                                        json={
+                                            "company_id": company.id,
+                                            "message": reminder_text,
+                                            "target_chat_id": company.admin_telegram_id
+                                        }
+                                    )
+                                    
+                                    if response.status_code == 200:
+                                        logger.info(f"Напоминание об окончании отправлено компании {company.name}")
+                                        reminders_sent += 1
+                                    else:
+                                        logger.error(f"Ошибка отправки напоминания компании {company.name}: {response.status_code}")
+                            except Exception as e:
+                                logger.error(f"Ошибка отправки напоминания компании {company.name}: {e}")
+                        else:
+                            logger.warning(f"Бот компании {company.name} не запущен или нет admin_telegram_id")
+                    else:
+                        logger.info(f"У компании {company.name} подписка неактивна или нет даты окончания")
+        
+        logger.info(f"Завершено: отправлено {reminders_sent} напоминаний из {len(companies)} компаний")
+        return f"Отправлено {reminders_sent} напоминаний"
+    
     except Exception as e:
-        logger.error(f"Ошибка в задаче уведомлений о неактивных подписках: {e}", exc_info=True)
+        logger.error(f"Ошибка в задаче send_reminder_expiration: {e}", exc_info=True)
         raise
 
 
-@shared_task
-def send_failed_payment_notification():
+@shared_task(name="tasks.send_payment_reminder", bind=True)
+async def send_payment_reminder():
     """
-    Отправить уведомления о неудачных платежах.
+    Отправить напоминание о неоплате (каждые 3 дня после окончания).
     
-    Запускается ежедневно в 9:00.
+    Процесс:
+    1. Получить список компаний с истекшей подпиской
+    2. Проверяем, прошло ли 3 дня с момента окончания
+    3. Если прошло → отправить напоминание о неоплате
     """
-    logger.info("Начало задачи уведомлений о неудачных платежах")
+    logger.info("Запуск задачи: send_payment_reminder")
     
     try:
-        asyncio.run(_send_failed_payment_notification())
-        logger.info("Задача уведомлений о неудачных платежах завершена успешно")
+        # Получаем активные компании
+        companies = await get_active_companies()
+        
+        reminders_sent = 0
+        
+        async_session_maker = get_async_session_maker()
+        async with async_session_maker() as session:
+            for company in companies:
+                # Получаем текущую подписку
+                subscription = await get_company_subscription(session, company.id)
+                
+                if not subscription:
+                    logger.warning(f"У компании {company.name} нет подписки")
+                    continue
+                
+                # Проверяем дату окончания
+                if subscription.end_date:
+                    days_passed = (date.today() - subscription.end_date).days
+                    
+                    # Отправляем напоминание, если прошло 3 дня после окончания
+                    # и если прошло 6, 9, 12 дней (кратные 3 дня)
+                    if days_passed >= 3 and days_passed % 3 == 0:
+                        # Получаем bot manager
+                        bot_manager = get_bot_manager()
+                        bot_status = await bot_manager.get_bot_status(company.id)
+                        
+                        if bot_status.get("status") == "running" and company.admin_telegram_id:
+                            try:
+                                from aiogram import Bot
+                                
+                                # Получаем токен бота
+                                result = await session.execute(
+                                    select(Company).where(Company.id == company.id)
+                                )
+                                company_obj = result.scalar_one_or_none()
+                                
+                                if company_obj and company_obj.telegram_bot_token:
+                                    bot = Bot(token=company_obj.telegram_bot_token)
+                                    
+                                    # Формируем текст напоминания
+                                    reminder_text = f"""📢 **Напоминание о неоплате**
+
+💼 Компания: {company.name}
+
+❌ Подписка истекла {days_passed} дней назад!
+
+Дата окончания: {subscription.end_date.strftime("%d.%m.%Y")}
+
+⚠️ Сервис создания записей заблокирован!
+
+🔗 Для продления подписки перейдите в админ-панель:
+https://autoservice-saas.com/admin/billing
+
+📞 Пожалуйста, продлите подписку как можно скорее!"""
+                                    
+                                    # Отправляем через HTTP
+                                    import httpx
+                                    
+                                    response = await httpx.post(
+                                        f"http://localhost:8000/api/bot-manager/send-notification",
+                                        headers={
+                                            "Authorization": f"Bearer {None}",
+                                            "Content-Type": "application/json"
+                                        },
+                                        json={
+                                            "company_id": company.id,
+                                            "message": reminder_text,
+                                            "target_chat_id": company.admin_telegram_id
+                                        }
+                                    )
+                                    
+                                    if response.status_code == 200:
+                                        logger.info(f"Напоминание о неоплате отправлено компании {company.name}")
+                                        reminders_sent += 1
+                                    else:
+                                        logger.error(f"Ошибка отправки напоминания компании {company.name}: {response.status_code}")
+                            except Exception as e:
+                                logger.error(f"Ошибка отправки напоминания компании {company.name}: {e}")
+                        else:
+                            logger.warning(f"Бот компании {company.name} не запущен или нет admin_telegram_id")
+                    else:
+                        logger.info(f"У компании {company.name} подписка неактивна или нет даты окончания")
+        
+        logger.info(f"Завершено: отправлено {reminders_sent} напоминаний из {len(companies)} компаний")
+        return f"Отправлено {reminders_sent} напоминаний"
+    
     except Exception as e:
-        logger.error(f"Ошибка в задаче уведомлений о неудачных платежах: {e}", exc_info=True)
+        logger.error(f"Ошибка в задаче send_payment_reminder: {e}", exc_info=True)
         raise
-
-
-# ==================== Асинхронные функции ====================
-
-async def _send_reminder_7_days_before():
-    """Внутренняя функция для отправки напоминаний за 7 дней"""
-    async for db in get_db():
-        companies_with_subs = await get_companies_with_expiring_subscriptions(db, 7)
-        
-        if not companies_with_subs:
-            logger.info("Нет компаний с подписками, истекающими через 7 дней")
-            return
-        
-        logger.info(f"Найдено {len(companies_with_subs)} компаний с подписками, истекающими через 7 дней")
-        bot = get_bot()
-        
-        for company, subscription, days_remaining in companies_with_subs:
-            try:
-                # Формируем сообщение
-                expiration_date = subscription.end_date.strftime("%d.%m.%Y")
-                plan_name = subscription.plan.name if subscription.plan else "Тариф"
-                plan_price = f"{subscription.plan.price_monthly} ₽/мес" if subscription.plan else ""
-                
-                text = f"""⚠️ Напоминание о подписке
-
-💼 Компания: {company.name}
-
-📋 Ваша подписка истекает через {days_remaining} дн.
-
-📊 Подписка:
-• План: {plan_name} ({plan_price})
-• Дата окончания: {expiration_date}
-
-💰 Для продления подписки, пожалуйста:
-1. Войдите в админ-панель
-2. Перейдите в раздел "Подписки"
-3. Выберите подходящий план
-4. Оплатите через Юкассу
-
-🔗 Админ-панель: https://autoservice-saas.com/super-admin/companies/{company.id}
-
-⚠️ Если подписка истечет, создание новых записей будет ограничено."""
-                
-                # Отправляем сообщение
-                await bot.send_message(
-                    chat_id=company.admin_telegram_id,
-                    text=text,
-                    parse_mode="HTML"
-                )
-                
-                logger.info(f"Напоминание за 7 дней отправлено компании {company.id}")
-                
-            except Exception as e:
-                logger.error(f"Ошибка отправки напоминания за 7 дней компании {company.id}: {e}")
-                
-                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
-                # notification = Notification(
-                #     user_id=None,  # Для SaaS не привязано к конкретному пользователю
-                #     booking_id=None,
-                #     notification_type="subscription_reminder_7d",
-                #     message=text,
-                #     is_sent=False,
-                #     error_message=str(e),
-                #     sent_at=datetime.utcnow()
-                # )
-                # db.add(notification)
-
-
-async def _send_reminder_day_before():
-    """Внутренняя функция для отправки напоминаний за 1 день"""
-    async for db in get_db():
-        companies_with_subs = await get_companies_with_expiring_subscriptions(db, 1)
-        
-        if not companies_with_subs:
-            logger.info("Нет компаний с подписками, истекающими через 1 день")
-            return
-        
-        logger.info(f"Найдено {len(companies_with_subs)} компаний с подписками, истекающими через 1 день")
-        bot = get_bot()
-        
-        for company, subscription, days_remaining in companies_with_subs:
-            try:
-                # Формируем сообщение
-                expiration_date = subscription.end_date.strftime("%d.%m.%Y")
-                plan_name = subscription.plan.name if subscription.plan else "Тариф"
-                
-                text = f"""🚨 Срочно! Подписка истекает завтра
-
-💼 Компания: {company.name}
-
-📋 Ваша подписка истекает {expiration_date}!
-
-📊 Подписка:
-• План: {plan_name}
-• Статус: {subscription.status}
-
-💰 Для продления подписки, пожалуйста:
-1. Войдите в админ-панель
-2. Перейдите в раздел "Подписки"
-3. Выберите подходящий план
-4. Оплатите через Юкассу
-
-🔗 Админ-панель: https://autoservice-saas.com/super-admin/companies/{company.id}
-
-⚠️ После истечения подписки функция создания записей будет отключена."""
-                
-                # Отправляем сообщение
-                await bot.send_message(
-                    chat_id=company.admin_telegram_id,
-                    text=text,
-                    parse_mode="HTML"
-                )
-                
-                logger.info(f"Напоминание за 1 день отправлено компании {company.id}")
-                
-            except Exception as e:
-                logger.error(f"Ошибка отправки напоминания за 1 день компании {company.id}: {e}")
-                
-                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
-                # notification = Notification(
-                #     user_id=None,
-                #     booking_id=None,
-                #     notification_type="subscription_reminder_1d",
-                #     message=text,
-                #     is_sent=False,
-                #     error_message=str(e),
-                #     sent_at=datetime.utcnow()
-                # )
-                # db.add(notification)
-
-
-async def _send_expired_notification():
-    """Внутренняя функция для отправки уведомлений об истечении"""
-    async for db in get_db():
-        companies_with_subs = await get_companies_with_expired_subscriptions(db)
-        
-        if not companies_with_subs:
-            logger.info("Нет компаний с истекшими подписками")
-            return
-        
-        logger.info(f"Найдено {len(companies_with_subs)} компаний с истекшими подписками")
-        bot = get_bot()
-        
-        for company, subscription, days_expired in companies_with_subs:
-            try:
-                # Формируем сообщение
-                expiration_date = subscription.end_date.strftime("%d.%m.%Y")
-                days_text = f"{days_expired} дн. назад"
-                plan_name = subscription.plan.name if subscription.plan else "Тариф"
-                
-                text = f"""❌ Подписка истекла
-
-💼 Компания: {company.name}
-
-⏰ Ваша подписка истекла {expiration_date} ({days_text})
-
-📊 Подписка:
-• План: {plan_name}
-• Статус: {subscription.status}
-
-⚠️ Функция создания записей отключена!
-
-💰 Для восстановления работы системы:
-1. Войдите в админ-панель
-2. Перейдите в раздел "Подписки"
-3. Выберите и оплатите план
-4. После оплаты подписка будет активирована
-
-🔗 Админ-панель: https://autoservice-saas.com/super-admin/companies/{company.id}
-
-📞 При возникновении вопросов, обратитесь в поддержку: support@autoservice-saas.com"""
-                
-                # Отправляем сообщение
-                await bot.send_message(
-                    chat_id=company.admin_telegram_id,
-                    text=text,
-                    parse_mode="HTML"
-                )
-                
-                logger.info(f"Уведомление об истечении отправлено компании {company.id}")
-                
-            except Exception as e:
-                logger.error(f"Ошибка отправки уведомления об истечении компании {company.id}: {e}")
-                
-                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
-                # notification = Notification(
-                #     user_id=None,
-                #     booking_id=None,
-                #     notification_type="subscription_expired",
-                #     message=text,
-                #     is_sent=False,
-                #     error_message=str(e),
-                #     sent_at=datetime.utcnow()
-                # )
-                # db.add(notification)
-
-
-async def _send_inactive_subscription_notification():
-    """Внутренняя функция для отправки уведомлений о неактивных подписках"""
-    async for db in get_db():
-        companies_with_subs = await get_companies_with_inactive_subscriptions(db)
-        
-        if not companies_with_subs:
-            logger.info("Нет компаний с неактивными подписками")
-            return
-        
-        logger.info(f"Найдено {len(companies_with_subs)} компаний с неактивными подписками")
-        bot = get_bot()
-        
-        for company, subscription in companies_with_subs:
-            try:
-                # Формируем сообщение
-                plan_name = subscription.plan.name if subscription.plan else "Тариф"
-                status_text = "заблокирована" if subscription.status == "blocked" else "истекла"
-                
-                text = f"""⚠️ Неактивная подписка
-
-💼 Компания: {company.name}
-
-📊 Ваша подписка {status_text}:
-• План: {plan_name}
-• Статус: {subscription.status}
-• Дата окончания: {subscription.end_date.strftime("%d.%m.%Y") if subscription.end_date else "Не указана"}
-
-⚠️ Функция создания записей может быть ограничена!
-
-💰 Для восстановления работы системы:
-1. Войдите в админ-панель
-2. Перейдите в раздел "Подписки"
-3. Выберите и оплатите план
-4. После оплаты подписка будет активирована
-
-🔗 Админ-панель: https://autoservice-saas.com/super-admin/companies/{company.id}
-
-📞 При возникновении вопросов, обратитесь в поддержку: support@autoservice-saas.com"""
-                
-                # Отправляем сообщение
-                await bot.send_message(
-                    chat_id=company.admin_telegram_id,
-                    text=text,
-                    parse_mode="HTML"
-                )
-                
-                logger.info(f"Уведомление о неактивной подписке отправлено компании {company.id}")
-                
-            except Exception as e:
-                logger.error(f"Ошибка отправки уведомления о неактивной подписке компании {company.id}: {e}")
-                
-                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
-                # notification = Notification(
-                #     user_id=None,
-                #     booking_id=None,
-                #     notification_type="subscription_inactive",
-                #     message=text,
-                #     is_sent=False,
-                #     error_message=str(e),
-                #     sent_at=datetime.utcnow()
-                # )
-                # db.add(notification)
-
-
-async def _send_failed_payment_notification():
-    """Внутренняя функция для отправки уведомлений о неудачных платежах"""
-    async for db in get_db():
-        companies_with_payments = await get_failed_payments(db)
-        
-        if not companies_with_payments:
-            logger.info("Нет неудачных платежей за последние 7 дней")
-            return
-        
-        logger.info(f"Найдено {len(companies_with_payments)} неудачных платежей")
-        bot = get_bot()
-        
-        for company, payment in companies_with_payments:
-            try:
-                # Формируем сообщение
-                payment_date = payment.created_at.strftime("%d.%m.%Y %H:%M")
-                amount_text = f"{payment.amount} ₽" if payment.amount else "0 ₽"
-                
-                text = f"""💰 Платеж не прошел
-
-💼 Компания: {company.name}
-
-💳 Детали платежа:
-• Дата: {payment_date}
-• Сумма: {amount_text}
-• Статус: {payment.status}
-• Описание: {payment.description or "Не указано"}
-
-⚠️ Платеж не был успешным!
-
-💰 Возможные причины:
-1. Недостаточно средств на карте
-2. Ошибка в платежной системе
-3. Отказ банка
-4. Технические проблемы
-
-🔧 Для повторной оплаты:
-1. Войдите в админ-панель
-2. Перейдите в раздел "Подписки" или "Платежи"
-3. Нажмите "Повторить платеж"
-
-🔗 Админ-панель: https://autoservice-saas.com/super-admin/companies/{company.id}
-
-📞 При возникновении вопросов, обратитесь в поддержку: support@autoservice-saas.com"""
-                
-                # Отправляем сообщение
-                await bot.send_message(
-                    chat_id=company.admin_telegram_id,
-                    text=text,
-                    parse_mode="HTML"
-                )
-                
-                logger.info(f"Уведомление о неудачном платеже отправлено компании {company.id}")
-                
-            except Exception as e:
-                logger.error(f"Ошибка отправки уведомления о неудачном платеже компании {company.id}: {e}")
-                
-                # TODO: Сохранять в историю уведомлений (требуется модель Notification)
-                # notification = Notification(
-                #     user_id=None,
-                #     booking_id=None,
-                #     notification_type="payment_failed",
-                #     message=text,
-                #     is_sent=False,
-                #     error_message=str(e),
-                #     sent_at=datetime.utcnow()
-                # )
-                # db.add(notification)
-

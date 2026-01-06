@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     YOOKASSA_RETURN_URL: str = os.getenv("YOOKASSA_RETURN_URL", "https://autoservice-saas.com/success")
     YOOKASSA_WEBHOOK_URL: str = os.getenv("YOOKASSA_WEBHOOK_URL", "https://autoservice-saas.com/api/public/webhooks/yookassa")
     
+    # Redis (Celery брокер)
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "redis")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
+    
     class Config:
         env_file = ".env"
 
