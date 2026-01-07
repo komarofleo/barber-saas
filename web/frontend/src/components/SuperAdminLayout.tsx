@@ -144,11 +144,6 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
       {/* Основной контент */}
       <div className="main-content">
-        {/* Верхний бар - минималистичный (без дублирующей надписи) */}
-        <header className="top-bar">
-          {/* Надпись убрана, так как она дублирует название на странице */}
-        </header>
-
         {/* Контент страницы */}
         <main className="page-content">
           <SidebarContext.Provider value={{ sidebarOpen, toggleSidebar }}>

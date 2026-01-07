@@ -269,6 +269,40 @@ async def cmd_companies(message: types.Message, state: FSMContext):
         await state.update_data({"companies_page": page})
 
 
+@router.callback_query(F.data.startswith("refresh_"))
+async def callback_refresh_company(callback: CallbackQuery, state: FSMContext):
+    """
+    Обновить данные конкретной компании.
+    """
+    company_id = int(callback.data.split("_")[1])
+    await callback.answer("🔄 Обновление...")
+    
+    # Вызываем обработчик деталей компании
+    callback.data = f"company_{company_id}"
+    await callback_company_details(callback, state)
+
+
+@router.callback_query(F.data == "companies")
+async def callback_companies(callback: CallbackQuery, state: FSMContext):
+    """
+    Вернуться к списку компаний.
+    """
+    await callback.answer("📋 Список компаний")
+    
+    # Вызываем команду "Компании"
+    message = types.Message(
+        message_id=callback.message.message_id,
+        date=callback.message.date,
+        chat=callback.message.chat,
+        from_user=callback.from_user,
+        text="🏢 Компании",
+        content_type="text"
+    )
+    # Устанавливаем bot для отправки сообщений
+    message.bot = callback.bot
+    await cmd_companies(message, state)
+
+
 @router.callback_query(F.data.startswith("company_"))
 async def callback_company_details(callback: CallbackQuery, state: FSMContext):
     """
@@ -305,14 +339,21 @@ async def callback_company_details(callback: CallbackQuery, state: FSMContext):
             f"📱 Телефон: {company.phone or 'Не указан'}\n\n"
         )
         
-        if company.subscription:
-            sub = company.subscription
+        # Получаем активную подписку
+        active_subscription = None
+        if company.subscriptions:
+            for sub in company.subscriptions:
+                if sub.status == "active":
+                    active_subscription = sub
+                    break
+        
+        if active_subscription:
             response_text += (
                 f"📊 **Подписка:**\n"
-                f"Статус: {sub.status}\n"
-                f"План: {sub.plan.name if sub.plan else 'Неизвестно'}\n"
-                f"Начало: {sub.start_date.strftime('%d.%m.%Y')}\n"
-                f"Окончание: {sub.end_date.strftime('%d.%m.%Y') if sub.end_date else 'Неактивна'}\n"
+                f"Статус: {active_subscription.status}\n"
+                f"План: {active_subscription.plan.name if active_subscription.plan else 'Неизвестно'}\n"
+                f"Начало: {active_subscription.start_date.strftime('%d.%m.%Y')}\n"
+                f"Окончание: {active_subscription.end_date.strftime('%d.%m.%Y') if active_subscription.end_date else 'Неактивна'}\n"
             )
         else:
             response_text += "📊 **Подписка:** ❌ Неактивна\n"
@@ -339,34 +380,47 @@ async def callback_company_details(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "refresh")
-async def callback_refresh(callback: CallbackQuery):
+async def callback_refresh(callback: CallbackQuery, state: FSMContext):
     """
-    Обновить данные.
+    Обновить данные списка компаний.
     """
     await callback.answer("🔄 Обновление...")
     
-    # Возвращаем к текущему меню
-    state_data = await dp.storage.get_data(callback.from_user.id)
-    current_state = state_data.get("state", "")
-    
-    if current_state == "companies":
-        # Вызываем команду "Компании"
-        cmd = cmd_companies
-        message = callback.message
-        await cmd(message, await dp.current_state(callback.from_user.id))
+    # Вызываем команду "Компании" для обновления списка
+    # Используем callback.message как Message объект
+    message = types.Message(
+        message_id=callback.message.message_id,
+        date=callback.message.date,
+        chat=callback.message.chat,
+        from_user=callback.from_user,
+        text="🏢 Компании",
+        content_type="text"
+    )
+    # Устанавливаем bot для отправки сообщений
+    message.bot = callback.bot
+    await cmd_companies(message, state)
 
 
 @router.callback_query(F.data == "main")
-async def callback_main(callback: CallbackQuery):
+async def callback_main(callback: CallbackQuery, state: FSMContext):
     """
     Вернуться в главное меню.
     """
     await callback.answer("🏠 Главное меню")
     
     # Показываем главное меню
-    cmd = cmd_start
-    message = callback.message
-    await cmd(message, await dp.current_state(callback.from_user.id))
+    # Используем callback.message как Message объект
+    message = types.Message(
+        message_id=callback.message.message_id,
+        date=callback.message.date,
+        chat=callback.message.chat,
+        from_user=callback.from_user,
+        text="/start",
+        content_type="text"
+    )
+    # Устанавливаем bot для отправки сообщений
+    message.bot = callback.bot
+    await cmd_start(message, state)
 
 
 @router.callback_query(F.data.startswith("next"))

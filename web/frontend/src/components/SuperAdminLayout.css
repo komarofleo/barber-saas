@@ -24,7 +24,8 @@
   margin: 0 !important;
   padding: 0 !important;
   z-index: 1000;
-  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.1);
+  box-shadow: none;
+  border: none;
 }
 
 .sidebar.open {
@@ -190,6 +191,9 @@
   padding-top: 0 !important;
   min-height: 100vh;
   transition: margin-left 0.3s ease;
+  border: none;
+  border-top: none;
+  box-shadow: none;
 }
 
 .sidebar.closed ~ .main-content {
@@ -200,9 +204,14 @@
   left: 0; /* Когда sidebar закрыт, top-bar на весь экран */
 }
 
-/* Top Bar - скрыт, так как синий хедер страницы идет до самого верха */
+/* Top Bar - полностью удален, не используется */
 .top-bar {
-  display: none;
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
 }
 
 .sidebar-toggle {
