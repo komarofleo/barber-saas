@@ -7,11 +7,15 @@ from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from dataclasses import dataclass
+import bcrypt
+import logging
 
 from app.database import get_db
 from app.schemas.auth import LoginRequest, TokenResponse, UserResponse
 from app.config import settings
 from shared.database.models import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -111,8 +115,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         hash_bytes = hashed_password.encode('utf-8')
         return bcrypt.checkpw(password_bytes, hash_bytes)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Ошибка при проверке пароля: {e}")
         return False
 
@@ -136,9 +138,7 @@ async def login(
     Returns:
         Токен доступа и данные пользователя
     """
-    import logging
     import re
-    logger = logging.getLogger(__name__)
     
     username = form_data.username
     password = form_data.password
