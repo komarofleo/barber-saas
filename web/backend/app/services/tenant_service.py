@@ -275,8 +275,7 @@ class TenantService:
             await session.execute(
                 text(f'SET search_path TO "{schema_name}", public')
             )
-            # Коммитим установку search_path
-            await session.commit()
+            # НЕ коммитим здесь - контекстный менеджер сам управляет транзакцией
             yield session
 
 

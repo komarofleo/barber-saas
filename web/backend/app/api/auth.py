@@ -51,13 +51,48 @@ async def get_current_user(
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         user_id_str: str = payload.get("sub")
+        token_type: Optional[str] = payload.get("type")
+        company_id: Optional[int] = payload.get("company_id")
+        
         if user_id_str is None:
             raise credentials_exception
         user_id: int = int(user_id_str)
     except (JWTError, ValueError):
         raise credentials_exception
     
-    # Используем raw SQL с явным указанием схемы public
+    # Если это company_admin, ищем компанию, а не пользователя
+    if token_type == "company_admin" and company_id:
+        logger.info(f"Получение данных компании {company_id} для company_admin")
+        result = await db.execute(
+            text("""
+                SELECT id, admin_telegram_id, name, email, phone,
+                       true, false, false, NOW(), NOW()
+                FROM public.companies 
+                WHERE id = :company_id AND is_active = true
+            """),
+            {"company_id": company_id}
+        )
+        row = result.fetchone()
+        if row is None:
+            logger.warning(f"Компания {company_id} не найдена или неактивна")
+            raise credentials_exception
+        
+        # Создаем UserData из данных компании
+        return UserData(
+            id=row[0],  # company_id
+            telegram_id=row[1] or 0,  # admin_telegram_id
+            username=row[2],  # company name
+            first_name=row[2],  # company name
+            last_name=None,
+            phone=row[4],  # company phone
+            is_admin=True,  # company admin всегда админ
+            is_master=False,
+            is_blocked=False,
+            created_at=row[8],
+            updated_at=row[9],
+        )
+    
+    # Обычный пользователь - ищем в public.users
     result = await db.execute(
         text("""
             SELECT id, telegram_id, username, first_name, last_name, phone, 
