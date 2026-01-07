@@ -11,10 +11,12 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Company, Payment, PaymentStatus, superAdminApi, ManualPaymentRequest } from '../api/superAdmin'
+import { useSidebar } from '../components/SuperAdminLayout'
 import './SuperAdminPayments.css'
 
 const SuperAdminPayments: React.FC = () => {
   const navigate = useNavigate()
+  const { sidebarOpen, toggleSidebar } = useSidebar()
 
   // UI состояния
   const [payments, setPayments] = useState<Payment[]>([])
@@ -194,10 +196,19 @@ const SuperAdminPayments: React.FC = () => {
       <div className="payments-container">
         {/* Заголовок страницы */}
         <div className="page-header">
-          <h1 className="page-title">💰 Управление платежами</h1>
-          <p className="page-subtitle">
-            Просмотр и управление всеми платежами в системе
-          </p>
+          <button
+            className="dashboard-menu-toggle"
+            onClick={toggleSidebar}
+            title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
+          >
+            {sidebarOpen ? '◀' : '▶'}
+          </button>
+          <div className="header-content">
+            <h1 className="page-title">💰 Управление платежами</h1>
+            <p className="page-subtitle">
+              Просмотр и управление всеми платежами в системе
+            </p>
+          </div>
         </div>
 
         {/* Кнопка создания платежа - перемещена из header внутрь контента */}

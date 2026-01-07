@@ -144,11 +144,9 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
       {/* Основной контент */}
       <div className="main-content">
-        {/* Верхний бар - минималистичный (без кнопки меню) */}
+        {/* Верхний бар - минималистичный (без дублирующей надписи) */}
         <header className="top-bar">
-          <div className="top-bar-title">
-            {navItems.find(item => location.pathname.startsWith(item.path))?.label || 'AutoService SaaS'}
-          </div>
+          {/* Надпись убрана, так как она дублирует название на странице */}
         </header>
 
         {/* Контент страницы */}

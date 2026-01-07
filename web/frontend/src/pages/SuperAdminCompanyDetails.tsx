@@ -12,12 +12,14 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Company, Subscription, Payment, SubscriptionStatus, PaymentStatus, superAdminApi } from '../api/superAdmin'
+import { useSidebar } from '../components/SuperAdminLayout'
 import './SuperAdminCompanies.css'
 
 const SuperAdminCompanyDetails: React.FC = () => {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const companyId = parseInt(id)
+  const { sidebarOpen, toggleSidebar } = useSidebar()
   
   // UI состояния
   const [company, setCompany] = useState<Company | null>(null)
@@ -245,9 +247,18 @@ const SuperAdminCompanyDetails: React.FC = () => {
       
       {/* Заголовок страницы */}
       <div className="company-details-header">
-        <h1 className="page-title">
-          🏢 {company.name}
-        </h1>
+        <button
+          className="dashboard-menu-toggle"
+          onClick={toggleSidebar}
+          title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
+        >
+          {sidebarOpen ? '◀' : '▶'}
+        </button>
+        <div className="header-content">
+          <h1 className="page-title">
+            🏢 {company.name}
+          </h1>
+        </div>
         <p className="company-email">{company.email}</p>
         <p className="company-phone">
           {company.phone || 'Телефон не указан'}

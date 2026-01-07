@@ -11,10 +11,12 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Company, Subscription, SubscriptionStatus, superAdminApi } from '../api/superAdmin'
+import { useSidebar } from '../components/SuperAdminLayout'
 import './SuperAdminSubscriptions.css'
 
 const SuperAdminSubscriptions: React.FC = () => {
   const navigate = useNavigate()
+  const { sidebarOpen, toggleSidebar } = useSidebar()
 
   // UI состояния
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
@@ -163,10 +165,19 @@ const SuperAdminSubscriptions: React.FC = () => {
       <div className="subscriptions-container">
         {/* Заголовок страницы */}
         <div className="page-header">
-          <h1 className="page-title">📊 Управление подписками</h1>
-          <p className="page-subtitle">
-            Просмотр и управление всеми подписками компаний
-          </p>
+          <button
+            className="dashboard-menu-toggle"
+            onClick={toggleSidebar}
+            title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
+          >
+            {sidebarOpen ? '◀' : '▶'}
+          </button>
+          <div className="header-content">
+            <h1 className="page-title">📊 Управление подписками</h1>
+            <p className="page-subtitle">
+              Просмотр и управление всеми подписками компаний
+            </p>
+          </div>
         </div>
 
         {/* Панель фильтров */}
