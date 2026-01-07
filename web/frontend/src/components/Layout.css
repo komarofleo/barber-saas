@@ -1,6 +1,7 @@
 .layout {
   display: flex;
   min-height: 100vh;
+  width: 100%;
 }
 
 .main-content {
@@ -9,14 +10,17 @@
   padding: 20px;
   background: #f5f7fa;
   min-height: 100vh;
-  width: calc(100% - 250px);
+  width: calc(100vw - 250px);
+  max-width: none;
   position: relative;
   box-sizing: border-box;
+  overflow-x: auto;
 }
 
 @media (max-width: 768px) {
   .main-content {
     margin-left: 0;
+    width: 100vw;
     padding: 15px;
   }
 }

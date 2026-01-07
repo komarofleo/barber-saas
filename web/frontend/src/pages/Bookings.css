@@ -1,7 +1,7 @@
 .bookings-page {
   width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
 }
 
 .page-header {
@@ -15,7 +15,7 @@
   left: -20px;
   right: -20px;
   width: calc(100% + 40px);
-  max-width: 1600px;
+  max-width: none;
   box-sizing: border-box;
 }
 
