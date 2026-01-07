@@ -123,7 +123,6 @@ async def cmd_stats(message: types.Message, state: FSMContext):
             return
         
         # Количество компаний
-        # Количество компаний
         companies_count = await session.scalar(
             select(func.count(Company.id)).where(Company.is_active == True)
         ) or 0
@@ -145,13 +144,17 @@ async def cmd_stats(message: types.Message, state: FSMContext):
         
         # Общая сумма платежей за месяц
         from sqlalchemy import extract
+        current_year = datetime.utcnow().year
+        current_month = datetime.utcnow().month
         total_revenue = await session.scalar(
-            select(func.coalesce(
-                extract("year", Payment.created_at) == datetime.utcnow().year,
-                extract("month", Payment.created_at) == datetime.utcnow().month,
-                sum(Payment.amount).label("revenue")
-            ))
-            .where(Payment.status == "succeeded")
+            select(func.coalesce(func.sum(Payment.amount), 0))
+            .where(
+                and_(
+                    Payment.status == "succeeded",
+                    extract("year", Payment.created_at) == current_year,
+                    extract("month", Payment.created_at) == current_month
+                )
+            )
         ) or Decimal("0.00")
         
         # Количество компаний с истекшей подпиской
@@ -172,10 +175,10 @@ async def cmd_stats(message: types.Message, state: FSMContext):
             f"  • Истекает скоро (≤7 дней): {expiring_soon}\n"
             f"  • Истекших подписок: {expired_subs}\n\n"
             f"💰 **Платежи (текущий месяц):**\n"
-            f"  • Общая выручка: {total_revenue:.2f} RUB\n\n"
+            f"  • Общая выручка: {float(total_revenue):.2f} RUB\n\n"
         )
         
-        await message.answer(stats_text)
+        await message.answer(stats_text, parse_mode="Markdown")
 
 
 @router.message(F.text == "🏢 Компании")
@@ -188,7 +191,7 @@ async def cmd_companies(message: types.Message, state: FSMContext):
     
     async with async_session_maker() as session:
         query = select(Company).options(
-            selectinload(Company.subscription)
+            selectinload(Company.subscriptions)
         ).where(Company.is_active == True)
         
         total = await session.scalar(
@@ -215,16 +218,24 @@ async def cmd_companies(message: types.Message, state: FSMContext):
             sub_end_date = None
             days_left = None
             
-            if company.subscription:
-                sub = company.subscription
-                if sub.status == "active":
-                    days_left = (sub.end_date - date.today()).days
-                    if days_left > 7:
-                        sub_status = "✅ Активна"
-                        sub_end_date = sub.end_date.strftime("%d.%m.%Y")
-                    else:
-                        sub_status = "⚠️ Истекает"
-                        sub_end_date = sub.end_date.strftime("%d.%m.%Y")
+            # Получаем активную подписку
+            active_subscription = None
+            if company.subscriptions:
+                # Ищем активную подписку
+                for sub in company.subscriptions:
+                    if sub.status == "active":
+                        active_subscription = sub
+                        break
+            
+            if active_subscription:
+                days_left = (active_subscription.end_date - date.today()).days
+                if days_left > 7:
+                    sub_status = "✅ Активна"
+                    sub_end_date = active_subscription.end_date.strftime("%d.%m.%Y")
+                else:
+                    sub_status = "⚠️ Истекает"
+                    sub_end_date = active_subscription.end_date.strftime("%d.%m.%Y")
+                    if days_left < 0:
                         days_left = -days_left
             
             company_card = (
@@ -252,7 +263,7 @@ async def cmd_companies(message: types.Message, state: FSMContext):
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main")],
         ])
         
-        await message.answer(response_text, reply_markup=keyboard)
+        await message.answer(response_text, reply_markup=keyboard, parse_mode="Markdown")
         
         # Сохраняем страницу
         await state.update_data({"companies_page": page})
