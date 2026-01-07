@@ -21,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "web" / "backend"))
 from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, types, F, Router
-from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -95,22 +94,35 @@ async def cmd_start(message: types.Message, state: FSMContext):
             input_field_placeholder="Выберите действие..."
         )
         
+        await state.set_state(SuperAdminState.MAIN)
+        
         await message.answer(
             f"👋 Добро пожаловать, {super_admin.username}!\n\n"
             "🤖 Панель супер-админа AutoService SaaS\n\n"
             "Выберите действие из меню ниже:",
             reply_markup=main_menu
         )
-        
-        await state.set_state(SuperAdminState.MAIN)
 
 
-@router.message(State(SuperAdminState.MAIN), F.text == "📊 Статистика")
+@router.message(F.text == "📊 Статистика")
 async def cmd_stats(message: types.Message, state: FSMContext):
     """
     Показать статистику по всем компаниям.
     """
+    user_id = message.from_user.id
+    
+    # Проверяем права супер-админа
     async with async_session_maker() as session:
+        result = await session.execute(
+            select(SuperAdmin).where(SuperAdmin.telegram_id == user_id)
+        )
+        super_admin = result.scalar_one_or_none()
+        
+        if not super_admin:
+            await message.answer("❌ У вас нет прав доступа к боту супер-админа.")
+            return
+        
+        # Количество компаний
         # Количество компаний
         companies_count = await session.scalar(
             select(func.count(Company.id)).where(Company.is_active == True)
@@ -166,7 +178,7 @@ async def cmd_stats(message: types.Message, state: FSMContext):
         await message.answer(stats_text)
 
 
-@router.message(State(SuperAdminState.MAIN), F.text == "🏢 Компании")
+@router.message(F.text == "🏢 Компании")
 async def cmd_companies(message: types.Message, state: FSMContext):
     """
     Показать список компаний.
@@ -381,7 +393,7 @@ async def callback_edit_company(callback: CallbackQuery):
     )
 
 
-@router.message(State(SuperAdminState.MAIN), F.text == "⚠️ Напоминания")
+@router.message(F.text == "⚠️ Напоминания")
 async def cmd_send_expiration_reminders(message: types.Message, state: FSMContext):
     """
     Отправить напоминания компаниям об истекающих подписках.
@@ -443,7 +455,7 @@ async def cmd_send_expiration_reminders(message: types.Message, state: FSMContex
         )
 
 
-@router.message(State(SuperAdminState.MAIN), F.text == "🔧 Настройки")
+@router.message(F.text == "⚙️ Настройки")
 async def cmd_settings(message: types.Message, state: FSMContext):
     """
     Настройки бота супер-админа.
@@ -459,6 +471,90 @@ async def cmd_settings(message: types.Message, state: FSMContext):
     ])
     
     await message.answer("⚙️ Функция настроек в разработке...", reply_markup=keyboard)
+
+
+@router.message(F.text == "💳 Подписки")
+async def cmd_subscriptions(message: types.Message, state: FSMContext):
+    """
+    Показать список подписок.
+    """
+    async with async_session_maker() as session:
+        # Получаем все подписки
+        result = await session.execute(
+            select(Subscription, Company)
+            .join(Company, Subscription.company_id == Company.id)
+            .where(Company.is_active == True)
+            .order_by(Subscription.end_date.desc())
+            .limit(10)
+        )
+        subscriptions = result.all()
+        
+        if not subscriptions:
+            await message.answer("📋 Подписок не найдено.")
+            return
+        
+        text = "💳 **Список подписок:**\n\n"
+        for sub, company in subscriptions:
+            status_emoji = "✅" if sub.status == "active" else "❌"
+            text += (
+                f"{status_emoji} **{company.name}**\n"
+                f"  • Статус: {sub.status}\n"
+                f"  • Окончание: {sub.end_date}\n"
+                f"  • План: {sub.plan_id}\n\n"
+            )
+        
+        await message.answer(text, parse_mode="Markdown")
+
+
+@router.message(F.text == "💰 Платежи")
+async def cmd_payments(message: types.Message, state: FSMContext):
+    """
+    Показать список платежей.
+    """
+    async with async_session_maker() as session:
+        # Получаем последние платежи
+        result = await session.execute(
+            select(Payment, Company)
+            .join(Company, Payment.company_id == Company.id)
+            .order_by(Payment.created_at.desc())
+            .limit(10)
+        )
+        payments = result.all()
+        
+        if not payments:
+            await message.answer("💰 Платежей не найдено.")
+            return
+        
+        text = "💰 **Последние платежи:**\n\n"
+        for payment, company in payments:
+            status_emoji = "✅" if payment.status == "succeeded" else "❌"
+            text += (
+                f"{status_emoji} **{company.name}**\n"
+                f"  • Сумма: {payment.amount} RUB\n"
+                f"  • Статус: {payment.status}\n"
+                f"  • Дата: {payment.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+            )
+        
+        await message.answer(text, parse_mode="Markdown")
+
+
+@router.message(F.text == "❓ Помощь")
+async def cmd_help_menu(message: types.Message, state: FSMContext):
+    """
+    Показать справку по командам меню.
+    """
+    help_text = (
+        "❓ **Справка по командам:**\n\n"
+        "📊 **Статистика** - показать статистику по всем компаниям\n\n"
+        "🏢 **Компании** - показать список компаний\n\n"
+        "💳 **Подписки** - показать список подписок\n\n"
+        "💰 **Платежи** - показать список платежей\n\n"
+        "⚙️ **Настройки** - настройки бота\n\n"
+        "❓ **Помощь** - показать эту справку\n\n"
+        "Используйте кнопки меню для навигации."
+    )
+    
+    await message.answer(help_text, parse_mode="Markdown")
 
 
 @router.callback_query(F.data == "restart_bot")

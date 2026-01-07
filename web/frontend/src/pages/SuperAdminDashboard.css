@@ -3,7 +3,10 @@
 .super-admin-dashboard {
   min-height: 100vh;
   background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%);
-  padding: 0;
+  padding: 0 !important;
+  margin: 0 !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
 }
 
 .dashboard-container {
@@ -32,16 +35,17 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin: 0;
+  margin: 0 !important;
   padding: 30px 40px;
   background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%);
-  position: fixed;
-  top: 0;
+  position: fixed !important;
+  top: 0 !important;
   left: 280px;
   right: 0;
   z-index: 999;
   width: calc(100% - 280px);
   transition: left 0.3s ease, width 0.3s ease;
+  transform: translateY(0) !important;
 }
 
 /* Когда sidebar закрыт - через селектор layout */
