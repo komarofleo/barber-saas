@@ -10,7 +10,7 @@ from datetime import datetime, time
 from typing import Optional, Annotated
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_, func, text
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
