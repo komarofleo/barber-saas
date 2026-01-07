@@ -32,8 +32,8 @@ apiClient.interceptors.response.use(
       const publicPaths = ['/login', '/register', '/payment/success', '/payment/error', '/super-admin/login']
       const isSuperAdminPath = currentPath.startsWith('/super-admin')
       
-      // Перенаправляем только если мы НЕ на публичных страницах и НЕ на страницах супер-админа
-      if (!publicPaths.includes(currentPath) && !isSuperAdminPath) {
+      // Перенаправляем только если мы НЕ на публичных страницах
+      if (!publicPaths.includes(currentPath)) {
         window.location.href = '/login'
       }
     }

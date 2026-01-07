@@ -198,28 +198,12 @@ function Sidebar() {
             </Link>
           </li>
           
-          {/* Панель супер-админа (всегда видна, но требует авторизации) */}
+          {/* Панель супер-админа (всегда видна) */}
           <li>
-            <a
-              href="/super-admin/login"
-              className="nav-link"
-              onClick={(e) => {
-                // Проверяем, есть ли токен супер-админа
-                const superAdminToken = localStorage.getItem('super_admin_token')
-                if (!superAdminToken) {
-                  // Если нет токена, переходим на страницу входа
-                  e.preventDefault()
-                  window.location.href = '/super-admin/login'
-                } else {
-                  // Если есть токен, переходим на дашборд
-                  e.preventDefault()
-                  window.location.href = '/super-admin/dashboard'
-                }
-              }}
-            >
+            <Link to="/super-admin/login" className="nav-link">
               <span className="nav-icon">👑</span>
               <span className="nav-label">Панель супер-админа</span>
-            </a>
+            </Link>
           </li>
         </ul>
       </nav>
