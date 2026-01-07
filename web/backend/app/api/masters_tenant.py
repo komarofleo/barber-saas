@@ -62,13 +62,9 @@ async def get_masters(
     query = select(Master)
     
     # Фильтры
-    conditions = []
     if search:
         search_term = f"%{search}%"
         query = query.where(Master.full_name.ilike(search_term))
-    
-    if is_active is not None:
-        query = query.where(Master.is_active == is_active)
     
     # Подсчет общего количества
     count_query = select(func.count(Master.id))
