@@ -43,6 +43,12 @@ function Login() {
       }
     } catch (err: any) {
       console.error('Login error:', err)
+      console.error('Error response:', err.response)
+      console.error('Error status:', err.response?.status)
+      console.error('Error data:', err.response?.data)
+      console.error('Error detail:', err.response?.data?.detail)
+      
+      // Извлекаем сообщение об ошибке из ответа
       const errorMessage = err.response?.data?.detail || err.message || 'Ошибка входа'
       setError(errorMessage)
     } finally {

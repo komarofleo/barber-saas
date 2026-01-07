@@ -95,79 +95,270 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Проверить пароль с помощью bcrypt.
+    
+    Args:
+        plain_password: Введенный пароль
+        hashed_password: Хешированный пароль из БД
+        
+    Returns:
+        True, если пароли совпадают, иначе False
+    """
+    try:
+        password_bytes = plain_password.encode('utf-8')
+        hash_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(password_bytes, hash_bytes)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка при проверке пароля: {e}")
+        return False
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: AsyncSession = Depends(get_db)
 ):
-    """Вход в систему"""
-    try:
-        telegram_id = int(form_data.username)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password"
+    """
+    Универсальный вход в систему.
+    
+    Поддерживает два способа входа:
+    1. По Email и паролю (для владельцев компаний)
+    2. По Telegram ID и паролю (для владельцев компаний)
+    
+    Args:
+        form_data: username (Email или Telegram ID) и password
+        db: Асинхронная сессия БД
+        
+    Returns:
+        Токен доступа и данные пользователя
+    """
+    import logging
+    import re
+    logger = logging.getLogger(__name__)
+    
+    username = form_data.username
+    password = form_data.password
+    
+    logger.info(f"Попытка входа: {username}")
+    
+    # Определяем, что ввели: Email или Telegram ID
+    is_email = re.match(r'^[^@]+@[^@]+\.[^@]+$', username) is not None
+    
+    if is_email:
+        # Пытаемся войти как владелец компании по Email
+        logger.info(f"Попытка входа владельца компании по email: {username}")
+        
+        # Ищем компанию по email в public схеме
+        result = await db.execute(
+            text("""
+                SELECT id, name, email, phone, telegram_bot_token, admin_telegram_id,
+                       subscription_status, can_create_bookings, subscription_end_date,
+                       password_hash, is_active
+                FROM public.companies
+                WHERE email = :email
+            """),
+            {"email": username}
+        )
+        row = result.fetchone()
+        
+        if not row:
+            logger.warning(f"Компания с email {username} не найдена")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Неверный email или пароль"
+            )
+        
+        # Распаковываем данные
+        company_id = row[0]
+        company_name = row[1]
+        company_email = row[2]
+        phone = row[3]
+        admin_telegram_id = row[5]
+        subscription_status = row[6]
+        can_create_bookings = row[7]
+        subscription_end_date = row[8]
+        password_hash = row[9]
+        is_active = row[10]
+        
+        # Проверяем, активна ли компания
+        if not is_active:
+            logger.warning(f"Компания {company_id} неактивна")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Компания неактивна. Обратитесь в поддержку."
+            )
+        
+        # Проверяем пароль
+        if not password_hash:
+            logger.warning(f"Пароль не установлен для компании {company_id}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Неверный email или пароль"
+            )
+        
+        # Проверяем пароль через verify_password
+        is_password_valid = verify_password(password, password_hash)
+        
+        if not is_password_valid:
+            logger.warning(f"Неверный пароль для email {username}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Неверный логин или пароль"
+            )
+        
+        # Проверяем статус подписки
+        if subscription_status != "active":
+            logger.warning(f"Подписка компании {company_id} неактивна: {subscription_status}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Подписка неактивна. Статус: {subscription_status}"
+            )
+        
+        # Создаем токен с company_id
+        access_token_expires = timedelta(hours=24)
+        access_token = create_access_token(
+            data={
+                "sub": str(company_id),
+                "type": "company_admin",
+                "company_id": company_id
+            }, 
+            expires_delta=access_token_expires
+        )
+        
+        logger.info(f"Владелец компании {company_id} ({username}) успешно вошел в систему")
+        
+        return TokenResponse(
+            access_token=access_token,
+            token_type="bearer",
+            user={
+                "id": company_id,
+                "company_id": company_id,
+                "telegram_id": admin_telegram_id,
+                "username": company_name,
+                "first_name": company_name,
+                "last_name": None,
+                "is_admin": True,
+                "is_master": False,
+                "email": company_email,
+                "phone": phone,
+                "subscription_status": subscription_status,
+                "can_create_bookings": can_create_bookings,
+                "subscription_end_date": subscription_end_date.isoformat() if subscription_end_date else None,
+            }
         )
     
-    # Ищем пользователя по telegram_id в public схеме
-    result = await db.execute(
-        text("""
-            SELECT id, telegram_id, username, first_name, last_name, phone, 
-                   is_admin, is_master, is_blocked, created_at, updated_at
-            FROM public.users 
-            WHERE telegram_id = :telegram_id
-        """),
-        {"telegram_id": telegram_id}
-    )
-    row = result.fetchone()
-    
-    if not row:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password"
+    else:
+        # Пытаемся войти по Telegram ID (владелец компании)
+        try:
+            telegram_id = int(username)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Неверный логин или пароль"
+            )
+        
+        logger.info(f"Попытка входа владельца компании по telegram_id: {telegram_id}")
+        
+        # Ищем компанию по telegram_id в public схеме
+        result = await db.execute(
+            text("""
+                SELECT id, name, email, phone, telegram_bot_token, admin_telegram_id,
+                       subscription_status, can_create_bookings, subscription_end_date,
+                       password_hash, is_active
+                FROM public.companies
+                WHERE admin_telegram_id = :telegram_id
+            """),
+            {"telegram_id": telegram_id}
         )
-    
-    # Создаем простой объект UserData
-    user = UserData(
-        id=row[0],
-        telegram_id=row[1],
-        username=row[2],
-        first_name=row[3],
-        last_name=row[4],
-        phone=row[5],
-        is_admin=row[6],
-        is_master=row[7],
-        is_blocked=row[8],
-        created_at=row[9],
-        updated_at=row[10],
-    )
-    
-    # Простая проверка: пароль = telegram_id (для начальной версии)
-    if form_data.password != str(user.telegram_id):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password"
+        row = result.fetchone()
+        
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Неверный логин или пароль"
+            )
+        
+        # Распаковываем данные
+        company_id = row[0]
+        company_name = row[1]
+        company_email = row[2]
+        phone = row[3]
+        admin_telegram_id = row[5]
+        subscription_status = row[6]
+        can_create_bookings = row[7]
+        subscription_end_date = row[8]
+        password_hash = row[9]
+        is_active = row[10]
+        
+        # Проверяем, активна ли компания
+        if not is_active:
+            logger.warning(f"Компания {company_id} неактивна")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Компания неактивна. Обратитесь в поддержку."
+            )
+        
+        # Проверяем пароль через verify_password
+        if not password_hash:
+            logger.warning(f"Пароль не установлен для компании {company_id}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Неверный логин или пароль"
+            )
+        
+        is_password_valid = verify_password(password, password_hash)
+        
+        if not is_password_valid:
+            logger.warning(f"Неверный пароль для telegram_id {telegram_id} (компания {company_id})")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Неверный логин или пароль"
+            )
+        
+        # Проверяем статус подписки
+        if subscription_status != "active":
+            logger.warning(f"Подписка компании {company_id} неактивна: {subscription_status}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Подписка неактивна. Статус: {subscription_status}"
+            )
+        
+        # Создаем токен с company_id
+        access_token_expires = timedelta(hours=24)
+        access_token = create_access_token(
+            data={
+                "sub": str(company_id),
+                "type": "company_admin",
+                "company_id": company_id
+            }, 
+            expires_delta=access_token_expires
         )
-    
-    # Создаем токен
-    access_token_expires = timedelta(hours=24)
-    access_token = create_access_token(
-        data={"sub": str(user.id)}, expires_delta=access_token_expires
-    )
-    
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        user={
-            "id": user.id,
-            "telegram_id": user.telegram_id,
-            "username": user.username,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "is_admin": user.is_admin,
-            "is_master": user.is_master or False,
-        }
-    )
+        
+        logger.info(f"Владелец компании {company_id} ({telegram_id}) успешно вошел в систему по Telegram ID")
+        
+        return TokenResponse(
+            access_token=access_token,
+            token_type="bearer",
+            user={
+                "id": company_id,
+                "company_id": company_id,
+                "telegram_id": admin_telegram_id,
+                "username": company_name,
+                "first_name": company_name,
+                "last_name": None,
+                "is_admin": True,
+                "is_master": False,
+                "email": company_email,
+                "phone": phone,
+                "subscription_status": subscription_status,
+                "can_create_bookings": can_create_bookings,
+                "subscription_end_date": subscription_end_date.isoformat() if subscription_end_date else None,
+            }
+        )
 
 
 @router.get("/me", response_model=UserResponse)
@@ -188,4 +379,3 @@ async def get_me(current_user: UserData = Depends(get_current_user)):
 async def logout():
     """Выход из системы"""
     return {"message": "Successfully logged out"}
-
