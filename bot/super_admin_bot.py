@@ -311,9 +311,11 @@ async def callback_company_details(callback: CallbackQuery, state: FSMContext):
     company_id = int(callback.data.split("_")[1])
     
     async with async_session_maker() as session:
-        company = await session.execute(
+        result = await session.execute(
             select(Company)
-            .options(selectinload(Company.subscription))
+            .options(
+                selectinload(Company.subscriptions).selectinload(Subscription.plan)
+            )
             .where(Company.id == company_id)
         )
         company = result.scalar_one_or_none()

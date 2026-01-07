@@ -43,6 +43,9 @@
   width: calc(100% - 280px);
   transition: left 0.3s ease, width 0.3s ease;
   transform: translateY(0) !important;
+  border: none !important;
+  border-top: none !important;
+  box-shadow: none !important;
 }
 
 /* Когда sidebar закрыт - через селектор layout */

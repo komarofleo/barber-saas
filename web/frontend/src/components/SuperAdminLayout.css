@@ -42,7 +42,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: none;
+  border-top: none;
 }
 
 .logo-icon {
