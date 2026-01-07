@@ -1,4 +1,25 @@
 /* Используем общие стили из других страниц */
+.page-container {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: -20px -20px 30px -20px;
+  padding: 30px 20px 30px 40px;
+  background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%) !important;
+  position: relative;
+  left: -20px;
+  right: -20px;
+  width: calc(100vw - 250px);
+  max-width: none;
+  box-sizing: border-box;
+}
+
 .promocodes-filters {
   margin-bottom: 20px;
 }
