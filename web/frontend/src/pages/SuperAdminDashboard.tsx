@@ -12,10 +12,12 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DashboardStats } from '../api/superAdmin'
+import { useSidebar } from '../components/SuperAdminLayout'
 import './SuperAdminDashboard.css'
 
 const SuperAdminDashboard: React.FC = () => {
   const navigate = useNavigate()
+  const { sidebarOpen, toggleSidebar } = useSidebar()
 
   // UI состояния
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -91,6 +93,13 @@ const SuperAdminDashboard: React.FC = () => {
       <div className="dashboard-container">
         {/* Заголовок страницы - элегантный и минималистичный */}
         <div className="dashboard-header">
+          <button
+            className="dashboard-menu-toggle"
+            onClick={toggleSidebar}
+            title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
+          >
+            {sidebarOpen ? '◀' : '▶'}
+          </button>
           <div className="header-content">
             <h1 className="dashboard-title">Дашборд</h1>
             <p className="dashboard-subtitle">

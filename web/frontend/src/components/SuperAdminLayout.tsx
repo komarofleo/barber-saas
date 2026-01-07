@@ -8,9 +8,25 @@
  * - Контент страницы
  */
 
-import React, { useState } from 'react'
+import React, { useState, createContext, useContext } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import './SuperAdminLayout.css'
+
+// Контекст для управления sidebar
+interface SidebarContextType {
+  sidebarOpen: boolean
+  toggleSidebar: () => void
+}
+
+const SidebarContext = createContext<SidebarContextType | undefined>(undefined)
+
+export const useSidebar = () => {
+  const context = useContext(SidebarContext)
+  if (!context) {
+    throw new Error('useSidebar must be used within SuperAdminLayout')
+  }
+  return context
+}
 
 const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate()
@@ -128,16 +144,8 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
       {/* Основной контент */}
       <div className="main-content">
-        {/* Верхний бар - минималистичный */}
+        {/* Верхний бар - минималистичный (без кнопки меню) */}
         <header className="top-bar">
-          <button
-            className="sidebar-toggle"
-            onClick={toggleSidebar}
-            title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
-          >
-            {sidebarOpen ? '◀' : '▶'}
-          </button>
-
           <div className="top-bar-title">
             {navItems.find(item => location.pathname.startsWith(item.path))?.label || 'AutoService SaaS'}
           </div>
@@ -145,7 +153,9 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
         {/* Контент страницы */}
         <main className="page-content">
-          {children}
+          <SidebarContext.Provider value={{ sidebarOpen, toggleSidebar }}>
+            {children}
+          </SidebarContext.Provider>
         </main>
 
         {/* Footer */}
