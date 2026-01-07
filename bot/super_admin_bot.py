@@ -10,8 +10,13 @@ Telegram бот супер-админа.
 """
 import logging
 import os
+import sys
 from datetime import datetime, date, timedelta
 from decimal import Decimal
+from pathlib import Path
+
+# Добавляем путь к web/backend для импорта app
+sys.path.insert(0, str(Path(__file__).parent.parent / "web" / "backend"))
 
 from dotenv import load_dotenv
 
@@ -19,14 +24,16 @@ from aiogram import Bot, Dispatcher, types, F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-from sqlalchemy import text
+from sqlalchemy import text, select, func, and_, extract
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker, AsyncEngine
+from sqlalchemy.orm import selectinload
 
 from shared.database.models import Base
 from app.models.public_models import Company, Subscription, Payment, Plan, SuperAdmin
-from app.database import get_async_session_maker
+from app.database import async_session_maker
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -48,11 +55,10 @@ dp = Dispatcher(storage=MemoryStorage())
 router = Router()
 
 
-# Инициализация FSM
-dp.update_filter.outer_middleware(SuperAdminState())
+# Инициализация FSM (убрана неправильная строка)
 
 
-@router.message(F.text == "/start", State(SuperAdminState.MAIN))
+@router.message(F.text == "/start")
 async def cmd_start(message: types.Message, state: FSMContext):
     """
     Начало работы с ботом супер-админа.
@@ -60,7 +66,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
     # Проверяем, является ли пользователь супер-админом
-    async with get_async_session_maker() as session:
+    async with async_session_maker() as session:
         result = await session.execute(
             select(SuperAdmin).where(SuperAdmin.telegram_id == user_id)
         )
@@ -86,7 +92,7 @@ async def cmd_stats(message: types.Message, state: FSMContext):
     """
     Показать статистику по всем компаниям.
     """
-    async with get_async_session_maker() as session:
+    async with async_session_maker() as session:
         # Количество компаний
         companies_count = await session.scalar(
             select(func.count(Company.id)).where(Company.is_active == True)
@@ -150,7 +156,7 @@ async def cmd_companies(message: types.Message, state: FSMContext):
     page = 1
     page_size = 10
     
-    async with get_async_session_maker() as session:
+    async with async_session_maker() as session:
         query = select(Company).options(
             selectinload(Company.subscription)
         ).where(Company.is_active == True)
@@ -211,9 +217,9 @@ async def cmd_companies(message: types.Message, state: FSMContext):
         
         # Кнопка возврата
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton("📊 Статистика", callback_data="stats"),
-            [InlineKeyboardButton("🔄 Обновить", callback_data="refresh"),
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="main"),
+            [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
+            [InlineKeyboardButton("🔄 Обновить", callback_data="refresh")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main")],
         ])
         
         await message.answer(response_text, reply_markup=keyboard)
@@ -229,7 +235,7 @@ async def callback_company_details(callback: CallbackQuery, state: FSMContext):
     """
     company_id = int(callback.data.split("_")[1])
     
-    async with get_async_session_maker() as session:
+    async with async_session_maker() as session:
         company = await session.execute(
             select(Company)
             .options(selectinload(Company.subscription))
@@ -350,8 +356,8 @@ async def callback_edit_company(callback: CallbackQuery):
     """
     company_id = int(callback.data.split("_")[1])
     
-    await callback.message.answer("📝 Редактирование компании...\n"
     await callback.message.answer(
+        "📝 Редактирование компании...\n"
         "⚠️  Функция редактирования пока не реализована.\n"
         "Пожалуйста, используйте SQL напрямую."
     )
@@ -362,7 +368,7 @@ async def cmd_send_expiration_reminders(message: types.Message, state: FSMContex
     """
     Отправить напоминания компаниям об истекающих подписках.
     """
-    async with get_async_session_maker() as session:
+    async with async_session_maker() as session:
         # Находим компании с истекающей подпиской
         companies = await session.execute(
             select(Company)
@@ -482,39 +488,30 @@ async def main():
     """
     logger.info("Запуск бота супер-админа...")
     
-    # Инициализируем БД
-    from shared.database import engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.commit()
-    
-    logger.info("БД инициализирована")
-    
-    # Удаляем webhook, если есть
+    # Инициализируем БД (используем get_async_session_maker из app.database)
+    # БД уже инициализирована через миграции, поэтому просто проверяем подключение
     try:
-        await bot.delete_webhook()
-        logger.info("Webhook удален")
+        async with async_session_maker() as session:
+            await session.execute(text("SELECT 1"))
+        logger.info("Подключение к БД успешно")
+    except Exception as e:
+        logger.error(f"Ошибка подключения к БД: {e}")
+        raise
+    
+    # Удаляем webhook, если есть (используем polling вместо webhook)
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Webhook удален, используем polling")
     except Exception as e:
         logger.warning(f"Не удалось удалить webhook: {e}")
-    
-    # Устанавливаем webhook
-    webhook_url = f"{settings.YOOKASSA_WEBHOOK_URL}/super-admin"
-    
-    try:
-        await bot.set_webhook(
-            url=webhook_url,
-            allowed_updates=["message", "callback_query"],
-            drop_pending_updates=True
-        )
-        logger.info(f"Webhook установлен: {webhook_url}")
-    except Exception as e:
-        logger.error(f"Ошибка установки webhook: {e}")
     
     logger.info("Запуск поллинга...")
     await dp.start_polling(bot, skip_updates=True)
 
 
 if __name__ == "__main__":
+    import asyncio
+    
     load_dotenv()
     
     # Проверяем наличие токена
@@ -524,5 +521,5 @@ if __name__ == "__main__":
         exit(1)
     
     logger.info("Запуск бота супер-админа...")
-    main()
+    asyncio.run(main())
 
