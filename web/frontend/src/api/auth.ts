@@ -15,6 +15,11 @@ export interface User {
   last_name: string | null
   is_admin: boolean
   is_master: boolean
+  email?: string | null
+  phone?: string | null
+  subscription_status?: string | null
+  can_create_bookings?: boolean | null
+  subscription_end_date?: string | null
 }
 
 export interface LoginResponse {

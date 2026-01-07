@@ -83,18 +83,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Получаем информацию о подписке только если не на страницах супер-админа
         if (!currentPath.startsWith('/super-admin')) {
-          refreshSubscription()
+          // Для company_admin подписка уже есть в user объекте
+          if (parsedUser.company_id) {
+            if (parsedUser.subscription_end_date) {
+              const endDate = new Date(parsedUser.subscription_end_date)
+              const today = new Date()
+              const daysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+              
+              const subscriptionInfo: SubscriptionInfo = {
+                id: parsedUser.company_id,
+                company_id: parsedUser.company_id,
+                plan_name: 'Business',
+                status: (parsedUser.subscription_status || 'active') as 'active' | 'expired' | 'blocked' | 'cancelled',
+                start_date: new Date().toISOString().split('T')[0],
+                end_date: parsedUser.subscription_end_date,
+                can_create_bookings: parsedUser.can_create_bookings ?? true,
+                days_remaining: daysRemaining > 0 ? daysRemaining : 0
+              }
+              setSubscription(subscriptionInfo)
+            }
+            setSubscriptionLoading(false)
+          } else {
+            // Обычный пользователь - получаем подписку через API
+            refreshSubscription()
+          }
           
           // Проверяем токен только если не на страницах супер-админа
-          authApi.getMe().catch(() => {
-            localStorage.removeItem('token')
-            localStorage.removeItem('user')
-            setUser(null)
-          })
+          // Для company_admin не вызываем getMe, так как это не работает
+          if (!parsedUser.company_id) {
+            authApi.getMe().catch(() => {
+              localStorage.removeItem('token')
+              localStorage.removeItem('user')
+              setUser(null)
+            })
+          }
         }
+        setLoading(false)
       } catch (e) {
         localStorage.removeItem('token')
         localStorage.removeItem('user')
+        setLoading(false)
+        setSubscriptionLoading(false)
       }
     } else {
       setLoading(false)
@@ -118,8 +147,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Синхронно обновляем state
       setUser(response.user)
       
-      // Получаем информацию о подписке
-      await refreshSubscription()
+      // Для company_admin подписка уже есть в user объекте
+      // Не нужно вызывать refreshSubscription для них
+      if (response.user.company_id) {
+        // Это company_admin - подписка уже в user объекте
+        if (response.user.subscription_end_date) {
+          const endDate = new Date(response.user.subscription_end_date)
+          const today = new Date()
+          const daysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+          
+          const subscriptionInfo: SubscriptionInfo = {
+            id: response.user.company_id,
+            company_id: response.user.company_id,
+            plan_name: 'Business', // Можно получить из user если есть
+            status: (response.user.subscription_status || 'active') as 'active' | 'expired' | 'blocked' | 'cancelled',
+            start_date: new Date().toISOString().split('T')[0],
+            end_date: response.user.subscription_end_date,
+            can_create_bookings: response.user.can_create_bookings ?? true,
+            days_remaining: daysRemaining > 0 ? daysRemaining : 0
+          }
+          setSubscription(subscriptionInfo)
+        }
+        setSubscriptionLoading(false)
+      } else {
+        // Обычный пользователь - получаем подписку через API
+        await refreshSubscription()
+      }
       
       console.log('Login successful, user set:', response.user)
       
