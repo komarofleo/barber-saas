@@ -9,8 +9,9 @@
   padding: 20px;
   background: #f5f7fa;
   min-height: 100vh;
-  width: calc(100% - 280px);
+  width: calc(100% - 250px);
   position: relative;
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
