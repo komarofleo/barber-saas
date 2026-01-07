@@ -45,19 +45,18 @@ async def get_bookings(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать записи")
     
-    # TODO: В будущем company_id будет извлекаться из JWT токена через middleware
-    # На данный момент используем company_id из query параметра
-    # Для публичных API company_id может быть None
+    # Получаем tenant сессию для компании
     tenant_session = None
     if company_id:
         # Используем tenant сессию для конкретной компании
         tenant_service = get_tenant_service()
         async for session in tenant_service.get_tenant_session(company_id):
             tenant_session = session
+            # Устанавливаем search_path явно
+            await session.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
             break
     else:
-        # Временное решение: используем обычную сессию для публичного API
-        # В будущем здесь будет проверка JWT токена
+        # Используем обычную сессию для публичного API
         tenant_session = db
     
     query = select(Booking).options(
@@ -81,10 +80,6 @@ async def get_bookings(
         conditions.append(Booking.service_id == service_id)
     if post_id:
         conditions.append(Booking.post_id == post_id)
-    
-    # Убеждаемся, что search_path установлен перед выполнением запросов (если используется tenant сессия)
-    if company_id:
-        await tenant_session.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     # Создаем отдельный запрос для подсчета (без selectinload)
     count_query = select(func.count(Booking.id))

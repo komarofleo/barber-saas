@@ -47,10 +47,13 @@ class TenantService:
             )
             
             # Создаем engine без echo для production
+            # Увеличиваем размер пула для предотвращения переполнения
             self._engine = create_async_engine(
                 db_url,
                 echo=False,
                 pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=20,
             )
         
         return self._engine
