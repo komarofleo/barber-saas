@@ -42,4 +42,13 @@ class ClientCreateRequest(BaseModel):
     car_number: Optional[str] = None
 
 
+class ClientUpdateRequest(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    car_brand: Optional[str] = None
+    car_model: Optional[str] = None
+    car_year: Optional[int] = None
+    car_number: Optional[str] = None
+
+
 

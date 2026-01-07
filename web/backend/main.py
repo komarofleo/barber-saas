@@ -5,7 +5,9 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
-from app.api import auth, bookings, users, services, masters, posts, clients, settings as settings_api, blocks, promocodes, promotions, broadcasts, export, subscription
+from app.api import auth, bookings, users, services, blocks, promocodes, promotions, broadcasts, export, subscription
+from app.api import masters_tenant, posts_tenant, clients_tenant, services_tenant
+from app.api import settings as settings_api
 from app.middleware.tenant import TenantMiddleware
 
 # ✅ Исправлена архитектура моделей - используем полноценные API
@@ -32,10 +34,10 @@ app.include_router(auth.router)
 app.include_router(subscription.router)
 app.include_router(bookings.router)
 app.include_router(users.router)
-app.include_router(services.router)
-app.include_router(masters.router)
-app.include_router(posts.router)
-app.include_router(clients.router)
+app.include_router(services_tenant.router)
+app.include_router(masters_tenant.router)
+app.include_router(posts_tenant.router)
+app.include_router(clients_tenant.router)
 app.include_router(settings_api.router)
 app.include_router(blocks.router)
 app.include_router(promocodes.router)
