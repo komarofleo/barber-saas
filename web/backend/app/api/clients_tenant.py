@@ -103,19 +103,15 @@ async def get_clients(
         
         client_dict = {
             "id": client.id,
+            "user_id": client.user_id,
             "full_name": client.full_name,
             "phone": client.phone,
-            "email": client.email,
             "car_brand": client.car_brand,
             "car_model": client.car_model,
             "car_number": client.car_number,
-            "telegram_id": None,
-            "first_name": None,
-            "last_name": None,
-            "booking_count": booking_count or 0,
+            "total_visits": booking_count or 0,
             "created_at": client.created_at,
             "updated_at": client.updated_at,
-            "company_id": company_id,
         }
         
         # Добавляем данные пользователя, если есть
