@@ -183,6 +183,7 @@
   margin-left: 280px;
   min-height: 100vh;
   transition: margin-left 0.3s ease;
+  padding-top: 72px; /* Компенсация высоты top-bar */
 }
 
 .sidebar.closed ~ .main-content {
@@ -199,9 +200,12 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   backdrop-filter: blur(10px);
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 100;
+  width: 100%;
 }
 
 .sidebar-toggle {
