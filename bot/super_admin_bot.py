@@ -25,7 +25,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 
 from sqlalchemy import text, select, func, and_, extract
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker, AsyncEngine
@@ -36,6 +36,10 @@ from app.models.public_models import Company, Subscription, Payment, Plan, Super
 from app.database import async_session_maker
 from app.config import settings
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # FSM для состояния бота
@@ -78,10 +82,24 @@ async def cmd_start(message: types.Message, state: FSMContext):
             )
             return
         
+        # Создаем главное меню с кнопками
+        main_menu = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="📊 Статистика")],
+                [KeyboardButton(text="🏢 Компании")],
+                [KeyboardButton(text="💳 Подписки")],
+                [KeyboardButton(text="💰 Платежи")],
+                [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="❓ Помощь")],
+            ],
+            resize_keyboard=True,
+            input_field_placeholder="Выберите действие..."
+        )
+        
         await message.answer(
             f"👋 Добро пожаловать, {super_admin.username}!\n\n"
             "🤖 Панель супер-админа AutoService SaaS\n\n"
-            "Используйте команды для управления системой."
+            "Выберите действие из меню ниже:",
+            reply_markup=main_menu
         )
         
         await state.set_state(SuperAdminState.MAIN)
@@ -500,13 +518,51 @@ async def main():
     
     # Удаляем webhook, если есть (используем polling вместо webhook)
     try:
-        await bot.delete_webhook(drop_pending_updates=True)
-        logger.info("Webhook удален, используем polling")
+        # Удаляем webhook с drop_pending_updates для очистки очереди
+        result = await bot.delete_webhook(drop_pending_updates=True)
+        logger.info(f"Webhook удален, используем polling. Результат: {result}")
+        
+        # Ждем немного, чтобы Telegram обработал удаление webhook
+        import asyncio
+        await asyncio.sleep(5)  # Увеличиваем задержку
+        
+        # Проверяем, что webhook действительно удален
+        webhook_info = await bot.get_webhook_info()
+        if webhook_info.url:
+            logger.warning(f"Webhook все еще активен: {webhook_info.url}, пытаемся удалить еще раз...")
+            await bot.delete_webhook(drop_pending_updates=True)
+            await asyncio.sleep(3)
     except Exception as e:
         logger.warning(f"Не удалось удалить webhook: {e}")
     
     logger.info("Запуск поллинга...")
-    await dp.start_polling(bot, skip_updates=True)
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            await dp.start_polling(bot, skip_updates=True, allowed_updates=["message", "callback_query"])
+            break  # Если успешно запустился, выходим из цикла
+        except Exception as e:
+            error_str = str(e)
+            if "Conflict" in error_str or "terminated by other getUpdates" in error_str:
+                retry_count += 1
+                if retry_count < max_retries:
+                    wait_time = 10 * retry_count
+                    logger.warning(f"Конфликт с другим экземпляром бота. Ждем {wait_time} секунд и пробуем снова (попытка {retry_count}/{max_retries})...")
+                    await asyncio.sleep(wait_time)
+                    # Удаляем webhook еще раз перед повторной попыткой
+                    try:
+                        await bot.delete_webhook(drop_pending_updates=True)
+                        await asyncio.sleep(2)
+                    except:
+                        pass
+                else:
+                    logger.error(f"Не удалось запустить бот после {max_retries} попыток. Возможно, другой экземпляр бота все еще работает.")
+                    raise
+            else:
+                logger.error(f"Ошибка при запуске поллинга: {e}", exc_info=True)
+                raise
 
 
 if __name__ == "__main__":

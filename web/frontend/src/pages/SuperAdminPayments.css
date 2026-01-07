@@ -4,12 +4,14 @@
   background: #f5f7fa;
   min-height: 100vh;
   padding: 32px;
-  padding-top: 100px; /* Компенсация высоты синего хедера */
+  padding-top: 0;
+  margin-top: 0;
 }
 
 .payments-container {
   max-width: 1600px;
   margin: 0 auto;
+  margin-top: 100px; /* Компенсация высоты фиксированного хедера */
   animation: fadeIn 0.3s ease;
 }
 
@@ -29,14 +31,14 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  margin: -32px -32px 24px -32px;
+  margin: 0;
   padding: 30px 40px;
   background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%);
   position: fixed;
   top: 0;
   left: 280px;
   right: 0;
-  z-index: 99;
+  z-index: 999;
   width: calc(100% - 280px);
   transition: left 0.3s ease, width 0.3s ease;
 }
@@ -664,13 +666,17 @@
 @media (max-width: 1024px) {
   .super-admin-payments-page {
     padding: 24px 16px;
-    padding-top: 100px;
+    padding-top: 0;
+  }
+
+  .payments-container {
+    margin-top: 100px;
   }
 
   .page-header {
     left: 240px;
     width: calc(100% - 240px);
-    margin: -24px -16px 24px -16px;
+    margin: 0;
     padding: 24px 30px;
     flex-direction: column;
     align-items: flex-start;
@@ -697,13 +703,17 @@
 @media (max-width: 768px) {
   .super-admin-payments-page {
     padding: 20px 12px;
-    padding-top: 100px;
+    padding-top: 0;
+  }
+
+  .payments-container {
+    margin-top: 100px;
   }
 
   .page-header {
     left: 0;
     width: 100%;
-    margin: -20px -12px 20px -12px;
+    margin: 0;
     padding: 20px 24px;
   }
 
@@ -744,13 +754,17 @@
 @media (max-width: 480px) {
   .super-admin-payments-page {
     padding: 16px 8px;
-    padding-top: 100px;
+    padding-top: 0;
+  }
+
+  .payments-container {
+    margin-top: 100px;
   }
 
   .page-header {
     left: 0;
     width: 100%;
-    margin: -16px -8px 16px -8px;
+    margin: 0;
     padding: 16px 20px;
   }
 

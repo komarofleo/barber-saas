@@ -4,6 +4,9 @@
   display: flex;
   min-height: 100vh;
   background: #f5f7fa;
+  margin: 0;
+  padding: 0;
+  position: relative;
 }
 
 /* Sidebar */
@@ -234,6 +237,7 @@
 .page-content {
   flex: 1;
   padding: 0;
+  margin: 0;
   overflow-y: auto;
   background: transparent;
 }
