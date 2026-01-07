@@ -29,7 +29,39 @@
   margin-bottom: 30px;
 }
 
-.form-group {
+.login-type-toggle {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 30px;
+}
+
+.login-type-toggle button {
+  flex: 1;
+  padding: 10px;
+  background: #f0f0f0;
+  color: #666;
+  border: none;
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.login-type-toggle button.active {
+  background: #667eea;
+  color: white;
+}
+
+.login-type-toggle button:hover:not(:disabled) {
+  background: #5568d3;
+}
+
+.login-type-toggle button:not(.active):hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.form-group input {
   margin-bottom: 20px;
 }
 
@@ -63,7 +95,7 @@
   text-align: center;
 }
 
-button {
+form button:not([type="button"]) {
   width: 100%;
   padding: 12px;
   background: #667eea;
@@ -74,13 +106,14 @@ button {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.3s;
+  margin-top: 10px;
 }
 
-button:hover:not(:disabled) {
+form button:not([type="button"]):hover:not(:disabled) {
   background: #5568d3;
 }
 
-button:disabled {
+form button:not([type="button"]):disabled {
   background: #ccc;
   cursor: not-allowed;
 }
