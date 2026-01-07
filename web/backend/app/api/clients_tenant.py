@@ -46,16 +46,11 @@ async def get_clients(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать клиентов")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
+    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
+    tenant_session = db
     if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+        # Устанавливаем search_path для tenant схемы
+        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     query = select(Client).options(
         selectinload(Client.user)
@@ -148,16 +143,11 @@ async def get_client(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать клиентов")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
+    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
+    tenant_session = db
     if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+        # Устанавливаем search_path для tenant схемы
+        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     query = select(Client).options(
         selectinload(Client.user)
