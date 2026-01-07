@@ -89,14 +89,15 @@ async def get_masters(
         
         master_dict = {
             "id": master.id,
+            "user_id": master.user_id,
             "full_name": master.full_name,
             "phone": master.phone,
+            "telegram_id": master.telegram_id,
             "specialization": master.specialization,
-            "is_active": master.is_active,
+            "is_universal": master.is_universal,
             "booking_count": booking_count or 0,
             "created_at": master.created_at,
             "updated_at": master.updated_at,
-            "company_id": company_id,
         }
         items.append(MasterResponse.model_validate(master_dict))
     
