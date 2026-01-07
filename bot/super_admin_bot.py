@@ -258,9 +258,9 @@ async def cmd_companies(message: types.Message, state: FSMContext):
         
         # Кнопка возврата
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
-            [InlineKeyboardButton("🔄 Обновить", callback_data="refresh")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="main")],
+            [InlineKeyboardButton(text="📊 Статистика", callback_data="stats")],
+            [InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh")],
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main")],
         ])
         
         await message.answer(response_text, reply_markup=keyboard, parse_mode="Markdown")
@@ -325,12 +325,12 @@ async def callback_company_details(callback: CallbackQuery, state: FSMContext):
         # Кнопки действий
         keyboard_actions = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton("📧 Изменить", callback_data=f"edit_{company.id}"),
-                InlineKeyboardButton("🔄 Обновить", callback_data=f"refresh_{company.id}"),
+                InlineKeyboardButton(text="📧 Изменить", callback_data=f"edit_{company.id}"),
+                InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{company.id}"),
             ],
             [
-                InlineKeyboardButton("🏠 Главное меню", callback_data="main"),
-                InlineKeyboardButton("📋 Список", callback_data="companies"),
+                InlineKeyboardButton(text="🏠 Главное меню", callback_data="main"),
+                InlineKeyboardButton(text="📋 Список", callback_data="companies"),
             ]
         ])
         
@@ -473,11 +473,11 @@ async def cmd_settings(message: types.Message, state: FSMContext):
     """
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton("🔄 Перезапустить бота", callback_data="restart_bot"),
-            InlineKeyboardButton("📊 Показать статистику", callback_data="stats"),
+            InlineKeyboardButton(text="🔄 Перезапустить бота", callback_data="restart_bot"),
+            InlineKeyboardButton(text="📊 Показать статистику", callback_data="stats"),
         ],
         [
-            InlineKeyboardButton("🏠 Главное меню", callback_data="main"),
+            InlineKeyboardButton(text="🏠 Главное меню", callback_data="main"),
         ]
     ])
     
