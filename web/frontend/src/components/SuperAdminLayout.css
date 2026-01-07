@@ -183,7 +183,7 @@
   margin-left: 280px;
   min-height: 100vh;
   transition: margin-left 0.3s ease;
-  padding-top: 72px; /* Компенсация высоты top-bar */
+  padding-top: 0;
 }
 
 .sidebar.closed ~ .main-content {
@@ -194,22 +194,9 @@
   left: 0; /* Когда sidebar закрыт, top-bar на весь экран */
 }
 
-/* Top Bar - минималистичный дизайн без кнопок */
+/* Top Bar - скрыт, так как синий хедер страницы идет до самого верха */
 .top-bar {
-  background: white;
-  padding: 20px 40px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  backdrop-filter: blur(10px);
-  position: fixed;
-  top: 0;
-  left: 280px; /* Учитываем ширину sidebar */
-  right: 0;
-  z-index: 100;
-  transition: left 0.3s ease;
+  display: none;
 }
 
 .sidebar-toggle {
