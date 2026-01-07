@@ -270,9 +270,13 @@ class TenantService:
         async_session_maker = await self._get_async_session_maker()
         
         async with async_session_maker() as session:
+            # Устанавливаем search_path для этой сессии
+            # Используем SET вместо SET LOCAL, чтобы search_path применялся ко всем запросам в сессии
             await session.execute(
-                text(f'SET search_path TO "{schema_name}"')
+                text(f'SET search_path TO "{schema_name}", public')
             )
+            # Коммитим установку search_path
+            await session.commit()
             yield session
 
 

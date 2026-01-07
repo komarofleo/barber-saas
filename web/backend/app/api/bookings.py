@@ -4,7 +4,7 @@ from datetime import date, time, datetime
 from typing import Optional, Annotated
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_, func, text
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
@@ -48,15 +48,17 @@ async def get_bookings(
     # TODO: В будущем company_id будет извлекаться из JWT токена через middleware
     # На данный момент используем company_id из query параметра
     # Для публичных API company_id может быть None
-    if company_id is None:
+    tenant_session = None
+    if company_id:
+        # Используем tenant сессию для конкретной компании
+        tenant_service = get_tenant_service()
+        async for session in tenant_service.get_tenant_session(company_id):
+            tenant_session = session
+            break
+    else:
         # Временное решение: используем обычную сессию для публичного API
         # В будущем здесь будет проверка JWT токена
         tenant_session = db
-    else:
-        # Используем tenant сессию для конкретной компании
-        tenant_service = get_tenant_service()
-        tenant_session_gen = tenant_service.get_tenant_session(company_id)
-        tenant_session = await tenant_session_gen.__anext__()
     
     query = select(Booking).options(
         selectinload(Booking.client).selectinload(Client.user),
@@ -79,6 +81,10 @@ async def get_bookings(
         conditions.append(Booking.service_id == service_id)
     if post_id:
         conditions.append(Booking.post_id == post_id)
+    
+    # Убеждаемся, что search_path установлен перед выполнением запросов (если используется tenant сессия)
+    if company_id:
+        await tenant_session.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     # Создаем отдельный запрос для подсчета (без selectinload)
     count_query = select(func.count(Booking.id))
@@ -111,7 +117,7 @@ async def get_bookings(
         count_query = count_query.where(and_(*conditions))
     
     # Подсчет общего количества
-    total = await db.scalar(count_query) or 0
+    total = await tenant_session.scalar(count_query) or 0
     
     print(f"📊 Запрос записей: total={total}, page={page}, page_size={page_size}")
     print(f"📅 Фильтры: start_date={start_date}, end_date={end_date}, status={status}, search={search}")
@@ -119,7 +125,7 @@ async def get_bookings(
     
     # Проверяем общее количество записей в БД без фильтров (для отладки)
     total_all_query = select(func.count(Booking.id))
-    total_all = await db.scalar(total_all_query) or 0
+    total_all = await tenant_session.scalar(total_all_query) or 0
     print(f"📈 Всего записей в БД (без фильтров): {total_all}")
     
     # Пагинация
@@ -127,7 +133,7 @@ async def get_bookings(
     query = query.offset((page - 1) * page_size).limit(page_size)
     query = query.order_by(Booking.date.desc(), Booking.time.desc())
     
-    result = await db.execute(query)
+    result = await tenant_session.execute(query)
     bookings = result.scalars().all()
     
     print(f"✅ Получено записей: {len(bookings)}")
@@ -231,7 +237,7 @@ async def get_available_slots(
         duration = 30  # по умолчанию
         if service_id:
             service_query = select(Service).where(Service.id == service_id)
-            service_result = await db.execute(service_query)
+            service_result = await tenant_session.execute(service_query)
             service = service_result.scalar_one_or_none()
             if service:
                 duration = service.duration
@@ -257,7 +263,7 @@ async def get_available_slots(
             conditions.append(Booking.master_id == master_id)
         
         booked_query = select(Booking).where(and_(*conditions))
-        booked_result = await db.execute(booked_query)
+        booked_result = await tenant_session.execute(booked_query)
         booked = booked_result.scalars().all()
         
         # Удаляем занятые слоты для этого поста
@@ -288,17 +294,17 @@ async def get_available_slots(
     
     # Получаем общее количество активных постов (ВАЖНО: запрос выполняется каждый раз заново)
     total_posts_query = select(func.count(Post.id)).where(Post.is_active == True)
-    total_posts_result = await db.execute(total_posts_query)
+    total_posts_result = await tenant_session.execute(total_posts_query)
     total_posts = total_posts_result.scalar() or 0
     
     # Получаем также общее количество всех постов для логирования
     all_posts_query = select(func.count(Post.id))
-    all_posts_result = await db.execute(all_posts_query)
+    all_posts_result = await tenant_session.execute(all_posts_query)
     all_posts = all_posts_result.scalar() or 0
     
     # Получаем список активных постов для детального логирования
     active_posts_query = select(Post.id, Post.number, Post.name).where(Post.is_active == True)
-    active_posts_result = await db.execute(active_posts_query)
+    active_posts_result = await tenant_session.execute(active_posts_query)
     active_posts_list = active_posts_result.all()
     
     print(f"📊 Статистика постов для даты {booking_date}: всего постов={all_posts}, активных={total_posts}")
@@ -316,7 +322,7 @@ async def get_available_slots(
     duration = 30  # по умолчанию
     if service_id:
         service_query = select(Service).where(Service.id == service_id)
-        service_result = await db.execute(service_query)
+        service_result = await tenant_session.execute(service_query)
         service = service_result.scalar_one_or_none()
         if service:
             duration = service.duration
@@ -341,7 +347,7 @@ async def get_available_slots(
         conditions.append(Booking.master_id == master_id)
     
     booked_query = select(Booking).where(and_(*conditions))
-    booked_result = await db.execute(booked_query)
+    booked_result = await tenant_session.execute(booked_query)
     booked = booked_result.scalars().all()
     
     # Проверяем доступность слотов с учетом количества постов
@@ -400,7 +406,7 @@ async def get_booking(
         selectinload(Booking.post)
     ).where(Booking.id == booking_id)
     
-    result = await db.execute(query)
+    result = await tenant_session.execute(query)
     booking = result.scalar_one_or_none()
     
     if not booking:
@@ -477,14 +483,14 @@ async def create_booking(
     
     # Проверяем существование клиента
     client_query = select(Client).where(Client.id == booking_data.client_id)
-    client_result = await db.execute(client_query)
+    client_result = await tenant_session.execute(client_query)
     client = client_result.scalar_one_or_none()
     if not client:
         raise HTTPException(status_code=404, detail="Клиент не найден")
     
     # Генерируем номер записи
     from datetime import datetime
-    last_booking = await db.execute(
+    last_booking = await tenant_session.execute(
         select(Booking).order_by(Booking.id.desc()).limit(1)
     )
     last = last_booking.scalar_one_or_none()
@@ -524,7 +530,7 @@ async def create_booking(
     )
     
     db.add(booking)
-    await db.commit()
+    await tenant_session.commit()
     
     # Отправляем немедленное уведомление администраторам о новой записи
     try:
@@ -541,7 +547,7 @@ async def create_booking(
         selectinload(Booking.master),
         selectinload(Booking.post)
     ).where(Booking.id == booking.id)
-    result = await db.execute(query)
+    result = await tenant_session.execute(query)
     booking = result.scalar_one_or_none()
     
     # Формируем ответ
@@ -650,7 +656,7 @@ async def update_booking(
     print(f"[DEBUG] update_booking: booking_update.time={booking_update.time}, type={type(booking_update.time)}")
     
     query = select(Booking).where(Booking.id == booking_id)
-    result = await db.execute(query)
+    result = await tenant_session.execute(query)
     booking = result.scalar_one_or_none()
     
     if not booking:
@@ -723,7 +729,7 @@ async def update_booking(
     if booking_update.admin_comment is not None:
         booking.admin_comment = booking_update.admin_comment
     
-    await db.commit()
+    await tenant_session.commit()
     
     # Отправляем уведомление об изменении статуса (асинхронно, не блокируем ответ)
     notification_sent = False
@@ -755,7 +761,7 @@ async def update_booking(
         selectinload(Booking.master),
         selectinload(Booking.post)
     ).where(Booking.id == booking.id)
-    result = await db.execute(query)
+    result = await tenant_session.execute(query)
     booking = result.scalar_one_or_none()
     
     # Формируем ответ
