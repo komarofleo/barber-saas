@@ -8,11 +8,27 @@ const apiClient = axios.create({
   },
 })
 
-// Interceptor для добавления токена
+// Interceptor для добавления токена и company_id
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+    
+    // Извлекаем company_id из JWT токена (если есть)
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      const company_id = payload.company_id
+      if (company_id) {
+        // Добавляем company_id в query параметры, если его еще нет
+        if (config.params) {
+          config.params.company_id = company_id
+        } else {
+          config.params = { company_id }
+        }
+      }
+    } catch (e) {
+      // Игнорируем ошибки парсинга токена
+    }
   }
   // Убеждаемся, что используем относительные пути (без baseURL)
   config.baseURL = undefined
