@@ -48,16 +48,11 @@ async def get_posts(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать посты")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
+    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
+    tenant_session = db
     if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+        # Устанавливаем search_path для tenant схемы
+        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     query = select(Post)
     
@@ -135,16 +130,11 @@ async def get_post(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать посты")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
+    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
+    tenant_session = db
     if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+        # Устанавливаем search_path для tenant схемы
+        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     query = select(Post).where(Post.id == post_id)
     result = await tenant_session.execute(query)
@@ -193,16 +183,11 @@ async def create_post(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать посты")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
+    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
+    tenant_session = db
     if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+        # Устанавливаем search_path для tenant схемы
+        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     # Проверяем, существует ли пост с таким номером
     existing_post = await tenant_session.execute(
@@ -269,16 +254,11 @@ async def update_post(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять посты")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
+    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
+    tenant_session = db
     if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+        # Устанавливаем search_path для tenant схемы
+        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     # Проверяем существование поста
     query = select(Post).where(Post.id == post_id)
@@ -374,16 +354,11 @@ async def delete_post(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут удалять посты")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
+    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
+    tenant_session = db
     if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+        # Устанавливаем search_path для tenant схемы
+        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     # Проверяем существование поста
     query = select(Post).where(Post.id == post_id)
