@@ -16,47 +16,89 @@ router = Router()
 @router.message(F.text == "/start")
 async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start"""
-    # Получаем company_id из контекста диспетчера
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔵 Получена команда /start от пользователя {message.from_user.id} (@{message.from_user.username})")
+    
+    # Получаем company_id из токена бота
     company_id = None
     try:
-        dp = state.resolve_dp()
-        if dp:
-            company_id = dp.get('company_id')
-    except:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = message.bot.token
+        logger.info(f"🔑 Получаем company_id для токена: {bot_token[:20]}...")
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+                logger.info(f"✅ Найден company_id: {company_id}")
+            else:
+                logger.error(f"❌ Компания с таким токеном не найдена!")
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения company_id: {e}", exc_info=True)
         pass
     
+    if not company_id:
+        logger.error("❌ Не удалось получить company_id!")
+        await message.answer("❌ Ошибка конфигурации бота. Обратитесь к администратору.")
+        return
+    
+    logger.info(f"📋 Начинаем обработку /start для company_id={company_id}, telegram_id={message.from_user.id}")
+    
     async for session in get_session():
-        # Получаем или создаем пользователя
-        user = await get_or_create_user(
-            session,
-            telegram_id=message.from_user.id,
-            username=message.from_user.username,
-            first_name=message.from_user.first_name,
-            last_name=message.from_user.last_name,
-            company_id=company_id,
-        )
-
-        # Проверяем, зарегистрирован ли как клиент
-        from bot.database.crud import get_client_by_user_id
-        client = await get_client_by_user_id(session, user.id)
-
-        if not client:
-            # Начинаем регистрацию
-            await state.set_state(RegistrationStates.waiting_full_name)
-            await message.answer(
-                "👋 Добро пожаловать в салон красоты!\n\n"
-                "Для начала работы необходимо пройти регистрацию.\n"
-                "Введите ваше ФИО:",
-                reply_markup=get_cancel_keyboard()
+        try:
+            # Устанавливаем search_path для tenant схемы
+            from sqlalchemy import text
+            schema_name = f"tenant_{company_id}"
+            await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+            logger.info(f"✅ Установлен search_path: {schema_name}")
+            
+            # Получаем или создаем пользователя
+            logger.info(f"👤 Получаем или создаем пользователя telegram_id={message.from_user.id}")
+            user = await get_or_create_user(
+                session,
+                telegram_id=message.from_user.id,
+                username=message.from_user.username,
+                first_name=message.from_user.first_name,
+                last_name=message.from_user.last_name,
+                company_id=company_id,
             )
-        else:
-            # Пользователь уже зарегистрирован
-            await message.answer(
-                f"👋 Здравствуйте, {client.full_name}!\n\n"
-                "Выберите действие:",
-                reply_markup=get_client_main_keyboard()
-            )
-            await state.clear()
+            logger.info(f"✅ Пользователь получен/создан: user_id={user.id if user else None}")
+
+            # Проверяем, зарегистрирован ли как клиент
+            from bot.database.crud import get_client_by_user_id
+            logger.info(f"🔍 Проверяем наличие клиента для user_id={user.id}")
+            client = await get_client_by_user_id(session, user.id, company_id=company_id)
+            logger.info(f"✅ Клиент получен: client_id={client.id if client else None}")
+
+            if not client:
+                # Начинаем регистрацию
+                logger.info(f"📝 Клиент не найден, начинаем регистрацию")
+                await state.set_state(RegistrationStates.waiting_full_name)
+                await message.answer(
+                    "👋 Добро пожаловать в салон красоты!\n\n"
+                    "Для начала работы необходимо пройти регистрацию.\n"
+                    "Введите ваше ФИО:",
+                    reply_markup=get_cancel_keyboard()
+                )
+                logger.info(f"✅ Сообщение о регистрации отправлено")
+            else:
+                # Пользователь уже зарегистрирован
+                logger.info(f"✅ Клиент найден: {client.full_name}, отправляем главное меню")
+                await message.answer(
+                    f"👋 Здравствуйте, {client.full_name}!\n\n"
+                    "Выберите действие:",
+                    reply_markup=get_client_main_keyboard()
+                )
+                await state.clear()
+                logger.info(f"✅ Главное меню отправлено")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в cmd_start: {e}", exc_info=True)
+            await message.answer("❌ Произошла ошибка. Попробуйте позже или обратитесь к администратору.")
 
 
 @router.message(RegistrationStates.waiting_full_name, F.text != "❌ Отмена")
@@ -89,10 +131,39 @@ async def process_phone(message: Message, state: FSMContext):
     data = await state.get_data()
     full_name = data.get("full_name")
 
+    # Получаем company_id из токена бота
+    company_id = None
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = message.bot.token
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка получения company_id: {e}")
+        pass
+    
+    if not company_id:
+        await message.answer("❌ Ошибка конфигурации бота. Обратитесь к администратору.")
+        return
+    
     async for session in get_session():
+        # Устанавливаем search_path для tenant схемы
+        from sqlalchemy import text
+        schema_name = f"tenant_{company_id}"
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
         # Получаем пользователя
         from bot.database.crud import get_user_by_telegram_id
-        user = await get_user_by_telegram_id(session, message.from_user.id)
+        user = await get_user_by_telegram_id(session, message.from_user.id, company_id=company_id)
 
         if user:
             # Создаем клиента
@@ -101,6 +172,7 @@ async def process_phone(message: Message, state: FSMContext):
                 user_id=user.id,
                 full_name=full_name,
                 phone=phone,
+                company_id=company_id,
             )
 
             await message.answer(

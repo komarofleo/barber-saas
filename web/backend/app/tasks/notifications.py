@@ -8,6 +8,8 @@ from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 
 from shared.database.models import Booking, Client, User, Master
+from app.models.public_models import Company
+from sqlalchemy import text
 
 # TODO: Создать модель Notification (пока заглушка)
 class Notification:
@@ -353,12 +355,106 @@ def send_reminder_hour_before_task():
         raise
 
 
+async def send_status_change_notification_tenant(company_id: int, booking_id: int, new_status: str):
+    """Отправить уведомление об изменении статуса записи клиенту (для tenant схем)"""
+    from app.models.public_models import Company
+    from aiogram import Bot
+    
+    async with async_session_maker() as session:
+        # Получаем компанию и bot token из public схемы
+        company_result = await session.execute(
+            text('SELECT id, name, telegram_bot_token FROM public.companies WHERE id = :company_id'),
+            {"company_id": company_id}
+        )
+        company_row = company_result.fetchone()
+        
+        if not company_row or not company_row[2]:
+            print(f"[ERROR] Компания {company_id} не найдена или нет bot token")
+            return
+        
+        bot_token = company_row[2]
+        
+        # Устанавливаем search_path для tenant схемы
+        await session.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
+        
+        # Получаем запись с клиентом
+        booking_result = await session.execute(
+            select(Booking)
+            .where(Booking.id == booking_id)
+            .options(
+                selectinload(Booking.client),
+                selectinload(Booking.service),
+            )
+        )
+        booking = booking_result.scalar_one_or_none()
+        
+        if not booking:
+            print(f"[ERROR] Запись {booking_id} не найдена в tenant_{company_id}")
+            return
+        
+        # Получаем telegram_id клиента
+        telegram_id = None
+        if booking.client and booking.client.user_id:
+            # Получаем User из tenant схемы
+            user_result = await session.execute(
+                text(f'SELECT telegram_id FROM "tenant_{company_id}".users WHERE id = :user_id'),
+                {"user_id": booking.client.user_id}
+            )
+            user_row = user_result.fetchone()
+            if user_row and user_row[0]:
+                telegram_id = user_row[0]
+        
+        if not telegram_id:
+            print(f"[ERROR] Не найден telegram_id для клиента записи {booking_id}")
+            return
+        
+        # Формируем сообщение
+        status_messages = {
+            "new": "🆕 Ваша запись создана и ожидает подтверждения.",
+            "confirmed": "✅ Ваша запись подтверждена!",
+            "completed": "✔️ Запись завершена. Спасибо за визит!",
+            "cancelled": "❌ Запись отменена",
+            "no_show": "⚠️ Вы не явились на запись",
+        }
+        
+        message = status_messages.get(new_status, f"Статус записи изменен: {new_status}")
+        
+        try:
+            date_str = booking.date.strftime("%d.%m.%Y")
+            time_str = booking.time.strftime("%H:%M")
+            service_name = booking.service.name if booking.service else "Услуга"
+            
+            text = f"{message}\n\n"
+            text += f"Номер записи: {booking.booking_number}\n"
+            text += f"Дата: {date_str}\n"
+            text += f"Время: {time_str}\n"
+            text += f"Услуга: {service_name}\n"
+            
+            print(f"[DEBUG] Отправляем сообщение в Telegram: company_id={company_id}, chat_id={telegram_id}, text_length={len(text)}")
+            
+            # Создаем бота с токеном компании
+            bot = Bot(token=bot_token)
+            result = await bot.send_message(
+                chat_id=telegram_id,
+                text=text
+            )
+            await bot.session.close()
+            
+            print(f"[SUCCESS] Сообщение отправлено успешно: message_id={result.message_id}")
+            
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            print(f"[ERROR] Ошибка отправки уведомления об изменении статуса для записи {booking_id}: {e}")
+            print(f"[ERROR] Traceback: {error_trace}")
+
+
 @shared_task
-def send_status_change_notification_task(booking_id: int, new_status: str):
-    """Celery задача для отправки уведомления об изменении статуса"""
-    print(f"[CELERY TASK] Начало выполнения send_status_change_notification_task: booking_id={booking_id}, status={new_status}")
+def send_status_change_notification_task(company_id: int, booking_id: int, new_status: str):
+    """Celery задача для отправки уведомления об изменении статуса (для tenant схем)"""
+    print(f"[CELERY TASK] Начало выполнения send_status_change_notification_task: company_id={company_id}, booking_id={booking_id}, status={new_status}")
     try:
-        asyncio.run(send_status_change_notification(booking_id, new_status))
+        asyncio.run(send_status_change_notification_tenant(company_id, booking_id, new_status))
         print(f"[CELERY TASK] Успешно выполнена send_status_change_notification_task: booking_id={booking_id}")
     except Exception as e:
         import traceback

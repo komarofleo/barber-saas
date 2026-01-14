@@ -13,32 +13,79 @@ from bot.keyboards.client import get_client_main_keyboard
 router = Router()
 
 
-def is_company_admin(telegram_id: int, state: FSMContext) -> bool:
+def is_company_admin(telegram_id: int, bot=None, state: FSMContext = None) -> bool:
     """
     Проверить, является ли пользователь админом компании.
     
     Args:
         telegram_id: Telegram ID пользователя
-        state: FSM контекст для доступа к диспетчеру
+        bot: Объект бота для доступа к диспетчеру
+        state: FSM контекст для доступа к диспетчеру (альтернативный способ)
         
     Returns:
         True если пользователь является админом компании
     """
-    try:
-        dp = state.resolve_dp()
-        if dp:
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    dp = None
+    
+    # Пробуем получить диспетчер из глобального словаря по токену бота
+    if bot and hasattr(bot, 'token'):
+        try:
+            from bot.main import get_dispatcher_by_token, _dispatchers_by_token
+            token = bot.token
+            logger.info(f"🔑 Ищем диспетчер для токена: {token[:20]}...")
+            logger.info(f"📊 Всего диспетчеров в словаре: {len(_dispatchers_by_token)}")
+            logger.info(f"📋 Ключи в словаре: {[k[:20] + '...' for k in _dispatchers_by_token.keys()]}")
+            dp = get_dispatcher_by_token(token)
+            if dp:
+                logger.info(f"✅ Диспетчер найден в глобальном словаре по токену")
+            else:
+                logger.warning(f"⚠️ Диспетчер не найден для токена: {token[:20]}...")
+                # Пробуем найти по части токена
+                for key in _dispatchers_by_token.keys():
+                    if token[:20] in key or key[:20] in token:
+                        logger.info(f"🔍 Найден похожий ключ: {key[:20]}...")
+                        dp = _dispatchers_by_token[key]
+                        break
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения диспетчера из глобального словаря: {e}", exc_info=True)
+    
+    # Если не получилось, пробуем через bot
+    if not dp and bot:
+        try:
+            # В aiogram 3.x диспетчер может быть доступен через bot._dispatcher
+            if hasattr(bot, '_dispatcher'):
+                dp = bot._dispatcher
+            # Или через bot.session если есть
+            elif hasattr(bot, 'session') and hasattr(bot.session, 'dispatcher'):
+                dp = bot.session.dispatcher
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось получить диспетчер через bot: {e}")
+    
+    if dp:
+        try:
             admin_telegram_ids = dp.get('admin_telegram_ids', [])
             admin_telegram_id = dp.get('admin_telegram_id')
             
+            logger.info(f"🔍 Проверка прав админа: telegram_id={telegram_id}, admin_telegram_id={admin_telegram_id}, admin_telegram_ids={admin_telegram_ids}")
+            
             # Проверяем основной админ
-            if admin_telegram_id == telegram_id:
+            if admin_telegram_id and admin_telegram_id == telegram_id:
+                logger.info(f"✅ Пользователь {telegram_id} является основным админом")
                 return True
             
             # Проверяем список админов
             if telegram_id in admin_telegram_ids:
+                logger.info(f"✅ Пользователь {telegram_id} найден в списке админов")
                 return True
-    except:
-        pass
+            
+            logger.warning(f"❌ Пользователь {telegram_id} не является админом")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при проверке прав: {e}", exc_info=True)
+    else:
+        logger.error("❌ Диспетчер не найден")
     
     return False
 
@@ -46,8 +93,57 @@ def is_company_admin(telegram_id: int, state: FSMContext) -> bool:
 @router.message(Command("admin"))
 async def cmd_admin(message: Message, state: FSMContext):
     """Команда /admin"""
-    # Проверяем права через контекст компании
-    if not is_company_admin(message.from_user.id, state):
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔵 Получена команда /admin от пользователя {message.from_user.id} (@{message.from_user.username})")
+    
+    # Получаем диспетчер из bot._dispatcher (сохранен при создании бота)
+    dp = None
+    is_admin = False
+    
+    # Пробуем получить через bot._dispatcher
+    if hasattr(message.bot, '_dispatcher'):
+        dp = message.bot._dispatcher
+        logger.info(f"✅ Диспетчер получен из message.bot._dispatcher")
+    else:
+        logger.warning(f"⚠️ message.bot._dispatcher не найден, пробуем глобальный словарь")
+        # Пробуем через глобальный словарь
+        try:
+            from bot.main import get_dispatcher_by_token
+            token = message.bot.token
+            logger.info(f"🔑 Ищем диспетчер для токена: {token[:20]}...")
+            dp = get_dispatcher_by_token(token)
+            if dp:
+                logger.info(f"✅ Диспетчер найден в глобальном словаре")
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения диспетчера: {e}", exc_info=True)
+    
+    # Если диспетчер найден, проверяем права напрямую
+    if dp:
+        try:
+            admin_telegram_ids = dp.get('admin_telegram_ids', [])
+            admin_telegram_id = dp.get('admin_telegram_id')
+            logger.info(f"🔍 Проверка прав: telegram_id={message.from_user.id}, admin_telegram_id={admin_telegram_id}, admin_telegram_ids={admin_telegram_ids}")
+            
+            if admin_telegram_id and admin_telegram_id == message.from_user.id:
+                logger.info(f"✅ Пользователь {message.from_user.id} является основным админом")
+                is_admin = True
+            elif message.from_user.id in admin_telegram_ids:
+                logger.info(f"✅ Пользователь {message.from_user.id} найден в списке админов")
+                is_admin = True
+            else:
+                logger.warning(f"❌ Пользователь {message.from_user.id} не является админом (admin_telegram_id={admin_telegram_id}, admin_telegram_ids={admin_telegram_ids})")
+                is_admin = False
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки прав: {e}", exc_info=True)
+            is_admin = False
+    else:
+        logger.error("❌ Диспетчер не найден ни через bot._dispatcher, ни через глобальный словарь")
+        is_admin = False
+    
+    logger.info(f"🔍 Результат проверки прав: is_admin={is_admin}")
+    
+    if not is_admin:
         await message.answer("❌ У вас нет прав администратора")
         return
     
@@ -68,7 +164,7 @@ async def cmd_admin(message: Message, state: FSMContext):
 async def show_new_bookings(message: Message, state: FSMContext):
     """Показать новые заказы"""
     # Проверяем права через контекст компании
-    if not is_company_admin(message.from_user.id, state):
+    if not is_company_admin(message.from_user.id, bot=message.bot, state=state):
         await message.answer("❌ У вас нет прав администратора")
         return
     
@@ -93,7 +189,7 @@ async def show_new_bookings(message: Message, state: FSMContext):
 async def exit_admin_panel(message: Message, state: FSMContext):
     """Выход из админ-панели"""
     # Проверяем права через контекст компании
-    if not is_company_admin(message.from_user.id, state):
+    if not is_company_admin(message.from_user.id, bot=message.bot, state=state):
         await message.answer("❌ У вас нет прав администратора")
         return
     

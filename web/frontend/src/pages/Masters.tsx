@@ -485,15 +485,16 @@ function MasterModal({ master, onClose, onSave }: MasterModalProps) {
             >
               <option value="">Не выбрана</option>
               <option value="Универсальный мастер">Универсальный мастер</option>
-              <option value="электрик">Электрик</option>
-              <option value="автослесарь">Автослесарь</option>
-              <option value="моторист">Моторист</option>
-              <option value="маляр">Маляр</option>
-              <option value="жестянщик">Жестянщик</option>
-              <option value="диагност">Диагност</option>
-              <option value="шиномонтажник">Шиномонтажник</option>
-              <option value="автоэлектрик">Автоэлектрик</option>
-              <option value="слесарь-ремонтник">Слесарь-ремонтник</option>
+              <option value="Парикмахер">Парикмахер</option>
+              <option value="Визажист">Визажист</option>
+              <option value="Ногтевой мастер">Ногтевой мастер</option>
+              <option value="Косметолог">Косметолог</option>
+              <option value="Барбер">Барбер</option>
+              <option value="Колорист">Колорист</option>
+              <option value="Стилист">Стилист</option>
+              <option value="Массажист">Массажист</option>
+              <option value="Лэшмейкер">Лэшмейкер</option>
+              <option value="Бровист">Бровист</option>
               <option value="другое">Другое</option>
             </select>
           </div>

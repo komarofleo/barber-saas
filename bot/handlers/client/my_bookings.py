@@ -18,13 +18,36 @@ router = Router()
 @router.message(F.text == "📋 Мои записи")
 async def show_my_bookings(message: Message):
     """Показать записи клиента"""
+    # Получаем company_id из токена бота
+    company_id = None
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = message.bot.token
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+    except Exception as e:
+        logger.error(f"Ошибка получения company_id: {e}")
+        pass
+    
     async for session in get_session():
-        user = await get_user_by_telegram_id(session, message.from_user.id)
+        if company_id:
+            from sqlalchemy import text
+            schema_name = f"tenant_{company_id}"
+            await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        user = await get_user_by_telegram_id(session, message.from_user.id, company_id=company_id)
         if not user:
             await message.answer("❌ Сначала зарегистрируйтесь через /start")
             return
 
-        client = await get_client_by_user_id(session, user.id)
+        client = await get_client_by_user_id(session, user.id, company_id=company_id)
         if not client:
             await message.answer("❌ Сначала зарегистрируйтесь через /start")
             return

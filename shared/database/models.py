@@ -88,7 +88,7 @@ class Client(Base):
 
 
 class Master(Base):
-    """Мастера автосервиса"""
+    """Мастера салона красоты"""
     __tablename__ = "masters"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -110,7 +110,7 @@ class Master(Base):
 
 
 class Service(Base):
-    """Услуги автосервиса"""
+    """Услуги салона красоты"""
     __tablename__ = "services"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -150,7 +150,7 @@ class MasterService(Base):
 
 
 class Post(Base):
-    """Посты/боксы автосервиса"""
+    """Рабочие места салона красоты"""
     __tablename__ = "posts"
 
     id = Column(Integer, primary_key=True, index=True)

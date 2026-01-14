@@ -8,10 +8,12 @@ API для работы с услугами (МУЛЬТИ-ТЕНАНТНАЯ В�
 """
 from datetime import datetime
 from typing import Optional, Annotated
-from fastapi import APIRouter, Depends, Query, HTTPException, Body
+from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, text
 from sqlalchemy.orm import selectinload
+from jose import jwt
+from app.config import settings
 
 from app.database import get_db
 from app.api.auth import get_current_user
@@ -25,8 +27,30 @@ from app.services.tenant_service import get_tenant_service
 router = APIRouter(prefix="/api/services", tags=["services"])
 
 
+async def get_company_id_from_token(request: Request) -> Optional[int]:
+    """Получить company_id из JWT токена"""
+    try:
+        # Извлекаем токен напрямую из заголовков
+        authorization = request.headers.get("Authorization")
+        if not authorization or not authorization.startswith("Bearer "):
+            return None
+        
+        token = authorization.replace("Bearer ", "")
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        company_id = payload.get("company_id")
+        if company_id:
+            return int(company_id)
+        return None
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось получить company_id из токена: {e}")
+        return None
+
+
 @router.get("", response_model=ServiceListResponse)
 async def get_services(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
@@ -45,11 +69,18 @@ async def get_services(
         is_active: фильтр по активности
         company_id: ID компании для мульти-тенантности
     """
-    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
+    # Получаем company_id из токена, если не передан в query параметрах
+    if not company_id:
+        company_id = await get_company_id_from_token(request)
+    
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id не найден. Необходимо указать company_id в query параметрах или войти как пользователь компании.")
+    
+    schema_name = f"tenant_{company_id}"
+    
+    # Устанавливаем search_path для tenant схемы
+    await db.execute(text(f'SET search_path TO "{schema_name}", public'))
     tenant_session = db
-    if company_id:
-        # Устанавливаем search_path для tenant схемы
-        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     query = select(Service)
     

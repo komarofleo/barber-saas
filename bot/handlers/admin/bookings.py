@@ -26,32 +26,68 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-def is_company_admin(telegram_id: int, state: FSMContext) -> bool:
+def is_company_admin(telegram_id: int, bot=None, state: FSMContext = None) -> bool:
     """
     Проверить, является ли пользователь админом компании.
     
     Args:
         telegram_id: Telegram ID пользователя
-        state: FSM контекст для доступа к диспетчеру
+        bot: Объект бота для доступа к диспетчеру
+        state: FSM контекст для доступа к диспетчеру (альтернативный способ)
         
     Returns:
         True если пользователь является админом компании
     """
-    try:
-        dp = state.resolve_dp()
-        if dp:
+    dp = None
+    
+    # Пробуем получить диспетчер из глобального словаря по токену бота
+    if bot and hasattr(bot, 'token'):
+        try:
+            from bot.main import get_dispatcher_by_token
+            token = bot.token
+            logger.info(f"🔑 Ищем диспетчер для токена: {token[:20]}...")
+            dp = get_dispatcher_by_token(token)
+            if dp:
+                logger.info(f"✅ Диспетчер найден в глобальном словаре по токену")
+            else:
+                logger.warning(f"⚠️ Диспетчер не найден для токена: {token[:20]}...")
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения диспетчера из глобального словаря: {e}", exc_info=True)
+    
+    # Если не получилось, пробуем через bot
+    if not dp and bot:
+        try:
+            # В aiogram 3.x диспетчер может быть доступен через bot._dispatcher
+            if hasattr(bot, '_dispatcher'):
+                dp = bot._dispatcher
+            # Или через bot.session если есть
+            elif hasattr(bot, 'session') and hasattr(bot.session, 'dispatcher'):
+                dp = bot.session.dispatcher
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось получить диспетчер через bot: {e}")
+    
+    if dp:
+        try:
             admin_telegram_ids = dp.get('admin_telegram_ids', [])
             admin_telegram_id = dp.get('admin_telegram_id')
             
+            logger.info(f"🔍 Проверка прав админа: telegram_id={telegram_id}, admin_telegram_id={admin_telegram_id}, admin_telegram_ids={admin_telegram_ids}")
+            
             # Проверяем основной админ
-            if admin_telegram_id == telegram_id:
+            if admin_telegram_id and admin_telegram_id == telegram_id:
+                logger.info(f"✅ Пользователь {telegram_id} является основным админом")
                 return True
             
             # Проверяем список админов
             if telegram_id in admin_telegram_ids:
+                logger.info(f"✅ Пользователь {telegram_id} найден в списке админов")
                 return True
-    except:
-        pass
+            
+            logger.warning(f"❌ Пользователь {telegram_id} не является админом")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при проверке прав: {e}", exc_info=True)
+    else:
+        logger.error("❌ Диспетчер не найден")
     
     return False
 
@@ -60,7 +96,7 @@ def is_company_admin(telegram_id: int, state: FSMContext) -> bool:
 async def show_booking_details(callback: CallbackQuery, state: FSMContext):
     """Показать детали заказа"""
     # Проверяем права через контекст компании
-    if not is_company_admin(callback.from_user.id, state):
+    if not is_company_admin(callback.from_user.id, bot=callback.bot, state=state):
         await callback.answer("❌ У вас нет прав", show_alert=True)
         return
     
@@ -134,7 +170,7 @@ async def show_booking_details(callback: CallbackQuery, state: FSMContext):
 async def confirm_booking(callback: CallbackQuery, state: FSMContext):
     """Начать подтверждение заказа - выбор мастера"""
     # Проверяем права через контекст компании
-    if not is_company_admin(callback.from_user.id, state):
+    if not is_company_admin(callback.from_user.id, bot=callback.bot, state=state):
         await callback.answer("❌ У вас нет прав", show_alert=True)
         return
     
@@ -190,7 +226,7 @@ async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
         return
 
     # Проверяем права через контекст компании
-    if not is_company_admin(callback.from_user.id, state):
+    if not is_company_admin(callback.from_user.id, bot=callback.bot, state=state):
         await callback.answer("❌ У вас нет прав", show_alert=True)
         return
     
@@ -264,7 +300,7 @@ async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
 async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
     """Назначить пост заказу и подтвердить"""
     # Проверяем права через контекст компании
-    if not is_company_admin(callback.from_user.id, state):
+    if not is_company_admin(callback.from_user.id, bot=callback.bot, state=state):
         await callback.answer("❌ У вас нет прав", show_alert=True)
         return
     
@@ -357,7 +393,7 @@ async def reject_booking(callback: CallbackQuery, state: FSMContext):
         return
 
     # Проверяем права через контекст компании
-    if not is_company_admin(callback.from_user.id, state):
+    if not is_company_admin(callback.from_user.id, bot=callback.bot, state=state):
         await callback.answer("❌ У вас нет прав", show_alert=True)
         return
     
@@ -383,7 +419,7 @@ async def reject_booking(callback: CallbackQuery, state: FSMContext):
 async def back_to_bookings(callback: CallbackQuery, state: FSMContext):
     """Вернуться к списку заказов"""
     # Проверяем права через контекст компании
-    if not is_company_admin(callback.from_user.id, state):
+    if not is_company_admin(callback.from_user.id, bot=callback.bot, state=state):
         await callback.answer("❌ У вас нет прав", show_alert=True)
         return
     
@@ -415,7 +451,7 @@ async def close_bookings_list(callback: CallbackQuery):
 async def show_all_bookings(message: Message, state: FSMContext):
     """Показать все заказы"""
     # Проверяем права через контекст компании
-    if not is_company_admin(message.from_user.id, state):
+    if not is_company_admin(message.from_user.id, bot=message.bot, state=state):
         await message.answer("❌ У вас нет прав администратора")
         return
     
@@ -441,7 +477,7 @@ async def show_all_bookings(message: Message, state: FSMContext):
 async def show_statistics(message: Message, state: FSMContext):
     """Показать статистику"""
     # Проверяем права через контекст компании
-    if not is_company_admin(message.from_user.id, state):
+    if not is_company_admin(message.from_user.id, bot=message.bot, state=state):
         await message.answer("❌ У вас нет прав администратора")
         return
     

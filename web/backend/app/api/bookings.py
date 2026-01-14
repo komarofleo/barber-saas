@@ -11,11 +11,13 @@ from app.database import get_db
 from app.api.auth import get_current_user
 from app.schemas.booking import BookingResponse, BookingListResponse, BookingCreateRequest, BookingUpdateRequest
 from shared.database.models import Booking, User, Client, Service, Master, Post
+from app.models.public_models import Company
 from sqlalchemy.orm import selectinload, load_only
 from app.services.tenant_service import get_tenant_service
 from jose import jwt
 from app.config import settings
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from aiogram import Bot
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,193 @@ async def get_company_id_from_token(request: Request) -> Optional[int]:
         return payload.get("company_id")
     except:
         return None
+
+
+async def get_client_telegram_id(tenant_session: AsyncSession, company_id: int, client: Client) -> Optional[int]:
+    """Получить telegram_id клиента из tenant схемы users"""
+    if not client or not client.user_id:
+        return None
+    
+    try:
+        user_result = await tenant_session.execute(
+            text(f'SELECT telegram_id FROM "tenant_{company_id}".users WHERE id = :user_id'),
+            {"user_id": client.user_id}
+        )
+        user_row = user_result.fetchone()
+        if user_row and user_row[0]:
+            return user_row[0]
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка получения telegram_id для user_id={client.user_id}: {e}")
+    
+    return None
+
+
+async def send_booking_status_notification(company_id: int, booking_id: int, new_status: str, tenant_session: AsyncSession) -> bool:
+    """Отправить уведомление об изменении статуса записи клиенту через Telegram
+    
+    Returns:
+        True если уведомление отправлено успешно, False в противном случае
+    """
+    # ВАЖНО: не используем имя `text` для строковых переменных в этой функции,
+    # так как `text()` используется для SQLAlchemy (иначе будет UnboundLocalError).
+    from sqlalchemy import text as sql_text
+
+    logger.info(f"📤 [NOTIFICATION] Начало отправки уведомления: company_id={company_id}, booking_id={booking_id}, status={new_status}")
+    
+    # Сохраняем текущий search_path
+    original_search_path = None
+    try:
+        # Получаем текущий search_path
+        path_result = await tenant_session.execute(sql_text("SHOW search_path"))
+        original_search_path = path_result.scalar()
+        logger.info(f"📤 [NOTIFICATION] Текущий search_path: {original_search_path}")
+        
+        # Получаем компанию и bot token из public схемы
+        await tenant_session.execute(sql_text('SET search_path TO public'))
+        company_result = await tenant_session.execute(
+            sql_text('SELECT id, name, telegram_bot_token FROM public.companies WHERE id = :company_id'),
+            {"company_id": company_id}
+        )
+        company_row = company_result.fetchone()
+        
+        if not company_row or not company_row[2]:
+            logger.warning(f"⚠️ [NOTIFICATION] Компания {company_id} не найдена или нет bot token")
+            return False
+        
+        bot_token = company_row[2]
+        company_name = company_row[1]
+        logger.info(f"📤 [NOTIFICATION] Компания найдена: name={company_name}, bot_token={bot_token[:10]}...")
+        
+        # Возвращаем search_path для tenant схемы
+        await tenant_session.execute(sql_text(f'SET search_path TO "tenant_{company_id}", public'))
+        
+        # Получаем запись через прямой SQL (избегаем ORM проблем с total_visits)
+        booking_result = await tenant_session.execute(
+            sql_text(f"""
+                SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id
+                FROM "tenant_{company_id}".bookings b
+                WHERE b.id = :booking_id
+            """),
+            {"booking_id": booking_id}
+        )
+        booking_row = booking_result.fetchone()
+        
+        if not booking_row:
+            logger.warning(f"⚠️ [NOTIFICATION] Запись {booking_id} не найдена в tenant_{company_id}")
+            return False
+        
+        booking_id_db = booking_row[0]
+        booking_number = booking_row[1]
+        booking_date = booking_row[2]
+        booking_time = booking_row[3]
+        client_id = booking_row[4]
+        service_id = booking_row[5]
+        
+        logger.info(f"📤 [NOTIFICATION] Запись найдена: booking_number={booking_number}, client_id={client_id}")
+        
+        # Получаем client.user_id через прямой SQL
+        client_result = await tenant_session.execute(
+            sql_text(f'SELECT user_id FROM "tenant_{company_id}".clients WHERE id = :client_id'),
+            {"client_id": client_id}
+        )
+        client_row = client_result.fetchone()
+        
+        if not client_row or not client_row[0]:
+            logger.warning(f"⚠️ [NOTIFICATION] Клиент {client_id} не найден или нет user_id")
+            return False
+        
+        user_id = client_row[0]
+        logger.info(f"📤 [NOTIFICATION] Ищем telegram_id для user_id={user_id}")
+        
+        # Получаем telegram_id из users
+        user_result = await tenant_session.execute(
+            sql_text(f'SELECT telegram_id FROM "tenant_{company_id}".users WHERE id = :user_id'),
+            {"user_id": user_id}
+        )
+        user_row = user_result.fetchone()
+        
+        telegram_id = None
+        if user_row and user_row[0]:
+            telegram_id = user_row[0]
+            logger.info(f"✅ [NOTIFICATION] telegram_id найден: {telegram_id}")
+        else:
+            logger.warning(f"⚠️ [NOTIFICATION] telegram_id не найден для user_id={user_id}")
+            return False
+        
+        # Получаем название услуги
+        service_result = await tenant_session.execute(
+            sql_text(f'SELECT name FROM "tenant_{company_id}".services WHERE id = :service_id'),
+            {"service_id": service_id}
+        )
+        service_row = service_result.fetchone()
+        service_name = service_row[0] if service_row else "Услуга"
+        
+        # Формируем сообщение
+        status_messages = {
+            "new": "🆕 Ваша запись создана и ожидает подтверждения.",
+            "confirmed": "✅ Ваша запись подтверждена!",
+            "completed": "✔️ Запись завершена. Спасибо за визит!",
+            "cancelled": "❌ Запись отменена",
+            "no_show": "⚠️ Вы не явились на запись",
+        }
+        
+        message = status_messages.get(new_status, f"Статус записи изменен: {new_status}")
+        
+        date_str = booking_date.strftime("%d.%m.%Y")
+        time_str = booking_time.strftime("%H:%M")
+        
+        message_text = f"{message}\n\n"
+        message_text += f"Номер записи: {booking_number}\n"
+        message_text += f"Дата: {date_str}\n"
+        message_text += f"Время: {time_str}\n"
+        message_text += f"Услуга: {service_name}\n"
+        
+        logger.info(f"📤 [NOTIFICATION] Отправляем сообщение в Telegram: company_id={company_id}, chat_id={telegram_id}, text_length={len(message_text)}")
+        logger.info(f"📤 [NOTIFICATION] Текст сообщения: {message_text[:100]}...")
+        
+        # Создаем бота с токеном компании
+        logger.info(f"📤 [NOTIFICATION] Создаем Bot объект с токеном: {bot_token[:10]}...")
+        bot = Bot(token=bot_token)
+        try:
+            logger.info(f"📤 [NOTIFICATION] Пытаемся отправить сообщение: chat_id={telegram_id}, text_length={len(message_text)}")
+            result = await bot.send_message(
+                chat_id=telegram_id,
+                text=message_text
+            )
+            logger.info(f"✅ [NOTIFICATION] Сообщение отправлено успешно: message_id={result.message_id}, chat_id={telegram_id}, date={result.date}")
+            return True
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"❌ [NOTIFICATION] Ошибка отправки сообщения в Telegram: {error_msg}", exc_info=True)
+            
+            # Проверяем специфичные ошибки Telegram API
+            if "chat not found" in error_msg.lower() or "user not found" in error_msg.lower():
+                logger.warning(f"⚠️ [NOTIFICATION] Клиент {telegram_id} не найден или не начал диалог с ботом. Нужно отправить /start боту.")
+            elif "blocked" in error_msg.lower():
+                logger.warning(f"⚠️ [NOTIFICATION] Клиент {telegram_id} заблокировал бота.")
+            elif "forbidden" in error_msg.lower():
+                logger.warning(f"⚠️ [NOTIFICATION] Бот не может отправить сообщение клиенту {telegram_id} (возможно, клиент не начал диалог).")
+            
+            return False
+        finally:
+            try:
+                await bot.session.close()
+                logger.debug(f"🔒 [NOTIFICATION] Bot session закрыт")
+            except Exception as e:
+                logger.warning(f"⚠️ [NOTIFICATION] Ошибка закрытия bot session: {e}")
+            
+    except Exception as e:
+        logger.error(f"❌ [NOTIFICATION] Ошибка отправки уведомления об изменении статуса для записи {booking_id}: {e}", exc_info=True)
+        return False
+    finally:
+        # Восстанавливаем search_path
+        try:
+            if original_search_path:
+                await tenant_session.execute(sql_text(f'SET search_path TO {original_search_path}'))
+            else:
+                await tenant_session.execute(sql_text(f'SET search_path TO "tenant_{company_id}", public'))
+        except Exception as e:
+            logger.warning(f"⚠️ [NOTIFICATION] Ошибка восстановления search_path: {e}")
 
 
 @router.get("", response_model=BookingListResponse)
@@ -106,7 +295,7 @@ async def get_bookings(
     tenant_session = db
     
     query = select(Booking).options(
-        selectinload(Booking.client).load_only(Client.id, Client.user_id, Client.full_name, Client.phone, Client.created_at, Client.updated_at).selectinload(Client.user),
+        selectinload(Booking.client).load_only(Client.id, Client.user_id, Client.full_name, Client.phone, Client.created_at, Client.updated_at),
         selectinload(Booking.service),
         selectinload(Booking.master),
         selectinload(Booking.post)
@@ -130,33 +319,24 @@ async def get_bookings(
     # Создаем отдельный запрос для подсчета (без selectinload)
     count_query = select(func.count(Booking.id))
     
-    if search:
-        search_term = f"%{search}%"
-        # Поиск по номеру записи, ФИО клиента, телефону
-        from sqlalchemy.orm import outerjoin
-        query = query.outerjoin(Client).outerjoin(User, Client.user_id == User.id).where(
-            or_(
-                Booking.booking_number.ilike(search_term),
-                User.first_name.ilike(search_term),
-                User.last_name.ilike(search_term),
-                Client.phone.ilike(search_term),
-                Client.full_name.ilike(search_term)
-            )
-        )
-        # Для подсчета тоже нужен join
-        count_query = count_query.outerjoin(Client).outerjoin(User, Client.user_id == User.id).where(
-            or_(
-                Booking.booking_number.ilike(search_term),
-                User.first_name.ilike(search_term),
-                User.last_name.ilike(search_term),
-                Client.phone.ilike(search_term),
-                Client.full_name.ilike(search_term)
-            )
-        )
-    
+    # Применяем условия фильтрации
     if conditions:
         query = query.where(and_(*conditions))
         count_query = count_query.where(and_(*conditions))
+    
+    # Применяем поиск после условий фильтрации
+    if search:
+        search_term = f"%{search}%"
+        # Поиск по номеру записи, ФИО клиента, телефону
+        # В tenant схемах User не имеет first_name/last_name, только full_name в Client
+        from sqlalchemy.orm import outerjoin
+        search_condition = or_(
+            Booking.booking_number.ilike(search_term),
+            Client.phone.ilike(search_term),
+            Client.full_name.ilike(search_term)
+        )
+        query = query.outerjoin(Client).where(search_condition)
+        count_query = count_query.outerjoin(Client).where(search_condition)
     
     # Подсчет общего количества
     total = await tenant_session.scalar(count_query) or 0
@@ -169,9 +349,11 @@ async def get_bookings(
     total_all = await tenant_session.scalar(total_all_query) or 0
     logger.info(f"📈 Всего записей в БД (без фильтров): {total_all}")
     
-    # Пагинация и сортировка
+    # Сортировка перед пагинацией
+    query = query.order_by(Booking.date.desc(), Booking.time.desc(), Booking.created_at.desc())
+    
+    # Пагинация
     query = query.offset((page - 1) * page_size).limit(page_size)
-    query = query.order_by(Booking.date.desc(), Booking.time.desc())
     
     result = await tenant_session.execute(query)
     bookings = result.scalars().all()
@@ -179,6 +361,24 @@ async def get_bookings(
     logger.info(f"✅ Получено записей: {len(bookings)}")
     if len(bookings) > 0:
         logger.info(f"📋 Первая запись: date={bookings[0].date}, status={bookings[0].status}")
+    
+    # Получаем все user_id для записей одним запросом
+    user_ids = set()
+    for booking in bookings:
+        if booking.client and booking.client.user_id:
+            user_ids.add(booking.client.user_id)
+    
+    # Получаем telegram_id для всех user_id одним запросом
+    telegram_ids_map = {}
+    if user_ids:
+        user_ids_list = list(user_ids)
+        telegram_result = await tenant_session.execute(
+            text(f'SELECT id, telegram_id FROM "tenant_{company_id}".users WHERE id = ANY(:user_ids)'),
+            {"user_ids": user_ids_list}
+        )
+        for row in telegram_result.fetchall():
+            if row[1]:  # telegram_id не None
+                telegram_ids_map[row[0]] = row[1]
     
     # Формируем ответы с дополнительными данными
     items = []
@@ -215,12 +415,11 @@ async def get_bookings(
         }
         
         if booking.client:
-            if booking.client.user:
-                booking_dict["client_name"] = f"{booking.client.user.first_name or ''} {booking.client.user.last_name or ''}".strip() or booking.client.full_name
-                booking_dict["client_telegram_id"] = booking.client.user.telegram_id
-            else:
-                booking_dict["client_name"] = booking.client.full_name
+            # В tenant схемах User не имеет first_name/last_name, используем только full_name из Client
+            booking_dict["client_name"] = booking.client.full_name
             booking_dict["client_phone"] = booking.client.phone
+            # Получаем telegram_id из кэша
+            booking_dict["client_telegram_id"] = telegram_ids_map.get(booking.client.user_id) if booking.client.user_id else None
             # Для салона красоты нет car_brand и car_model
             booking_dict["client_car_brand"] = None
             booking_dict["client_car_model"] = None
@@ -433,7 +632,7 @@ async def get_booking(
     tenant_session = db
     
     query = select(Booking).options(
-        selectinload(Booking.client).load_only(Client.id, Client.user_id, Client.full_name, Client.phone, Client.created_at, Client.updated_at).selectinload(Client.user),
+        selectinload(Booking.client).load_only(Client.id, Client.user_id, Client.full_name, Client.phone, Client.created_at, Client.updated_at),
         selectinload(Booking.service),
         selectinload(Booking.master),
         selectinload(Booking.post)
@@ -478,11 +677,13 @@ async def get_booking(
     }
     
     if booking.client:
-        if booking.client.user:
-            booking_dict["client_name"] = f"{booking.client.user.first_name or ''} {booking.client.user.last_name or ''}".strip() or booking.client.full_name
-            booking_dict["client_telegram_id"] = booking.client.user.telegram_id
+        # В tenant схемах User не имеет first_name/last_name, используем только full_name из Client
+        booking_dict["client_name"] = booking.client.full_name
+        # Пробуем получить telegram_id из Client, если есть
+        if hasattr(booking.client, 'telegram_id'):
+            booking_dict["client_telegram_id"] = booking.client.telegram_id
         else:
-            booking_dict["client_name"] = booking.client.full_name
+            booking_dict["client_telegram_id"] = None
         booking_dict["client_phone"] = booking.client.phone
         # Для салона красоты нет car_brand и car_model
         booking_dict["client_car_brand"] = None
@@ -574,7 +775,7 @@ async def create_booking(
     # Загружаем связанные данные
     result = await tenant_session.execute(
         select(Booking).options(
-            selectinload(Booking.client).load_only(Client.id, Client.user_id, Client.full_name, Client.phone, Client.created_at, Client.updated_at).selectinload(Client.user),
+            selectinload(Booking.client).load_only(Client.id, Client.user_id, Client.full_name, Client.phone, Client.created_at, Client.updated_at),
             selectinload(Booking.service),
             selectinload(Booking.master),
             selectinload(Booking.post)
@@ -615,11 +816,13 @@ async def create_booking(
     }
     
     if booking.client:
-        if booking.client.user:
-            booking_dict["client_name"] = f"{booking.client.user.first_name or ''} {booking.client.user.last_name or ''}".strip() or booking.client.full_name
-            booking_dict["client_telegram_id"] = booking.client.user.telegram_id
+        # В tenant схемах User не имеет first_name/last_name, используем только full_name из Client
+        booking_dict["client_name"] = booking.client.full_name
+        # Пробуем получить telegram_id из Client, если есть
+        if hasattr(booking.client, 'telegram_id'):
+            booking_dict["client_telegram_id"] = booking.client.telegram_id
         else:
-            booking_dict["client_name"] = booking.client.full_name
+            booking_dict["client_telegram_id"] = None
         booking_dict["client_phone"] = booking.client.phone
         # Для салона красоты нет car_brand и car_model
         booking_dict["client_car_brand"] = None
@@ -693,6 +896,9 @@ async def update_booking(
     if not booking:
         raise HTTPException(status_code=404, detail="Запись не найдена")
     
+    # Важно: фиксируем старый статус ДО любых изменений, иначе уведомления не будут отправляться
+    old_status = booking.status
+
     # Обновляем поля
     if booking_data.client_id is not None:
         booking.client_id = booking_data.client_id
@@ -722,19 +928,50 @@ async def update_booking(
     if booking_data.admin_comment is not None:
         booking.admin_comment = booking_data.admin_comment
     
-    await tenant_session.commit()
-    await tenant_session.refresh(booking)
+    # Обновляем временные метки при смене статуса
+    if booking_data.status is not None:
+        now = datetime.utcnow()
+        # Сравниваем с old_status, потому что booking.status уже мог быть изменен выше
+        if booking_data.status == "confirmed" and old_status != "confirmed":
+            booking.confirmed_at = now
+        elif booking_data.status == "completed" and old_status != "completed":
+            booking.completed_at = now
+        elif booking_data.status == "cancelled" and old_status != "cancelled":
+            booking.cancelled_at = now
     
-    # Загружаем связанные данные
+    await tenant_session.commit()
+    
+    # Отправляем уведомление клиенту при смене статуса
+    notification_sent = False
+    if booking_data.status is not None and booking_data.status != old_status:
+        logger.info(f"📤 [UPDATE] Статус изменился: {old_status} -> {booking_data.status}, отправляем уведомление")
+        try:
+            # Отправляем уведомление напрямую (без Celery, так как worker может быть не запущен)
+            notification_sent = await send_booking_status_notification(company_id, booking_id, booking_data.status, tenant_session)
+            if notification_sent:
+                logger.info(f"✅ [UPDATE] Уведомление отправлено успешно: company_id={company_id}, booking_id={booking_id}, status={booking_data.status}")
+            else:
+                logger.warning(f"⚠️ [UPDATE] Уведомление не отправлено: company_id={company_id}, booking_id={booking_id}, status={booking_data.status}")
+        except Exception as e:
+            logger.error(f"❌ [UPDATE] Ошибка отправки уведомления: {e}", exc_info=True)
+            notification_sent = False
+    
+    # Убеждаемся, что search_path установлен для tenant схемы
+    await tenant_session.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
+    
+    # Загружаем связанные данные (refresh не нужен, так как мы перезагружаем через новый запрос)
     result = await tenant_session.execute(
         select(Booking).options(
-            selectinload(Booking.client).load_only(Client.id, Client.user_id, Client.full_name, Client.phone, Client.created_at, Client.updated_at).selectinload(Client.user),
+            selectinload(Booking.client).load_only(Client.id, Client.user_id, Client.full_name, Client.phone, Client.created_at, Client.updated_at),
             selectinload(Booking.service),
             selectinload(Booking.master),
             selectinload(Booking.post)
-        ).where(Booking.id == booking.id)
+        ).where(Booking.id == booking_id)
     )
-    booking = result.scalar_one()
+    booking = result.scalar_one_or_none()
+    
+    if not booking:
+        raise HTTPException(status_code=404, detail="Запись не найдена после обновления")
     
     # Формируем ответ
     booking_dict = {
@@ -766,14 +1003,14 @@ async def update_booking(
         "service_name": None,
         "master_name": None,
         "post_number": None,
+        "notification_sent": notification_sent,
     }
     
     if booking.client:
-        if booking.client.user:
-            booking_dict["client_name"] = f"{booking.client.user.first_name or ''} {booking.client.user.last_name or ''}".strip() or booking.client.full_name
-            booking_dict["client_telegram_id"] = booking.client.user.telegram_id
-        else:
-            booking_dict["client_name"] = booking.client.full_name
+        # В tenant схемах User не имеет first_name/last_name, используем только full_name из Client
+        booking_dict["client_name"] = booking.client.full_name
+        # Получаем telegram_id из users через user_id
+        booking_dict["client_telegram_id"] = await get_client_telegram_id(tenant_session, company_id, booking.client)
         booking_dict["client_phone"] = booking.client.phone
         # Для салона красоты нет car_brand и car_model
         booking_dict["client_car_brand"] = None
@@ -784,5 +1021,7 @@ async def update_booking(
         booking_dict["master_name"] = booking.master.full_name
     if booking.post:
         booking_dict["post_number"] = booking.post.number
+    
+    logger.info(f"📤 [UPDATE] Возвращаем ответ: booking_id={booking_id}, notification_sent={notification_sent}, client_telegram_id={booking_dict.get('client_telegram_id')}")
     
     return BookingResponse.model_validate(booking_dict)

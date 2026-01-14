@@ -43,6 +43,10 @@ services:
     container_name: barber_bot
     env_file:
       - .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      PYTHONPATH: /app/web/backend:/app
     depends_on:
       postgres:
         condition: service_healthy

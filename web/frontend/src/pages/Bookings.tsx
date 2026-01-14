@@ -92,6 +92,18 @@ function Bookings() {
           bValue = bDate.getTime()
         }
         
+        // Для статуса - используем порядок: new, confirmed, completed, cancelled
+        if (sortField === 'status') {
+          const statusOrder: { [key: string]: number } = {
+            'new': 1,
+            'confirmed': 2,
+            'completed': 3,
+            'cancelled': 4
+          }
+          aValue = statusOrder[a.status] || 99
+          bValue = statusOrder[b.status] || 99
+        }
+        
         // Для строк - приводим к нижнему регистру для сравнения
         if (typeof aValue === 'string' && typeof bValue === 'string') {
           aValue = aValue.toLowerCase()
@@ -173,38 +185,32 @@ function Bookings() {
         setViewingBooking({ ...viewingBooking, ...updatedBooking })
       }
       
-      // Показываем уведомление при смене статуса, если есть telegram_id у клиента
-      // Показываем всегда, если задача поставлена в очередь (notification_sent) или есть telegram_id
+      // Показываем уведомление при смене статуса, если уведомление было отправлено
+      const notificationSent = updatedBooking.notification_sent === true
       const hasTelegramId = updatedBooking.client_telegram_id && updatedBooking.client_telegram_id > 0
-      const taskQueued = updatedBooking.notification_sent === true
-      const shouldShowNotification = taskQueued || hasTelegramId
       
       console.log('📋 Проверка показа уведомления:', { 
         notification_sent: updatedBooking.notification_sent, 
         client_telegram_id: updatedBooking.client_telegram_id,
         hasTelegramId,
-        taskQueued,
+        notificationSent,
         newStatus,
-        shouldShowNotification,
         'updatedBooking': updatedBooking
       })
       
-      if (shouldShowNotification) {
+      // Показываем уведомление, если оно было отправлено успешно
+      if (notificationSent) {
         console.log('✅ Показываем уведомление об успешной отправке')
-        console.log('📌 showSuccessNotification будет установлен в true')
         setShowSuccessNotification(true)
-        console.log('📌 showSuccessNotification установлен, проверка через 100ms:', showSuccessNotification)
-        // Проверяем через небольшую задержку
+        // Автоматически скрываем через 5 секунд
         setTimeout(() => {
-          console.log('📌 Проверка showSuccessNotification после установки')
-        }, 100)
-        // Автоматически скрываем через 5 секунд (увеличено для видимости)
-        setTimeout(() => {
-          console.log('📌 Скрываем уведомление через 5 секунд')
           setShowSuccessNotification(false)
         }, 5000)
+      } else if (hasTelegramId) {
+        // Если есть telegram_id, но уведомление не отправилось - показываем предупреждение
+        console.log('⚠️ У клиента есть telegram_id, но уведомление не отправлено')
       } else {
-        console.log('❌ Не показываем уведомление - нет telegram_id и задача не поставлена')
+        console.log('ℹ️ У клиента нет telegram_id - уведомление не требуется')
       }
       
       // Обновляем список в фоне (не блокируем UI)
@@ -296,7 +302,7 @@ function Bookings() {
     <div className="bookings-page">
       {showSuccessNotification && (
         <SuccessNotification
-          message="Статус отправлен клиенту"
+          message="✅ Сообщение отправлено клиенту в Telegram"
           onClose={() => {
             console.log('📌 Закрываем уведомление')
             setShowSuccessNotification(false)
@@ -454,7 +460,6 @@ function Bookings() {
                 <th>Клиент</th>
                 <th>TGID</th>
                 <th>Телефон</th>
-                <th>Автомобиль</th>
                 <th 
                   className="sortable" 
                   onClick={() => handleSort('date')}
@@ -501,11 +506,6 @@ function Bookings() {
                   <td>{booking.client_name || `ID: ${booking.client_id}`}</td>
                   <td>{booking.client_telegram_id || '-'}</td>
                   <td>{booking.client_phone || '-'}</td>
-                  <td>
-                    {booking.client_car_brand || booking.client_car_model 
-                      ? `${booking.client_car_brand || ''} ${booking.client_car_model || ''}`.trim() 
-                      : '-'}
-                  </td>
                   <td>{formatDate(booking.date)} {booking.time}</td>
                   <td>{booking.service_name || '-'}</td>
                   <td>{booking.master_name || '-'}</td>

@@ -11,12 +11,90 @@ from shared.database.models import (
 from bot.config import ADMIN_IDS
 
 
-async def get_user_by_telegram_id(session: AsyncSession, telegram_id: int) -> Optional[User]:
-    """Получить пользователя по Telegram ID"""
-    result = await session.execute(
-        select(User).where(User.telegram_id == telegram_id)
-    )
-    return result.scalar_one_or_none()
+async def get_user_by_telegram_id(session: AsyncSession, telegram_id: int, company_id: Optional[int] = None) -> Optional[User]:
+    """
+    Получить пользователя по Telegram ID.
+    
+    В tenant схеме User имеет только: id, username, email, password_hash, full_name, phone, role, telegram_id, is_active, created_at, updated_at
+    Используем прямой SQL запрос, чтобы избежать проблем с моделью.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    from sqlalchemy import text
+    
+    # Если company_id не указан, пытаемся получить его из текущего search_path
+    if not company_id:
+        # Пытаемся определить схему из текущего search_path
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                # Извлекаем company_id из search_path
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+                    logger.info(f"🔍 Определен company_id={company_id} из search_path: {search_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+    
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"🔍 Получаем пользователя по telegram_id={telegram_id} из схемы {schema_name}")
+        
+        # Устанавливаем search_path
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        # Используем прямой SQL запрос
+        result = await session.execute(
+            text(f"""
+                SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
+                FROM "{schema_name}".users
+                WHERE telegram_id = :telegram_id
+            """),
+            {"telegram_id": telegram_id}
+        )
+        row = result.fetchone()
+        if row:
+            # Создаем объект User с правильными полями
+            # Используем type() для создания экземпляра без вызова __init__
+            user = type('User', (), {})()
+            user.id = row[0]
+            user.telegram_id = row[1]
+            user.username = row[2] or ''
+            user.full_name = row[3]
+            user.phone = row[4]
+            user.role = row[5] or 'client'
+            user.is_active = row[6] if row[6] is not None else True
+            user.created_at = row[7]
+            user.updated_at = row[8]
+            # Добавляем совместимые атрибуты для старого кода
+            user.is_admin = (user.role == 'admin')
+            user.is_master = (user.role == 'master')
+            user.is_blocked = (not user.is_active)
+            # Для совместимости с кодом, который использует first_name/last_name
+            if user.full_name:
+                name_parts = user.full_name.split(maxsplit=1)
+                user.first_name = name_parts[0] if len(name_parts) > 0 else None
+                user.last_name = name_parts[1] if len(name_parts) > 1 else None
+            else:
+                user.first_name = None
+                user.last_name = None
+            return user
+        return None
+    else:
+        # Если company_id не указан и не определен, используем обычный запрос
+        # Это может не работать для tenant схемы, но попробуем
+        logger.warning("⚠️ company_id не указан для get_user_by_telegram_id, используем обычный запрос")
+        try:
+            result = await session.execute(
+                select(User).where(User.telegram_id == telegram_id)
+            )
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении пользователя: {e}", exc_info=True)
+            return None
 
 
 async def create_user(
@@ -35,11 +113,21 @@ async def create_user(
         session: Сессия БД
         telegram_id: Telegram ID пользователя
         username: Имя пользователя
-        first_name: Имя
-        last_name: Фамилия
+        first_name: Имя (объединяется с last_name в full_name)
+        last_name: Фамилия (объединяется с first_name в full_name)
         phone: Телефон
         company_id: ID компании (для проверки прав админа)
     """
+    # В tenant схеме User имеет только full_name, а не first_name/last_name
+    # Объединяем first_name и last_name в full_name
+    full_name = None
+    if first_name or last_name:
+        name_parts = []
+        if first_name:
+            name_parts.append(first_name)
+        if last_name:
+            name_parts.append(last_name)
+        full_name = " ".join(name_parts).strip() if name_parts else None
     # Проверяем, является ли пользователь админом компании
     is_admin = False
     if company_id:
@@ -70,18 +158,95 @@ async def create_user(
         # Если company_id не передан, используем глобальный список
         is_admin = telegram_id in ADMIN_IDS
     
-    user = User(
-        telegram_id=telegram_id,
-        username=username,
-        first_name=first_name,
-        last_name=last_name,
-        phone=phone,
-        is_admin=is_admin,
-    )
-    session.add(user)
-    await session.commit()
-    await session.refresh(user)
-    return user
+    # В tenant схеме User имеет только full_name, role, is_active
+    # Объединяем first_name и last_name в full_name
+    full_name = None
+    if first_name or last_name:
+        name_parts = []
+        if first_name:
+            name_parts.append(first_name)
+        if last_name:
+            name_parts.append(last_name)
+        full_name = " ".join(name_parts).strip() if name_parts else None
+    
+    # Используем role вместо is_admin/is_master
+    role = 'admin' if is_admin else 'client'
+    
+    # В tenant схеме нужно использовать прямой SQL, так как модель User не соответствует структуре таблицы
+    if company_id:
+        from sqlalchemy import text
+        schema_name = f"tenant_{company_id}"
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        # Используем прямой SQL для создания пользователя
+        # Для пользователей из Telegram бота password_hash не нужен, но поле обязательное
+        # Используем пустую строку или генерируем случайный хеш
+        import hashlib
+        import secrets
+        # Генерируем случайный пароль и хешируем его (для пользователей из бота пароль не используется)
+        random_password = secrets.token_urlsafe(32)
+        password_hash = hashlib.sha256(random_password.encode()).hexdigest()
+        
+        result = await session.execute(
+            text(f"""
+                INSERT INTO "{schema_name}".users (telegram_id, username, password_hash, full_name, phone, role, is_active, created_at, updated_at)
+                VALUES (:telegram_id, :username, :password_hash, :full_name, :phone, :role, :is_active, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
+            """),
+            {
+                "telegram_id": telegram_id,
+                "username": username or '',
+                "password_hash": password_hash,
+                "full_name": full_name,
+                "phone": phone,
+                "role": role,
+                "is_active": True
+            }
+        )
+        row = result.fetchone()
+        await session.commit()
+        
+        if row:
+            # Создаем объект User с правильными полями
+            user = type('User', (), {})()
+            user.id = row[0]
+            user.telegram_id = row[1]
+            user.username = row[2] or ''
+            user.full_name = row[3]
+            user.phone = row[4]
+            user.role = row[5] or 'client'
+            user.is_active = row[6] if row[6] is not None else True
+            user.created_at = row[7]
+            user.updated_at = row[8]
+            # Добавляем совместимые атрибуты для старого кода
+            user.is_admin = (user.role == 'admin')
+            user.is_master = (user.role == 'master')
+            user.is_blocked = (not user.is_active)
+            # Для совместимости с кодом, который использует first_name/last_name
+            if user.full_name:
+                name_parts = user.full_name.split(maxsplit=1)
+                user.first_name = name_parts[0] if len(name_parts) > 0 else None
+                user.last_name = name_parts[1] if len(name_parts) > 1 else None
+            else:
+                user.first_name = None
+                user.last_name = None
+            return user
+        return None
+    else:
+        # Если company_id не указан, используем обычный способ (может не работать)
+        logger.warning("⚠️ company_id не указан для create_user, используем обычный способ")
+        user = User(
+            telegram_id=telegram_id,
+            username=username or '',
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            is_admin=is_admin,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user
 
 
 async def get_or_create_user(
@@ -103,20 +268,45 @@ async def get_or_create_user(
         last_name: Фамилия
         company_id: ID компании (для проверки прав админа)
     """
-    user = await get_user_by_telegram_id(session, telegram_id)
+    # Устанавливаем search_path для tenant схемы, если указан company_id
+    if company_id:
+        from sqlalchemy import text
+        schema_name = f"tenant_{company_id}"
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    
+    user = await get_user_by_telegram_id(session, telegram_id, company_id=company_id)
     if not user:
         user = await create_user(session, telegram_id, username, first_name, last_name, company_id=company_id)
     else:
         # Обновить данные если изменились
-        if username and user.username != username:
-            user.username = username
-        if first_name and user.first_name != first_name:
-            user.first_name = first_name
-        if last_name and user.last_name != last_name:
-            user.last_name = last_name
-        
-        # Обновляем права админа если company_id передан
         if company_id:
+            from sqlalchemy import text
+            schema_name = f"tenant_{company_id}"
+            
+            # Объединяем first_name и last_name в full_name
+            new_full_name = None
+            if first_name or last_name:
+                name_parts = []
+                if first_name:
+                    name_parts.append(first_name)
+                if last_name:
+                    name_parts.append(last_name)
+                new_full_name = " ".join(name_parts).strip() if name_parts else None
+            
+            # Формируем UPDATE запрос
+            update_fields = []
+            update_params = {"telegram_id": telegram_id}
+            
+            if username and getattr(user, 'username', None) != username:
+                update_fields.append("username = :username")
+                update_params["username"] = username or ''
+            
+            if new_full_name and getattr(user, 'full_name', None) != new_full_name:
+                update_fields.append("full_name = :full_name")
+                update_params["full_name"] = new_full_name
+            
+            # Обновляем права админа если company_id передан
+            new_role = getattr(user, 'role', 'client')
             try:
                 result = await session.execute(
                     text("""
@@ -138,24 +328,94 @@ async def get_or_create_user(
                     elif telegram_id in telegram_admin_ids:
                         should_be_admin = True
                     
-                    # Обновляем is_admin если изменилось
-                    if user.is_admin != should_be_admin:
-                        user.is_admin = should_be_admin
+                    # Обновляем role если изменилось
+                    new_role = 'admin' if should_be_admin else 'client'
+                    current_role = getattr(user, 'role', 'client')
+                    if current_role != new_role:
+                        update_fields.append("role = :role")
+                        update_params["role"] = new_role
             except Exception:
                 # Если не удалось проверить, оставляем как есть
                 pass
-        
-        await session.commit()
-        await session.refresh(user)
+            
+            # Выполняем UPDATE если есть изменения
+            if update_fields:
+                update_sql = f"""
+                    UPDATE "{schema_name}".users
+                    SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP
+                    WHERE telegram_id = :telegram_id
+                """
+                await session.execute(text(update_sql), update_params)
+                await session.commit()
+                
+                # Обновляем объект user
+                updated_user = await get_user_by_telegram_id(session, telegram_id, company_id=company_id)
+                if updated_user:
+                    user = updated_user
+        else:
+            # Если company_id не указан, используем обычный способ обновления
+            if username and user.username != username:
+                user.username = username
+            await session.commit()
+            await session.refresh(user)
     return user
 
 
-async def get_client_by_user_id(session: AsyncSession, user_id: int) -> Optional[Client]:
+async def get_client_by_user_id(session: AsyncSession, user_id: int, company_id: Optional[int] = None) -> Optional[Client]:
     """Получить клиента по user_id"""
-    result = await session.execute(
-        select(Client).where(Client.user_id == user_id)
-    )
-    return result.scalar_one_or_none()
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    from sqlalchemy import text
+    
+    # Если company_id не указан, пытаемся определить из search_path
+    if not company_id:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+    
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"🔍 Получаем клиента по user_id={user_id} из схемы {schema_name}")
+        
+        # Устанавливаем search_path
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        # Используем прямой SQL запрос (в tenant схеме clients не имеет total_visits и total_amount)
+        result = await session.execute(
+            text(f"""
+                SELECT id, user_id, full_name, phone, created_at, updated_at
+                FROM "{schema_name}".clients
+                WHERE user_id = :user_id
+            """),
+            {"user_id": user_id}
+        )
+        row = result.fetchone()
+        if row:
+            # Создаем объект Client с правильными полями
+            client = type('Client', (), {})()
+            client.id = row[0]
+            client.user_id = row[1]
+            client.full_name = row[2]
+            client.phone = row[3]
+            client.created_at = row[4]
+            client.updated_at = row[5]
+            # Добавляем совместимые атрибуты для старого кода
+            client.total_visits = 0
+            client.total_amount = 0
+            return client
+        return None
+    else:
+        # Если company_id не указан, возвращаем None
+        logger.error("❌ company_id обязателен для get_client_by_user_id в tenant схеме!")
+        return None
 
 
 async def create_client(
@@ -163,23 +423,72 @@ async def create_client(
     user_id: int,
     full_name: str,
     phone: str,
-    car_brand: Optional[str] = None,
-    car_model: Optional[str] = None,
-    car_number: Optional[str] = None,
+    company_id: Optional[int] = None,
 ) -> Client:
     """Создать клиента"""
-    client = Client(
-        user_id=user_id,
-        full_name=full_name,
-        phone=phone,
-        car_brand=car_brand,
-        car_model=car_model,
-        car_number=car_number,
+    import logging
+    logger = logging.getLogger(__name__)
+    from sqlalchemy import text
+    from datetime import datetime
+    
+    # Если company_id не указан, пытаемся определить из search_path
+    if not company_id:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+    
+    if not company_id:
+        logger.error("❌ company_id обязателен для create_client в tenant схеме!")
+        raise ValueError("company_id обязателен для create_client в tenant схеме!")
+    
+    schema_name = f"tenant_{company_id}"
+    logger.info(f"🔍 Создаем клиента для user_id={user_id} в схеме {schema_name}")
+    
+    # Устанавливаем search_path
+    await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    
+    # Используем прямой SQL INSERT (в tenant схеме clients не имеет total_visits и total_amount)
+    now = datetime.utcnow()
+    result = await session.execute(
+        text(f"""
+            INSERT INTO "{schema_name}".clients (user_id, full_name, phone, created_at, updated_at)
+            VALUES (:user_id, :full_name, :phone, :created_at, :updated_at)
+            RETURNING id, user_id, full_name, phone, created_at, updated_at
+        """),
+        {
+            "user_id": user_id,
+            "full_name": full_name,
+            "phone": phone,
+            "created_at": now,
+            "updated_at": now,
+        }
     )
-    session.add(client)
-    await session.commit()
-    await session.refresh(client)
-    return client
+    row = result.fetchone()
+    if row:
+        # Создаем объект Client с правильными полями
+        client = type('Client', (), {})()
+        client.id = row[0]
+        client.user_id = row[1]
+        client.full_name = row[2]
+        client.phone = row[3]
+        client.created_at = row[4]
+        client.updated_at = row[5]
+        # Добавляем совместимые атрибуты для старого кода
+        client.total_visits = 0
+        client.total_amount = 0
+        await session.commit()
+        logger.info(f"✅ Клиент создан: id={client.id}, full_name={client.full_name}, phone={client.phone}")
+        return client
+    else:
+        await session.rollback()
+        raise Exception("Не удалось создать клиента")
 
 
 async def get_or_create_client(
@@ -187,11 +496,75 @@ async def get_or_create_client(
     user_id: int,
     full_name: str,
     phone: str,
+    company_id: Optional[int] = None,
 ) -> Client:
-    """Получить или создать клиента"""
-    client = await get_client_by_user_id(session, user_id)
+    """Получить или создать клиента, обновляя full_name и phone если клиент уже существует"""
+    import logging
+    logger = logging.getLogger(__name__)
+    from datetime import datetime
+    
+    # Если company_id не указан, пытаемся определить из search_path
+    if not company_id:
+        try:
+            from sqlalchemy import text
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+    
+    if not company_id:
+        logger.error("❌ company_id обязателен для get_or_create_client в tenant схеме!")
+        raise ValueError("company_id обязателен для get_or_create_client в tenant схеме!")
+    
+    schema_name = f"tenant_{company_id}"
+    
+    # Устанавливаем search_path
+    await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    
+    client = await get_client_by_user_id(session, user_id, company_id=company_id)
     if not client:
-        client = await create_client(session, user_id, full_name, phone)
+        # Создаем нового клиента
+        client = await create_client(session, user_id, full_name, phone, company_id=company_id)
+        logger.info(f"✅ Создан новый клиент: id={client.id}, full_name={full_name}, phone={phone}")
+    else:
+        # Обновляем full_name и phone если они изменились
+        needs_update = False
+        update_fields = []
+        update_params = {"user_id": user_id, "updated_at": datetime.utcnow()}
+        
+        if client.full_name != full_name:
+            update_fields.append("full_name = :full_name")
+            update_params["full_name"] = full_name
+            needs_update = True
+            logger.info(f"📝 Обновляем full_name: {client.full_name} -> {full_name}")
+        
+        if client.phone != phone:
+            update_fields.append("phone = :phone")
+            update_params["phone"] = phone
+            needs_update = True
+            logger.info(f"📝 Обновляем phone: {client.phone} -> {phone}")
+        
+        if needs_update:
+            await session.execute(
+                text(f"""
+                    UPDATE "{schema_name}".clients
+                    SET {', '.join(update_fields)}, updated_at = :updated_at
+                    WHERE user_id = :user_id
+                """),
+                update_params
+            )
+            await session.commit()
+            logger.info(f"✅ Клиент обновлен: id={client.id}, full_name={full_name}, phone={phone}")
+            
+            # Обновляем объект client
+            client.full_name = full_name
+            client.phone = phone
+    
     return client
 
 
@@ -292,18 +665,45 @@ async def get_posts(session: AsyncSession) -> List[Post]:
     return list(result.scalars().all())
 
 
-async def get_services(session: AsyncSession, active_only: bool = True) -> List[Service]:
+async def get_services(session: AsyncSession, active_only: bool = True, company_id: Optional[int] = None) -> List[Service]:
     """Получить список услуг"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"🔍 get_services вызвана: active_only={active_only}, company_id={company_id}")
+    
+    # Устанавливаем search_path для tenant схемы, если указан company_id
+    if company_id:
+        from sqlalchemy import text
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"📋 Устанавливаем search_path на схему: {schema_name}")
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    else:
+        logger.warning("⚠️ company_id не указан! Запрос может не найти услуги в tenant схеме")
+    
     query = select(Service)
     if active_only:
         query = query.where(Service.is_active == True)
     query = query.order_by(Service.name)
+    
+    logger.info(f"🔍 Выполняем запрос: {query}")
     result = await session.execute(query)
-    return list(result.scalars().all())
+    services = list(result.scalars().all())
+    logger.info(f"✅ Найдено услуг: {len(services)}")
+    for service in services:
+        logger.info(f"  - {service.name} (ID: {service.id}, активна: {service.is_active})")
+    
+    return services
 
 
-async def get_service_by_id(session: AsyncSession, service_id: int) -> Optional[Service]:
+async def get_service_by_id(session: AsyncSession, service_id: int, company_id: Optional[int] = None) -> Optional[Service]:
     """Получить услугу по ID"""
+    # Устанавливаем search_path для tenant схемы, если указан company_id
+    if company_id:
+        from sqlalchemy import text
+        schema_name = f"tenant_{company_id}"
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    
     result = await session.execute(
         select(Service).where(Service.id == service_id)
     )
@@ -320,22 +720,53 @@ async def create_booking(
     end_time: time,
     comment: Optional[str] = None,
     created_by: Optional[int] = None,
+    company_id: Optional[int] = None,
 ) -> Booking:
     """Создать запись"""
-    # Генерация booking_number
+    import logging
+    logger = logging.getLogger(__name__)
     from datetime import datetime
+    
+    # Если company_id не указан, пытаемся определить из search_path
+    if not company_id:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+    
+    if not company_id:
+        logger.error("❌ company_id обязателен для create_booking в tenant схеме!")
+        raise ValueError("company_id обязателен для create_booking в tenant схеме!")
+    
+    schema_name = f"tenant_{company_id}"
+    logger.info(f"🔍 Создаем запись в схеме {schema_name}")
+    
+    # Устанавливаем search_path
+    await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    
+    # Генерация booking_number
     date_str = booking_date.strftime("%Y%m%d")
     result = await session.execute(
-        select(Booking)
-        .where(Booking.booking_number.like(f"B-{date_str}-%"))
-        .order_by(Booking.booking_number.desc())
-        .limit(1)
+        text(f"""
+            SELECT booking_number
+            FROM "{schema_name}".bookings
+            WHERE booking_number LIKE :pattern
+            ORDER BY booking_number DESC
+            LIMIT 1
+        """),
+        {"pattern": f"B-{date_str}-%"}
     )
-    last_booking = result.scalar_one_or_none()
+    last_booking_row = result.fetchone()
     
-    if last_booking and last_booking.booking_number:
+    if last_booking_row and last_booking_row[0]:
         try:
-            counter = int(last_booking.booking_number.split("-")[-1]) + 1
+            counter = int(last_booking_row[0].split("-")[-1]) + 1
         except (ValueError, IndexError):
             counter = 1
     else:
@@ -343,22 +774,71 @@ async def create_booking(
     
     booking_number = f"B-{date_str}-{counter:03d}"
     
-    booking = Booking(
-        booking_number=booking_number,
-        client_id=client_id,
-        service_id=service_id,
-        date=booking_date,
-        time=booking_time,
-        duration=duration,
-        end_time=end_time,
-        comment=comment,
-        created_by=created_by,
-        status="new",
+    # Используем прямой SQL INSERT
+    now = datetime.utcnow()
+    result = await session.execute(
+        text(f"""
+            INSERT INTO "{schema_name}".bookings (
+                booking_number, client_id, service_id, date, time, duration, end_time,
+                comment, created_by, status, created_at, updated_at
+            )
+            VALUES (
+                :booking_number, :client_id, :service_id, :date, :time, :duration, :end_time,
+                :comment, :created_by, :status, :created_at, :updated_at
+            )
+            RETURNING id, booking_number, client_id, service_id, date, time, duration, end_time,
+                      comment, created_by, status, created_at, updated_at
+        """),
+        {
+            "booking_number": booking_number,
+            "client_id": client_id,
+            "service_id": service_id,
+            "date": booking_date,
+            "time": booking_time,
+            "duration": duration,
+            "end_time": end_time,
+            "comment": comment,
+            "created_by": created_by,
+            "status": "new",
+            "created_at": now,
+            "updated_at": now,
+        }
     )
-    session.add(booking)
-    await session.commit()
-    await session.refresh(booking)
-    return booking
+    row = result.fetchone()
+    if row:
+        # Создаем объект Booking с правильными полями
+        booking = type('Booking', (), {})()
+        booking.id = row[0]
+        booking.booking_number = row[1]
+        booking.client_id = row[2]
+        booking.service_id = row[3]
+        booking.date = row[4]
+        booking.time = row[5]
+        booking.duration = row[6]
+        booking.end_time = row[7]
+        booking.comment = row[8]
+        booking.created_by = row[9]
+        booking.status = row[10]
+        booking.created_at = row[11]
+        booking.updated_at = row[12]
+        # Добавляем совместимые атрибуты для старого кода
+        booking.master_id = None
+        booking.post_id = None
+        booking.amount = None
+        booking.is_paid = False
+        booking.payment_method = None
+        booking.promocode_id = None
+        booking.discount_amount = 0
+        booking.admin_comment = None
+        booking.confirmed_at = None
+        booking.completed_at = None
+        booking.cancelled_at = None
+        await session.commit()
+        logger.info(f"✅ Запись создана: id={booking.id}, booking_number={booking.booking_number}")
+        return booking
+    else:
+        await session.rollback()
+        raise Exception("Не удалось создать запись")
 
 
 async def get_bookings_by_client(session: AsyncSession, client_id: int) -> List[Booking]:

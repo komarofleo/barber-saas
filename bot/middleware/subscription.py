@@ -45,19 +45,46 @@ class SubscriptionMiddleware(BaseMiddleware):
         Returns:
             Результат хендлера или None если заблокирован
         """
-        # Получаем диспетчер
-        dispatcher = event.bot
+        # Получаем диспетчер через event
+        dispatcher = None
+        try:
+            # В aiogram 3.x диспетчер доступен через event.bot.session
+            # Но проще получить через data['dispatcher'] если он там есть
+            if 'dispatcher' in data:
+                dispatcher = data['dispatcher']
+            else:
+                # Пробуем получить через event.bot
+                bot = event.bot
+                # В aiogram 3.x диспетчер хранится в bot.session
+                if hasattr(bot, 'session') and hasattr(bot.session, 'dispatcher'):
+                    dispatcher = bot.session.dispatcher
+        except:
+            pass
         
-        if not hasattr(dispatcher, 'data'):
-            # Если диспетчер не имеет атрибута data (старый aiogram)
-            return await handler(event, data)
+        # Если не удалось получить диспетчер, пробуем получить данные из data
+        if not dispatcher:
+            # Используем данные из data, если они там есть
+            can_create_bookings = data.get('can_create_bookings', True)
+            subscription_status = data.get('subscription_status', 'no_subscription')
+            subscription_end_date = data.get('subscription_end_date', None)
+            company_id = data.get('company_id', None)
+            company_name = data.get('company_name', 'Unknown')
+        else:
+            # Получаем данные о подписке из контекста диспетчера
+            can_create_bookings = dispatcher.get('can_create_bookings', True) if hasattr(dispatcher, 'get') else True
+            subscription_status = dispatcher.get('subscription_status', 'no_subscription') if hasattr(dispatcher, 'get') else 'no_subscription'
+            subscription_end_date = dispatcher.get('subscription_end_date', None) if hasattr(dispatcher, 'get') else None
+            company_id = dispatcher.get('company_id', None) if hasattr(dispatcher, 'get') else None
+            company_name = dispatcher.get('company_name', 'Unknown') if hasattr(dispatcher, 'get') else 'Unknown'
         
-        # Получаем данные о подписке из контекста диспетчера
-        can_create_bookings = dispatcher.data.get('can_create_bookings', True)
-        subscription_status = dispatcher.data.get('subscription_status', 'no_subscription')
-        subscription_end_date = dispatcher.data.get('subscription_end_date', None)
-        company_id = dispatcher.data.get('company_id', None)
-        company_name = dispatcher.data.get('company_name', 'Unknown')
+        # Добавляем company_id в data для использования в хендлерах
+        data['company_id'] = company_id
+        data['can_create_bookings'] = can_create_bookings
+        data['subscription_status'] = subscription_status
+        
+        # Добавляем диспетчер в data, если он найден
+        if dispatcher:
+            data['dispatcher'] = dispatcher
         
         # Проверяем подписку только для команд, связанных с созданием записей
         command = event.text if isinstance(event, Message) and event.text else None

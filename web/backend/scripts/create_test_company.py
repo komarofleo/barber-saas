@@ -417,26 +417,38 @@ async def create_tenant_test_data(company_id: int):
                 {
                     "full_name": "Иван Петров",
                     "phone": "+79991111111",
-                    "specialization": "Мужские стрижки",
-                    "is_universal": True
+                    "specialization": "Барбер",
+                    "is_universal": False
                 },
                 {
                     "full_name": "Мария Сидорова",
                     "phone": "+79992222222",
-                    "specialization": "Женские стрижки, окрашивание",
-                    "is_universal": True
+                    "specialization": "Парикмахер, Колорист",
+                    "is_universal": False
                 },
                 {
                     "full_name": "Алексей Смирнов",
                     "phone": "+79993333333",
-                    "specialization": "Мужские стрижки, борода",
-                    "is_universal": True
+                    "specialization": "Барбер",
+                    "is_universal": False
                 },
                 {
                     "full_name": "Елена Козлова",
                     "phone": "+79994444444",
-                    "specialization": "Окрашивание, мелирование",
-                    "is_universal": True
+                    "specialization": "Колорист, Стилист",
+                    "is_universal": False
+                },
+                {
+                    "full_name": "Анна Волкова",
+                    "phone": "+79995555555",
+                    "specialization": "Визажист",
+                    "is_universal": False
+                },
+                {
+                    "full_name": "Ольга Новикова",
+                    "phone": "+79996666666",
+                    "specialization": "Ногтевой мастер",
+                    "is_universal": False
                 }
             ]
             

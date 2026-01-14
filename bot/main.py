@@ -24,6 +24,14 @@ from bot.config import ADMIN_IDS
 from app.models.public_models import Company
 from app.services.tenant_service import TenantService
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
+logger = logging.getLogger(__name__)
+
 # Регистрируем роутеры
 from bot.handlers.client.start import router as start_router
 from bot.handlers.client.booking import router as booking_router
@@ -40,11 +48,25 @@ from bot.middleware.subscription import SubscriptionMiddleware
 # Инициализируем сервис tenant
 tenant_service = TenantService()
 
+# Глобальный словарь для хранения диспетчеров по токену бота
+_dispatchers_by_token: Dict[str, Dispatcher] = {}
+
+def get_dispatcher_by_token(token: str) -> Optional[Dispatcher]:
+    """Получить диспетчер по токену бота"""
+    return _dispatchers_by_token.get(token)
+
 # Глобальный словарь для хранения активных ботов
 active_bots: Dict[int, Dict[str, any]] = {}
 
 # Флаг graceful shutdown
 shutdown_event = asyncio.Event()
+
+# Настраиваем логирование
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +81,7 @@ async def load_companies() -> list[Company]:
         Список активных компаний
     """
     logger.info("Загрузка компаний из public схемы...")
-    async with get_session() as session:
+    async for session in get_session():
         from sqlalchemy import select, and_
         result = await session.execute(
             select(Company).where(
@@ -107,7 +129,7 @@ async def run_bot_for_company(company: Company) -> Optional[Dict[str, any]]:
             return None
         
         # Проверяем, существует ли tenant схема
-        if not await tenant_service.tenant_schema_exists(company.id):
+        if not await tenant_service.tenancy_schema_exists(company.id):
             logger.warning(f"Tenant схема для компании {company.name} (ID: {bot_id}) не существует")
             return None
         
@@ -125,7 +147,6 @@ async def run_bot_for_company(company: Company) -> Optional[Dict[str, any]]:
         # Сохраняем контекст компании в диспетчере
         dp['company_id'] = company.id
         dp['company_name'] = company.name
-        dp['company_code'] = company.code
         dp['schema_name'] = f'tenant_{company.id}'
         dp['can_create_bookings'] = company.can_create_bookings
         dp['subscription_status'] = company.subscription_status
@@ -133,12 +154,21 @@ async def run_bot_for_company(company: Company) -> Optional[Dict[str, any]]:
         dp['admin_telegram_ids'] = admin_ids
         dp['admin_telegram_id'] = company.admin_telegram_id  # Основной админ
         
+        # Сохраняем диспетчер как атрибут бота (для доступа в хендлерах)
+        bot._dispatcher = dp
+        
+        # Сохраняем диспетчер в глобальном словаре по токену
+        _dispatchers_by_token[company.telegram_bot_token] = dp
+        logger.info(f"💾 Диспетчер сохранен: token={company.telegram_bot_token[:20]}..., всего диспетчеров={len(_dispatchers_by_token)}, admin_telegram_id={company.admin_telegram_id}")
+        
         logger.info(
             f"Контекст бота '{company.name}': "
             f"company_id={company.id}, "
             f"schema=tenant_{company.id}, "
             f"can_create_bookings={company.can_create_bookings}, "
-            f"subscription_status={company.subscription_status}"
+            f"subscription_status={company.subscription_status}, "
+            f"admin_telegram_id={company.admin_telegram_id}, "
+            f"admin_telegram_ids={admin_ids}"
         )
         
         # Применяем middleware для проверки статуса подписки
@@ -157,6 +187,9 @@ async def run_bot_for_company(company: Company) -> Optional[Dict[str, any]]:
         dp.include_router(admin_menu_router)
         dp.include_router(admin_bookings_router)
         dp.include_router(master_router)
+        
+        # Убеждаемся, что диспетчер сохранен перед запуском polling
+        logger.info(f"🔍 Проверка перед polling: диспетчеров в словаре={len(_dispatchers_by_token)}, bot._dispatcher установлен={hasattr(bot, '_dispatcher')}")
         
         # Запускаем polling с обработкой ошибок
         try:
@@ -282,11 +315,20 @@ async def start_all_bots():
             logger.warning("Нет активных компаний для запуска ботов")
             return
         
-        # Запускаем ботов для каждой компании
+        # Запускаем ботов для каждой компании в параллельных задачах
+        tasks = []
         for company in companies:
-            bot_info = await run_bot_for_company(company)
-            if bot_info:
-                active_bots[company.id] = bot_info
+            task = asyncio.create_task(run_bot_for_company(company))
+            tasks.append((company.id, task))
+        
+        # Ждем запуска всех ботов
+        for company_id, task in tasks:
+            try:
+                bot_info = await task
+                if bot_info:
+                    active_bots[company_id] = bot_info
+            except Exception as e:
+                logger.error(f"Ошибка запуска бота для компании {company_id}: {e}")
         
         logger.info(f"Запущено {len(active_bots)} ботов для {len(companies)} компаний")
         

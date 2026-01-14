@@ -72,17 +72,8 @@ function Dashboard() {
 
   const loadBookings = async () => {
     try {
-      const token = localStorage.getItem('token')
-      if (!token) {
-        console.error('No token found')
-        return
-      }
-      const response = await apiClient.get('/api/bookings?page=1&page_size=20', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-      setBookings(response.data.items)
+      const data = await bookingsApi.getBookings(1, 20)
+      setBookings(data.items)
     } catch (error: any) {
       console.error('Ошибка загрузки записей:', error)
       if (error.response?.status === 401) {

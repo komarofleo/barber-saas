@@ -6,7 +6,7 @@ import { SuccessNotification } from '../components/SuccessNotification'
 import { broadcastsApi } from '../api/broadcasts'
 import './Clients.css'
 
-type SortField = 'id' | 'full_name' | 'phone' | 'car_brand' | 'car_number' | 'total_visits' | 'total_amount' | 'created_at' | null
+type SortField = 'id' | 'full_name' | 'phone' | 'total_visits' | 'total_amount' | 'created_at' | null
 type SortDirection = 'asc' | 'desc'
 
 function Clients() {
@@ -207,7 +207,7 @@ function Clients() {
         <form onSubmit={handleSearch} className="search-form">
           <input
             type="text"
-            placeholder="Поиск по ФИО, телефону или госномеру..."
+            placeholder="Поиск по ФИО или телефону..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="search-input"
@@ -296,12 +296,6 @@ function Clients() {
                   <th className="sortable" onClick={() => handleSort('phone')}>
                     Телефон {getSortIcon('phone')}
                   </th>
-                  <th className="sortable" onClick={() => handleSort('car_brand')}>
-                    Автомобиль {getSortIcon('car_brand')}
-                  </th>
-                  <th className="sortable" onClick={() => handleSort('car_number')}>
-                    Госномер {getSortIcon('car_number')}
-                  </th>
                   <th>Telegram ID</th>
                   <th className="sortable" onClick={() => handleSort('total_visits')}>
                     Визитов {getSortIcon('total_visits')}
@@ -334,12 +328,6 @@ function Clients() {
                     <td>{client.id}</td>
                     <td>{client.full_name}</td>
                     <td>{client.phone || '-'}</td>
-                    <td>
-                      {client.car_brand && client.car_model
-                        ? `${client.car_brand} ${client.car_model}${client.car_year ? ` (${client.car_year})` : ''}`
-                        : '-'}
-                    </td>
-                    <td>{client.car_number || '-'}</td>
                     <td>{client.user_telegram_id || '-'}</td>
                     <td>{client.total_visits}</td>
                     <td>{formatCurrency(client.total_amount)}</td>
@@ -457,40 +445,6 @@ function ViewClientModal({ client, onClose, onAdminToggle }: ViewClientModalProp
                       '-'
                     )}
                   </div>
-                </div>
-              )}
-            </div>
-
-            <div className="client-detail-section">
-              <h3 className="detail-section-title">🚗 Автомобиль</h3>
-              {client.car_brand ? (
-                <>
-                  <div className="detail-item">
-                    <div className="detail-label">Марка:</div>
-                    <div className="detail-value">{client.car_brand}</div>
-                  </div>
-                  {client.car_model && (
-                    <div className="detail-item">
-                      <div className="detail-label">Модель:</div>
-                      <div className="detail-value">{client.car_model}</div>
-                    </div>
-                  )}
-                  {client.car_year && (
-                    <div className="detail-item">
-                      <div className="detail-label">Год:</div>
-                      <div className="detail-value">{client.car_year}</div>
-                    </div>
-                  )}
-                  {client.car_number && (
-                    <div className="detail-item">
-                      <div className="detail-label">Госномер:</div>
-                      <div className="detail-value">{client.car_number}</div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="detail-item">
-                  <div className="detail-value">Автомобиль не указан</div>
                 </div>
               )}
             </div>
@@ -671,9 +625,6 @@ function EditClientModal({ client, onClose, onSuccess }: EditClientModalProps) {
   const [formData, setFormData] = useState({
     full_name: client.full_name,
     phone: client.phone || '',
-    car_brand: client.car_brand || '',
-    car_model: client.car_model || '',
-    car_number: client.car_number || '',
   })
   const [isAdmin, setIsAdmin] = useState<boolean | null>(client.user_is_admin ?? null)
   const [loading, setLoading] = useState(false)
@@ -712,9 +663,6 @@ function EditClientModal({ client, onClose, onSuccess }: EditClientModalProps) {
       await clientsApi.updateClient(client.id, {
         full_name: formData.full_name,
         phone: formData.phone,
-        car_brand: formData.car_brand || undefined,
-        car_model: formData.car_model || undefined,
-        car_number: formData.car_number || undefined,
       })
       onSuccess()
     } catch (error: any) {
@@ -752,41 +700,6 @@ function EditClientModal({ client, onClose, onSuccess }: EditClientModalProps) {
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               required
               className="form-input"
-            />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Марка автомобиля</label>
-              <input
-                type="text"
-                value={formData.car_brand}
-                onChange={(e) => setFormData({ ...formData, car_brand: e.target.value })}
-                className="form-input"
-                placeholder="Toyota"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Модель</label>
-              <input
-                type="text"
-                value={formData.car_model}
-                onChange={(e) => setFormData({ ...formData, car_model: e.target.value })}
-                className="form-input"
-                placeholder="Camry"
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>Госномер</label>
-            <input
-              type="text"
-              value={formData.car_number}
-              onChange={(e) => setFormData({ ...formData, car_number: e.target.value })}
-              className="form-input"
-              placeholder="А123БВ77"
             />
           </div>
 

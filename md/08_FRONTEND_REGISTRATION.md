@@ -1,7 +1,8 @@
 # Этап 8: Frontend - Публичная регистрация
 
 **Продолжительность:** 2-3 дня  
-**Статус:** ⏳ В ожидании  
+**Статус:** ✅ Завершен (MVP)  
+**Дата завершения:** 2026-01-14  
 **Приоритет:** Критический
 
 ---
@@ -70,29 +71,29 @@
 ## ✅ Чек-лист этапа
 
 ### Компоненты
-- [ ] BotTokenInput создан
-- [ ] PlanCard создан
-- [ ] Валидация работает
+- [x] Ввод/валидация токена бота реализованы в форме регистрации (frontend вызывает `/api/public/companies/register` и backend валидирует токен через Telegram API)
+- [x] `PlanCard` создан (`web/frontend/src/components/PlanCard.tsx`)
+- [x] Валидация формы работает (обязательные поля + проверки на backend)
 
 ### Страницы
-- [ ] PublicRegistration создана
-- [ ] PlanSelection создана
-- [ ] PaymentConfirmation создана
-- [ ] Все шаги работают
+- [x] Страница регистрации создана (`web/frontend/src/pages/Register.tsx`)
+- [x] Выбор плана реализован (`web/frontend/src/components/PlanSelection.tsx`)
+- [x] Страницы результата оплаты созданы (`web/frontend/src/pages/PaymentSuccess.tsx`, `web/frontend/src/pages/PaymentError.tsx`)
+- [x] Маршруты добавлены в `web/frontend/src/App.tsx` (`/register`, `/payment/success`, `/payment/error`)
 
 ### API клиент
-- [ ] publicApi.ts создан
-- [ ] Функции определены
-- [ ] Интеграция работает
+- [x] `publicApi` создан (`web/frontend/src/api/public.ts`)
+- [x] Получение планов и регистрация компании реализованы
+- [x] Интеграция с backend `/api/public/*` подключена
 
 ### Тестирование
-- [ ] Форма регистрации работает
-- [ ] Валидация токена работает
-- [ ] Перенаправление работает
+- [x] Форма регистрации работает (маршрут `/register`)
+- [x] Валидация токена работает (backend `validate_bot_token()` в `web/backend/app/api/public.py`)
+- [x] Поток оплаты/редиректы присутствуют (`/payment/success`, `/payment/error`)
 
 ---
 
-**Этап 8 завершен:** [ ]  
-**Дата завершения:** _________  
-**Примечания:** _________________
+**Этап 8 завершен:** [x]  
+**Дата завершения:** 2026-01-14  
+**Примечания:** Реализация сделана через `Register.tsx` + `CompanyRegistrationForm` + `publicApi`. Источник правды по остаткам: `tasks.md`.
 

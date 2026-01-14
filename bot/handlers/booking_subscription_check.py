@@ -30,12 +30,24 @@ async def check_subscription_before_booking(
         True, если можно создавать записи, False если подписка неактивна
     """
     try:
-        # Получаем контекст диспетчера
-        dp = state.resolve_dp()
-        can_create_bookings = dp.data.get('can_create_bookings', True)
-        company_name = dp.data.get('company_name', '')
-        subscription_status = dp.data.get('subscription_status', '')
-        subscription_end_date = dp.data.get('subscription_end_date', None)
+        # Получаем контекст диспетчера через message.bot
+        bot = message.bot
+        can_create_bookings = True
+        company_name = ''
+        subscription_status = ''
+        subscription_end_date = None
+        
+        try:
+            # В aiogram 3.x диспетчер может быть доступен через bot._dispatcher
+            if hasattr(bot, '_dispatcher'):
+                dp = bot._dispatcher
+                if hasattr(dp, 'get'):
+                    can_create_bookings = dp.get('can_create_bookings', True)
+                    company_name = dp.get('company_name', '')
+                    subscription_status = dp.get('subscription_status', '')
+                    subscription_end_date = dp.get('subscription_end_date', None)
+        except:
+            pass
         
         logger.info(
             f"Проверка подписки для компании '{company_name}': "

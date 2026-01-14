@@ -138,7 +138,7 @@ class BotManager:
             
             try:
                 # Импортируем все хендлеры
-                from bot.handlers.client import start as start_router
+                from bot.handlers.client.start import router as start_router
                 from bot.handlers.client.booking import router as booking_router
                 from bot.handlers.client.calendar import router as calendar_router
                 from bot.handlers.client.my_bookings import router as my_bookings_router

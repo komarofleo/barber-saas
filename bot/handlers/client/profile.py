@@ -14,13 +14,38 @@ router = Router()
 @router.message(F.text == "👤 Профиль")
 async def show_profile(message: Message):
     """Показать профиль клиента"""
+    # Получаем company_id из токена бота
+    company_id = None
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = message.bot.token
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка получения company_id: {e}")
+        pass
+    
     async for session in get_session():
-        user = await get_user_by_telegram_id(session, message.from_user.id)
+        if company_id:
+            from sqlalchemy import text
+            schema_name = f"tenant_{company_id}"
+            await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        user = await get_user_by_telegram_id(session, message.from_user.id, company_id=company_id)
         if not user:
             await message.answer("❌ Сначала зарегистрируйтесь через /start")
             return
 
-        client = await get_client_by_user_id(session, user.id)
+        client = await get_client_by_user_id(session, user.id, company_id=company_id)
         if not client:
             await message.answer("❌ Сначала зарегистрируйтесь через /start")
             return
@@ -38,52 +63,10 @@ async def show_profile(message: Message):
         )
         history = list(history_result.scalars().all())
 
-        # Получаем марки автомобилей из заявок, если их нет в профиле
-        car_brands_from_bookings = set()
-        if not client.car_brand:
-            bookings_result = await session.execute(
-                select(Booking)
-                .where(Booking.client_id == client.id)
-                .where(Booking.comment.isnot(None))
-                .where(Booking.comment.like("Марка автомобиля:%"))
-                .order_by(Booking.created_at.desc())
-                .limit(10)
-            )
-            bookings = list(bookings_result.scalars().all())
-            
-            for booking in bookings:
-                if booking.comment and "Марка автомобиля:" in booking.comment:
-                    car_brand = booking.comment.replace("Марка автомобиля:", "").strip()
-                    # Если есть перенос строки, берем только первую часть
-                    if car_brand and "\n" in car_brand:
-                        car_brand = car_brand.split("\n")[0].strip()
-                    # Фильтруем некорректные значения
-                    if car_brand and len(car_brand) >= 2 and len(car_brand) <= 50:
-                        invalid_prefixes = ["/", "📋", "⏭️", "❌"]
-                        if not any(car_brand.startswith(prefix) for prefix in invalid_prefixes):
-                            car_brands_from_bookings.add(car_brand)
-        
         # Формируем текст профиля
         text = "👤 Ваш профиль\n\n"
         text += f"📝 ФИО: {client.full_name}\n"
         text += f"📞 Телефон: {client.phone}\n"
-        
-        # Показываем марку из профиля или из заявок
-        if client.car_brand:
-            text += f"🚗 Автомобиль: {client.car_brand}"
-            if client.car_model:
-                text += f" {client.car_model}"
-            if client.car_number:
-                text += f" ({client.car_number})"
-            text += "\n"
-        elif car_brands_from_bookings:
-            # Показываем марки из заявок
-            brands_display = ", ".join(sorted(car_brands_from_bookings))
-            text += f"🚗 Автомобили (из заявок): {brands_display}\n"
-        
-        text += f"\n📊 Статистика:\n"
-        text += f"  • Всего визитов: {client.total_visits}\n"
-        text += f"  • Общая сумма: {client.total_amount}₽\n"
         
         if history:
             text += f"\n📋 История обслуживания (последние {len(history)}):\n"
@@ -112,13 +95,38 @@ async def show_profile(message: Message):
 @router.callback_query(F.data == "show_full_history")
 async def show_full_history(callback):
     """Показать полную историю обслуживания"""
+    # Получаем company_id из токена бота
+    company_id = None
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = callback.bot.token
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка получения company_id: {e}")
+        pass
+    
     async for session in get_session():
-        user = await get_user_by_telegram_id(session, callback.from_user.id)
+        if company_id:
+            from sqlalchemy import text
+            schema_name = f"tenant_{company_id}"
+            await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        user = await get_user_by_telegram_id(session, callback.from_user.id, company_id=company_id)
         if not user:
             await callback.answer("❌ Ошибка", show_alert=True)
             return
 
-        client = await get_client_by_user_id(session, user.id)
+        client = await get_client_by_user_id(session, user.id, company_id=company_id)
         if not client:
             await callback.answer("❌ Ошибка", show_alert=True)
             return
@@ -168,9 +176,9 @@ async def show_full_history(callback):
 
 @router.message(F.text == "ℹ️ О нас")
 async def show_about(message: Message):
-    """Показать информацию о сервисе"""
+    """Показать информацию о салоне красоты"""
     text = "ℹ️ О нас\n\n"
-    text += "Самый лучший автосерви!\n"
+    text += "Самый лучший салон красоты в городе!\n"
     text += "📞 8 800 555 78 13"
     
     await message.answer(text)

@@ -1,5 +1,6 @@
 """Обработчик создания записи"""
 import logging
+from typing import Optional
 from datetime import date, time, timedelta, datetime
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
@@ -21,81 +22,155 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def get_company_id_from_message(message: Message) -> Optional[int]:
+    """Получить company_id из контекста диспетчера через message"""
+    try:
+        # В aiogram 3.x диспетчер доступен через message.bot.session
+        # Но проще использовать middleware data
+        return None  # Будет получать через middleware
+    except:
+        pass
+    return None
+
+
 async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
     """Отправить уведомление администраторам о новой записи"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
-        async for session in get_session():
-            # Загружаем связанные данные
-            from sqlalchemy.orm import selectinload
-            result = await session.execute(
-                select(Booking)
-                .where(Booking.id == booking.id)
-                .options(
-                    selectinload(Booking.client),
-                    selectinload(Booking.service)
+        # Получаем company_id из booking (если есть) или из токена бота
+        company_id = None
+        try:
+            from bot.database.connection import async_session_maker
+            bot_token = bot.token
+            async with async_session_maker() as temp_session:
+                result = await temp_session.execute(
+                    text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                    {"token": bot_token}
                 )
+                row = result.fetchone()
+                if row:
+                    company_id = row[0]
+                    logger.info(f"✅ [NOTIFY_ADMIN] Найден company_id: {company_id}")
+        except Exception as e:
+            logger.error(f"❌ [NOTIFY_ADMIN] Ошибка получения company_id: {e}", exc_info=True)
+        
+        if not company_id:
+            logger.error("❌ [NOTIFY_ADMIN] Не удалось получить company_id!")
+            return
+        
+        async for session in get_session():
+            schema_name = f"tenant_{company_id}"
+            # Устанавливаем search_path для tenant схемы
+            await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+            logger.info(f"✅ [NOTIFY_ADMIN] Установлен search_path: {schema_name}")
+            
+            # Загружаем запись с клиентом через прямой SQL
+            booking_result = await session.execute(
+                text(f"""
+                    SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id
+                    FROM "{schema_name}".bookings b
+                    WHERE b.id = :booking_id
+                """),
+                {"booking_id": booking.id}
             )
-            booking_loaded = result.scalar_one_or_none()
-            if not booking_loaded:
-                logger.error(f"Запись {booking.id} не найдена для уведомления")
+            booking_row = booking_result.fetchone()
+            
+            if not booking_row:
+                logger.error(f"❌ [NOTIFY_ADMIN] Запись {booking.id} не найдена в схеме {schema_name}")
                 return
             
-            # Получаем всех администраторов с Telegram ID
-            admins_result = await session.execute(
-                select(User).where(
-                    and_(
-                        User.is_admin == True,
-                        User.telegram_id.isnot(None)
-                    )
-                )
+            # Загружаем клиента
+            client_result = await session.execute(
+                text(f"""
+                    SELECT id, user_id, full_name, phone
+                    FROM "{schema_name}".clients
+                    WHERE id = :client_id
+                """),
+                {"client_id": booking_row[4]}  # client_id из booking
             )
-            admins = admins_result.scalars().all()
+            client_row = client_result.fetchone()
+            
+            if not client_row:
+                logger.error(f"❌ [NOTIFY_ADMIN] Клиент {booking_row[4]} не найден")
+                return
+            
+            # Загружаем услугу
+            service_result = await session.execute(
+                text(f"""
+                    SELECT id, name, price, duration
+                    FROM "{schema_name}".services
+                    WHERE id = :service_id
+                """),
+                {"service_id": booking_row[5]}  # service_id из booking
+            )
+            service_row = service_result.fetchone()
+            
+            # Получаем всех администраторов с Telegram ID (в tenant схемах используется role='admin')
+            admins_result = await session.execute(
+                text(f"""
+                    SELECT id, telegram_id, username, full_name, phone, role
+                    FROM "{schema_name}".users
+                    WHERE role = 'admin' AND telegram_id IS NOT NULL
+                """)
+            )
+            admin_rows = admins_result.fetchall()
+            # Создаем объекты User для совместимости
+            admins = []
+            for row in admin_rows:
+                user = type('User', (), {})()
+                user.id = row[0]
+                user.telegram_id = row[1]
+                user.username = row[2] or ''
+                user.full_name = row[3]
+                user.phone = row[4]
+                user.role = row[5]
+                user.is_admin = True
+                admins.append(user)
             
             if not admins:
-                logger.warning("Не найдено администраторов для уведомления")
+                logger.warning(f"⚠️ [NOTIFY_ADMIN] Не найдено администраторов для уведомления в схеме {schema_name}")
                 return
             
-            # Формируем сообщение
-            date_str = booking_loaded.date.strftime("%d.%m.%Y")
-            time_str = booking_loaded.time.strftime("%H:%M")
-            client_name = booking_loaded.client.full_name if booking_loaded.client else "Неизвестно"
-            client_phone = booking_loaded.client.phone if booking_loaded.client else "Не указан"
-            service_name = service.name if service else (booking_loaded.service.name if booking_loaded.service else "Не указана")
+            logger.info(f"✅ [NOTIFY_ADMIN] Найдено {len(admins)} администраторов для уведомления")
             
-            # Получаем информацию об автомобиле
-            car_info = ""
-            if booking_loaded.client:
-                if booking_loaded.client.car_brand:
-                    car_info = f"\n   🚗 {booking_loaded.client.car_brand}"
-                    if booking_loaded.client.car_model:
-                        car_info += f" {booking_loaded.client.car_model}"
-                    if booking_loaded.client.car_number:
-                        car_info += f" ({booking_loaded.client.car_number})"
-                elif booking_loaded.comment and "Марка автомобиля:" in booking_loaded.comment:
-                    # Извлекаем марку из комментария
-                    car_brand = booking_loaded.comment.replace("Марка автомобиля:", "").strip()
-                    if car_brand:
-                        car_info = f"\n   🚗 {car_brand}"
+            # Формируем сообщение
+            from datetime import datetime
+            booking_date = booking_row[2]  # date
+            booking_time = booking_row[3]  # time
+            date_str = booking_date.strftime("%d.%m.%Y")
+            time_str = booking_time.strftime("%H:%M")
+            
+            client_name = client_row[2] if client_row[2] else "Неизвестно"  # full_name
+            client_phone = client_row[3] if client_row[3] else "Не указан"  # phone
+            service_name = service_row[1] if service_row else (service.name if service else "Не указана")  # name
+            
+            logger.info(f"📋 [NOTIFY_ADMIN] Данные записи: booking_number={booking_row[1]}, client_name={client_name}, client_phone={client_phone}, service_name={service_name}")
             
             text = f"🔔 Новая запись!\n\n"
-            text += f"📋 {booking_loaded.booking_number}\n"
+            text += f"📋 {booking_row[1]}\n"  # booking_number
             text += f"   👤 {client_name}\n"
-            text += f"   📞 {client_phone}{car_info}\n"
+            text += f"   📞 {client_phone}\n"
             text += f"   📅 {date_str} в {time_str}\n"
             text += f"   🛠️ {service_name}\n"
             
             # Отправляем уведомление всем администраторам
+            sent_count = 0
             for admin in admins:
                 try:
                     await bot.send_message(
                         chat_id=admin.telegram_id,
                         text=text
                     )
-                    logger.info(f"Уведомление отправлено администратору {admin.id} (telegram_id: {admin.telegram_id})")
+                    sent_count += 1
+                    logger.info(f"✅ [NOTIFY_ADMIN] Уведомление отправлено администратору {admin.id} (telegram_id: {admin.telegram_id})")
                 except Exception as e:
-                    logger.error(f"Ошибка отправки уведомления администратору {admin.id}: {e}", exc_info=True)
+                    logger.error(f"❌ [NOTIFY_ADMIN] Ошибка отправки уведомления администратору {admin.id}: {e}", exc_info=True)
+            
+            logger.info(f"✅ [NOTIFY_ADMIN] Отправлено {sent_count} из {len(admins)} уведомлений администраторам")
     except Exception as e:
-        logger.error(f"Ошибка в notify_admins_about_new_booking: {e}", exc_info=True)
+        logger.error(f"❌ [NOTIFY_ADMIN] Ошибка в notify_admins_about_new_booking: {e}", exc_info=True)
 
 
 @router.message(F.text == "📅 Записаться")
@@ -108,20 +183,54 @@ async def start_booking(message: Message, state: FSMContext):
         # Проверка уже завершена в check_subscription_before_booking
         return
     
+    # Получаем company_id из data (передается через SubscriptionMiddleware)
+    # Получаем company_id из токена бота (используем отдельную сессию для public схемы)
+    company_id = None
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = message.bot.token
+        logger.info(f"🔑 Получаем company_id для токена: {bot_token[:20]}...")
+        
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+                logger.info(f"✅ Найден company_id: {company_id}")
+            else:
+                logger.error(f"❌ Компания с таким токеном не найдена! Токен: {bot_token[:20]}...")
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения company_id из токена: {e}", exc_info=True)
+        pass
+    
+    if not company_id:
+        logger.error("❌ Не удалось получить company_id! Услуги не будут найдены.")
+        await message.answer("❌ Ошибка конфигурации бота. Обратитесь к администратору.")
+        return
+    
     async for session in get_session():
-        user = await get_user_by_telegram_id(session, message.from_user.id)
+        # Получаем company_id из токена бота для правильной работы с tenant схемой
+        user = await get_user_by_telegram_id(session, message.from_user.id, company_id=company_id)
         if not user:
             await message.answer("❌ Сначала зарегистрируйтесь через /start")
             return
 
-        client = await get_client_by_user_id(session, user.id)
+        client = await get_client_by_user_id(session, user.id, company_id=company_id)
         if not client:
             await message.answer("❌ Сначала зарегистрируйтесь через /start")
             return
 
-        # Получаем список услуг
-        services = await get_services(session, active_only=True)
+        # Получаем список услуг с указанием company_id для установки search_path
+        logger.info(f"📋 Запрашиваем услуги для company_id={company_id}")
+        services = await get_services(session, active_only=True, company_id=company_id)
+        logger.info(f"📊 Получено услуг: {len(services) if services else 0}")
+        
         if not services:
+            logger.warning(f"⚠️ Нет доступных услуг для company_id={company_id}")
             await message.answer("❌ Нет доступных услуг. Обратитесь к администратору.")
             return
 
@@ -144,9 +253,27 @@ async def process_service(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Ошибка выбора услуги", show_alert=True)
         return
     
+    # Получаем company_id из токена бота
+    company_id = None
+    try:
+        from sqlalchemy import text
+        bot_token = callback.bot.token
+        async for session in get_session():
+            result = await session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+            break
+    except Exception as e:
+        logger.error(f"Ошибка получения company_id из токена: {e}")
+        pass
+    
     async for session in get_session():
         try:
-            service = await get_service_by_id(session, service_id)
+            service = await get_service_by_id(session, service_id, company_id=company_id)
             if not service:
                 await callback.answer("❌ Услуга не найдена", show_alert=True)
                 return
@@ -195,7 +322,6 @@ async def process_time_selection(callback: CallbackQuery, state: FSMContext):
 
     # Сохраняем выбранное время
     await state.update_data(booking_time=selected_time)
-    await state.set_state(BookingStates.adding_car_brand)
     
     # Получаем данные из состояния
     data = await state.get_data()
@@ -206,92 +332,13 @@ async def process_time_selection(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Ошибка данных", show_alert=True)
         return
 
-    async for session in get_session():
-        try:
-            service = await get_service_by_id(session, service_id)
-            if not service:
-                await callback.answer("❌ Услуга не найдена", show_alert=True)
-                return
-
-            # Показываем запрос на ввод марки автомобиля (необязательно)
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="⏭️ Пропустить", callback_data="skip_car_brand")],
-                [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
-            ])
-            
-            await callback.message.edit_text(
-                f"🛠️ Услуга: {service.name}\n"
-                f"📅 Дата: {booking_date.strftime('%d.%m.%Y')}\n"
-                f"⏰ Время: {selected_time.strftime('%H:%M')}\n\n"
-                f"🚗 Укажите марку автомобиля (необязательно):\n\n"
-                f"Например: Toyota, BMW, Mercedes и т.д.\n"
-                f"Или нажмите 'Пропустить'",
-                reply_markup=keyboard
-            )
-            await callback.answer()
-        except Exception as e:
-            logger.error(f"Ошибка при обработке времени: {e}", exc_info=True)
-            await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
-
-
-@router.callback_query(F.data == "skip_car_brand", BookingStates.adding_car_brand)
-async def skip_car_brand(callback: CallbackQuery, state: FSMContext):
-    """Пропустить ввод марки автомобиля"""
-    await state.update_data(car_brand=None)
+    # Сразу переходим к созданию записи (без запроса марки автомобиля)
+    logger.info(f"✅ Выбрано время: {selected_time}, переходим к созданию записи")
+    await callback.answer("⏳ Создаю запись...")
     await finalize_booking(callback, state)
 
 
-@router.message(BookingStates.adding_car_brand)
-async def process_car_brand(message: Message, state: FSMContext):
-    """Обработка ввода марки автомобиля"""
-    # Проверяем, не введена ли уже марка
-    data = await state.get_data()
-    if data.get("car_brand") is not None:
-        await message.answer("✅ Марка автомобиля уже введена. Запись создается, пожалуйста, подождите...")
-        return
-    
-    # Игнорируем известные команды из клавиатуры
-    known_commands = ["📅 Записаться", "📋 Мои записи", "👤 Профиль", "ℹ️ О нас", "❌ Отмена"]
-    if message.text and message.text.strip() in known_commands:
-        await message.answer("⚠️ Пожалуйста, введите марку автомобиля текстом или нажмите 'Пропустить' в сообщении выше.")
-        return
-    
-    # Получаем и очищаем марку от пробелов
-    car_brand = message.text.strip() if message.text else None
-    
-    # Если после очистки осталась пустая строка, считаем что марка не указана
-    if car_brand == "":
-        car_brand = None
-    
-    if car_brand and len(car_brand) > 100:
-        await message.answer("❌ Марка автомобиля слишком длинная (максимум 100 символов). Попробуйте снова:")
-        return
-    
-    # Сохраняем марку
-    await state.update_data(car_brand=car_brand)
-    logger.info(f"Марка автомобиля сохранена в state: {car_brand}")
-    
-    # Немедленно отправляем подтверждение
-    if car_brand:
-        confirmation_msg = f"✅ Марка автомобиля введена: {car_brand}\n\n⏳ Создаю запись..."
-    else:
-        confirmation_msg = "✅ Марка автомобиля пропущена\n\n⏳ Создаю запись..."
-    sent_message = await message.answer(confirmation_msg)
-    
-    # Переходим к финализации заявки
-    from aiogram.types import CallbackQuery
-    class FakeCallback:
-        def __init__(self, message, sent_message):
-            self.message = sent_message  # Используем отправленное сообщение для редактирования
-            self.bot = message.bot
-            self.from_user = message.from_user
-            
-        async def answer(self, *args, **kwargs):
-            pass
-    
-    fake_callback = FakeCallback(message, sent_message)
-    await finalize_booking(fake_callback, state)
+# Обработчики для марки автомобиля удалены - поле больше не используется
 
 
 async def finalize_booking(callback, state: FSMContext):
@@ -302,16 +349,46 @@ async def finalize_booking(callback, state: FSMContext):
     service_duration = data.get("service_duration", 60)
     booking_date = data.get("booking_date")
     booking_time = data.get("booking_time")
-    car_brand = data.get("car_brand")
 
     if not service_id or not booking_date or not booking_time:
         if hasattr(callback, 'answer'):
             await callback.answer("❌ Ошибка данных", show_alert=True)
         return
 
+    logger.info(f"📋 Создание записи: service_id={service_id}, date={booking_date}, time={booking_time}")
+
+    # Получаем company_id из токена бота
+    company_id = None
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = callback.bot.token
+        logger.info(f"🔑 Получаем company_id для токена: {bot_token[:20]}...")
+        
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+                logger.info(f"✅ Найден company_id: {company_id}")
+            else:
+                logger.error(f"❌ Компания с таким токеном не найдена!")
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения company_id из токена: {e}", exc_info=True)
+        pass
+    
+    if not company_id:
+        logger.error("❌ Не удалось получить company_id!")
+        if hasattr(callback, 'answer'):
+            await callback.answer("❌ Ошибка конфигурации бота", show_alert=True)
+        return
+    
     async for session in get_session():
         try:
-            service = await get_service_by_id(session, service_id)
+            service = await get_service_by_id(session, service_id, company_id=company_id)
             if not service:
                 if hasattr(callback, 'answer'):
                     await callback.answer("❌ Услуга не найдена", show_alert=True)
@@ -320,34 +397,21 @@ async def finalize_booking(callback, state: FSMContext):
             # Вычисляем время окончания
             end_time = (datetime.combine(date.min, booking_time) + timedelta(minutes=service_duration)).time()
 
-            user = await get_user_by_telegram_id(session, callback.from_user.id)
+            user = await get_user_by_telegram_id(session, callback.from_user.id, company_id=company_id)
             if not user:
                 if hasattr(callback, 'answer'):
                     await callback.answer("❌ Пользователь не найден", show_alert=True)
                 return
 
-            client = await get_client_by_user_id(session, user.id)
+            client = await get_client_by_user_id(session, user.id, company_id=company_id)
             if not client:
                 if hasattr(callback, 'answer'):
                     await callback.answer("❌ Клиент не найден. Пройдите регистрацию через /start", show_alert=True)
                 return
 
-            # Обновляем марку автомобиля в профиле клиента, если указана
-            if car_brand and car_brand.strip():
-                from bot.database.crud import update_client_car_brand
-                updated_client = await update_client_car_brand(session, client.id, car_brand.strip())
-                if updated_client:
-                    logger.info(f"Марка автомобиля обновлена в профиле клиента: {car_brand.strip()}")
-                    # Обновляем объект client для дальнейшего использования
-                    client = updated_client
-            
-            # Формируем комментарий с маркой автомобиля, если указана (для обратной совместимости)
+            # Убрано поле марки автомобиля - comment всегда None
             comment = None
-            if car_brand and car_brand.strip():
-                comment = f"Марка автомобиля: {car_brand.strip()}"
-                logger.info(f"Создание заявки с маркой автомобиля: {car_brand}")
-            else:
-                logger.info(f"Создание заявки без марки автомобиля. car_brand={car_brand}")
+            logger.info(f"Создание заявки без марки автомобиля")
 
             # Создаем запись
             booking = await create_booking(
@@ -360,6 +424,7 @@ async def finalize_booking(callback, state: FSMContext):
                 end_time=end_time,
                 comment=comment,
                 created_by=user.id,
+                company_id=company_id,
             )
             logger.info(f"Заявка создана: ID={booking.id}, booking_number={booking.booking_number}, comment={comment}")
 
@@ -383,13 +448,12 @@ async def finalize_booking(callback, state: FSMContext):
                     logger.error(f"Ошибка запуска Celery задачи: {e2}", exc_info=True)
 
             # Отправляем подтверждение пользователю
-            car_info = f"\n🚗 Авто: {car_brand}" if car_brand else ""
             confirmation_text = (
                 f"✅ Запись создана!\n\n"
                 f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
                 f"⏰ Время: {booking.time.strftime('%H:%M')}\n"
                 f"🛠️ Услуга: {service.name}\n"
-                f"💰 Цена: {service.price}₽{car_info}\n\n"
+                f"💰 Цена: {service.price}₽\n\n"
                 f"Номер записи: {booking.booking_number}\n\n"
                 f"Ожидайте подтверждения администратора."
             )
@@ -428,10 +492,28 @@ async def confirm_attendance(callback: CallbackQuery):
         await callback.answer("❌ Ошибка", show_alert=True)
         return
     
+    # Получаем company_id из токена бота
+    company_id = None
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = callback.bot.token
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+    except Exception as e:
+        logger.error(f"Ошибка получения company_id: {e}")
+        pass
+    
     async for session in get_session():
         from bot.database.crud import get_booking_by_id, get_user_by_telegram_id
         
-        user = await get_user_by_telegram_id(session, callback.from_user.id)
+        user = await get_user_by_telegram_id(session, callback.from_user.id, company_id=company_id)
         if not user:
             await callback.answer("❌ Пользователь не найден", show_alert=True)
             return

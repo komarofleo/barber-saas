@@ -66,7 +66,7 @@ celery_app.conf.beat_schedule = {
     # Отправка напоминаний о неоплате (каждые 3 дня в 00:00 UTC)
     "check-subscriptions-payment-reminder": {
         "task": "tasks.send_payment_reminder",
-        "schedule": crontab(hour=0, minute=0, day_of_week=0, 2, 4),  # Каждые 2 дня (Пн, Ср, Пт) в 00:00 UTC
+        "schedule": crontab(hour=0, minute=0, day_of_week=[0, 2, 4]),  # Каждые 2 дня (Пн, Ср, Пт) в 00:00 UTC
     },
 }
 

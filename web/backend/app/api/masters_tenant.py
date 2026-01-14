@@ -8,10 +8,12 @@ API для работы с мастерами (МУЛЬТИ-ТЕНАНТНАЯ �
 """
 from datetime import datetime
 from typing import Optional, Annotated
-from fastapi import APIRouter, Depends, Query, HTTPException, Body
+from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, text
 from sqlalchemy.orm import selectinload
+from jose import jwt
+from app.config import settings
 
 from app.database import get_db
 from app.api.auth import get_current_user
@@ -19,14 +21,40 @@ from app.schemas.master import (
     MasterResponse, MasterListResponse,
     MasterCreateRequest, MasterUpdateRequest
 )
+from app.schemas.booking import BookingResponse
+from datetime import date
 from shared.database.models import User, Master, Booking
 from app.services.tenant_service import get_tenant_service
 
 router = APIRouter(prefix="/api/masters", tags=["masters"])
 
+from app.schemas.booking import BookingResponse
+
+
+async def get_company_id_from_token(request: Request) -> Optional[int]:
+    """Получить company_id из JWT токена"""
+    try:
+        # Извлекаем токен напрямую из заголовков
+        authorization = request.headers.get("Authorization")
+        if not authorization or not authorization.startswith("Bearer "):
+            return None
+        
+        token = authorization.replace("Bearer ", "")
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        company_id = payload.get("company_id")
+        if company_id:
+            return int(company_id)
+        return None
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Не удалось получить company_id из токена: {e}")
+        return None
+
 
 @router.get("", response_model=MasterListResponse)
 async def get_masters(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
@@ -48,11 +76,18 @@ async def get_masters(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать мастеров")
     
-    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
+    # Получаем company_id из токена, если не передан в query параметрах
+    if not company_id:
+        company_id = await get_company_id_from_token(request)
+    
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id не найден. Необходимо указать company_id в query параметрах или войти как пользователь компании.")
+    
+    schema_name = f"tenant_{company_id}"
+    
+    # Устанавливаем search_path для tenant схемы
+    await db.execute(text(f'SET search_path TO "{schema_name}", public'))
     tenant_session = db
-    if company_id:
-        # Устанавливаем search_path для tenant схемы
-        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     
     query = select(Master)
     
@@ -369,4 +404,106 @@ async def delete_master(
     print(f"✅ Удален мастер: master_id={master_id}, name={master.full_name}")
     
     return None
+
+
+@router.get("/{master_id}/schedule")
+async def get_master_schedule(
+    request: Request,
+    master_id: int,
+    schedule_date: date = Query(..., alias="date"),
+    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Получить расписание мастера на дату (лист-наряд)"""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администраторы могут просматривать расписание")
+    
+    # Получаем company_id из токена, если не передан в query параметрах
+    if not company_id:
+        company_id = await get_company_id_from_token(request)
+    
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id не найден. Необходимо указать company_id в query параметрах или войти как пользователь компании.")
+    
+    schema_name = f"tenant_{company_id}"
+    
+    # Устанавливаем search_path для tenant схемы
+    await db.execute(text(f'SET search_path TO "{schema_name}", public'))
+    tenant_session = db
+    
+    # Проверяем существование мастера
+    master_query = select(Master).where(Master.id == master_id)
+    master_result = await tenant_session.execute(master_query)
+    master = master_result.scalar_one_or_none()
+    
+    if not master:
+        raise HTTPException(status_code=404, detail="Мастер не найден")
+    
+    # Получаем записи мастера на дату через прямой SQL
+    bookings_query = text(f"""
+        SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
+               b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+               b.payment_method, b.comment, b.admin_comment, b.created_at,
+               b.confirmed_at, b.completed_at, b.cancelled_at,
+               c.full_name as client_name, c.phone as client_phone,
+               s.name as service_name, p.number as post_number
+        FROM "{schema_name}".bookings b
+        LEFT JOIN "{schema_name}".clients c ON b.client_id = c.id
+        LEFT JOIN "{schema_name}".services s ON b.service_id = s.id
+        LEFT JOIN "{schema_name}".posts p ON b.post_id = p.id
+        WHERE b.master_id = :master_id
+          AND b.date = :schedule_date
+          AND b.status IN ('confirmed', 'new')
+        ORDER BY b.time ASC
+    """)
+    
+    bookings_result = await tenant_session.execute(
+        bookings_query,
+        {"master_id": master_id, "schedule_date": schedule_date}
+    )
+    bookings_rows = bookings_result.fetchall()
+    
+    # Формируем ответ
+    items = []
+    for row in bookings_rows:
+        booking_dict = {
+            "id": row[0],
+            "booking_number": row[1],
+            "client_id": row[2],
+            "service_id": row[3],
+            "master_id": row[4],
+            "post_id": row[5],
+            "date": row[6],
+            "time": row[7],
+            "duration": row[8],
+            "end_time": row[9],
+            "status": row[10],
+            "amount": row[11],
+            "is_paid": row[12] or False,
+            "payment_method": row[13],
+            "comment": row[14],
+            "admin_comment": row[15],
+            "created_at": row[16],
+            "confirmed_at": row[17],
+            "completed_at": row[18],
+            "cancelled_at": row[19],
+            "client_name": row[20],
+            "client_phone": row[21],
+            "client_telegram_id": None,
+            "client_car_brand": None,
+            "client_car_model": None,
+            "service_name": row[22],
+            "master_name": master.full_name,
+            "post_number": row[23],
+        }
+        
+        items.append(BookingResponse.model_validate(booking_dict))
+    
+    return {
+        "master_id": master.id,
+        "master_name": master.full_name,
+        "date": schedule_date.isoformat(),
+        "bookings": items
+    }
 

@@ -16,7 +16,7 @@ class BookingStates(StatesGroup):
     choosing_service = State()
     choosing_date = State()
     choosing_time = State()
-    adding_car_brand = State()
+    # adding_car_brand удалено - поле больше не используется
     adding_comment = State()
 
 

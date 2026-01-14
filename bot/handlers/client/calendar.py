@@ -1,5 +1,6 @@
 """Обработчики календаря для выбора даты"""
 import logging
+from typing import Optional
 from datetime import date, timedelta, time, datetime
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
@@ -12,6 +13,26 @@ from bot.utils.calendar import generate_calendar
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+async def get_company_id_from_callback(callback: CallbackQuery) -> Optional[int]:
+    """Получить company_id из токена бота"""
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import get_session
+        bot_token = callback.bot.token
+        async for session in get_session():
+            result = await session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                return row[0]
+            break
+    except:
+        pass
+    return None
 
 
 @router.callback_query(F.data.startswith("calendar_date_"), BookingStates.choosing_date)
@@ -37,8 +58,11 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
     service_id = data.get("service_id")
     service_duration = data.get("service_duration", 60)
 
+    # Получаем company_id из токена бота
+    company_id = await get_company_id_from_callback(callback)
+    
     async for session in get_session():
-        service = await get_service_by_id(session, service_id)
+        service = await get_service_by_id(session, service_id, company_id=company_id)
         if not service:
             await callback.answer("❌ Услуга не найдена", show_alert=True)
             return
@@ -100,8 +124,11 @@ async def change_month(callback: CallbackQuery, state: FSMContext):
         data = await state.get_data()
         service_id = data.get("service_id")
 
+        # Получаем company_id из токена бота
+        company_id = await get_company_id_from_callback(callback)
+        
         if service_id:
-            service = await get_service_by_id(session, service_id)
+            service = await get_service_by_id(session, service_id, company_id=company_id)
             if service:
                 await callback.message.edit_text(
                     f"🛠️ Услуга: {service.name}\n"
