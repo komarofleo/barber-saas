@@ -83,28 +83,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Получаем информацию о подписке только если не на страницах супер-админа
         if (!currentPath.startsWith('/super-admin')) {
-          // Для company_admin подписка уже есть в user объекте
+          // Для пользователей с company_id (company_admin или tenant_user) подписка уже есть в user объекте
           if (parsedUser.company_id) {
-            if (parsedUser.subscription_end_date) {
-              const endDate = new Date(parsedUser.subscription_end_date)
-              const today = new Date()
-              const daysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-              
-              const subscriptionInfo: SubscriptionInfo = {
-                id: parsedUser.company_id,
-                company_id: parsedUser.company_id,
-                plan_name: 'Business',
-                status: (parsedUser.subscription_status || 'active') as 'active' | 'expired' | 'blocked' | 'cancelled',
-                start_date: new Date().toISOString().split('T')[0],
-                end_date: parsedUser.subscription_end_date,
-                can_create_bookings: parsedUser.can_create_bookings ?? true,
-                days_remaining: daysRemaining > 0 ? daysRemaining : 0
-              }
-              setSubscription(subscriptionInfo)
+            // Создаем subscriptionInfo из данных пользователя
+            const subscriptionInfo: SubscriptionInfo = {
+              id: parsedUser.company_id,
+              company_id: parsedUser.company_id,
+              plan_name: 'Business',
+              status: (parsedUser.subscription_status || 'active') as 'active' | 'expired' | 'blocked' | 'cancelled',
+              start_date: parsedUser.subscription_end_date ? new Date().toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+              end_date: parsedUser.subscription_end_date || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Если нет даты, ставим через год
+              can_create_bookings: parsedUser.can_create_bookings ?? true, // По умолчанию true для пользователей с company_id
+              days_remaining: parsedUser.subscription_end_date ? 
+                Math.max(0, Math.ceil((new Date(parsedUser.subscription_end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 
+                365
             }
+            setSubscription(subscriptionInfo)
             setSubscriptionLoading(false)
           } else {
-            // Обычный пользователь - получаем подписку через API
+            // Обычный пользователь без company_id - получаем подписку через API
             refreshSubscription()
           }
           
@@ -147,30 +144,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Синхронно обновляем state
       setUser(response.user)
       
-      // Для company_admin подписка уже есть в user объекте
-      // Не нужно вызывать refreshSubscription для них
+      // Для пользователей с company_id (company_admin или tenant_user) подписка уже есть в user объекте
       if (response.user.company_id) {
-        // Это company_admin - подписка уже в user объекте
-        if (response.user.subscription_end_date) {
-          const endDate = new Date(response.user.subscription_end_date)
-          const today = new Date()
-          const daysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-          
-          const subscriptionInfo: SubscriptionInfo = {
-            id: response.user.company_id,
-            company_id: response.user.company_id,
-            plan_name: 'Business', // Можно получить из user если есть
-            status: (response.user.subscription_status || 'active') as 'active' | 'expired' | 'blocked' | 'cancelled',
-            start_date: new Date().toISOString().split('T')[0],
-            end_date: response.user.subscription_end_date,
-            can_create_bookings: response.user.can_create_bookings ?? true,
-            days_remaining: daysRemaining > 0 ? daysRemaining : 0
-          }
-          setSubscription(subscriptionInfo)
+        // Создаем subscriptionInfo из данных пользователя
+        const subscriptionInfo: SubscriptionInfo = {
+          id: response.user.company_id,
+          company_id: response.user.company_id,
+          plan_name: 'Business', // Можно получить из user если есть
+          status: (response.user.subscription_status || 'active') as 'active' | 'expired' | 'blocked' | 'cancelled',
+          start_date: response.user.subscription_end_date ? new Date().toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          end_date: response.user.subscription_end_date || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Если нет даты, ставим через год
+          can_create_bookings: response.user.can_create_bookings ?? true, // По умолчанию true для пользователей с company_id
+          days_remaining: response.user.subscription_end_date ? 
+            Math.max(0, Math.ceil((new Date(response.user.subscription_end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 
+            365
         }
+        setSubscription(subscriptionInfo)
         setSubscriptionLoading(false)
       } else {
-        // Обычный пользователь - получаем подписку через API
+        // Обычный пользователь без company_id - получаем подписку через API
         await refreshSubscription()
       }
       
@@ -194,7 +186,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSubscription(null)
   }
 
-  const canCreateBookings = subscription?.can_create_bookings ?? false
+  // Определяем canCreateBookings:
+  // 1. Если есть subscription, используем его can_create_bookings
+  // 2. Если нет subscription, но есть user с can_create_bookings, используем его
+  // 3. Если пользователь - tenant_user с company_id, проверяем подписку компании из user объекта
+  const canCreateBookings = subscription?.can_create_bookings ?? 
+                            user?.can_create_bookings ?? 
+                            (user?.company_id ? true : false) // Если есть company_id, считаем что подписка активна
   const company_id = user?.company_id ?? null
 
   return (

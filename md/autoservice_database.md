@@ -1,6 +1,6 @@
-# 🗄️ DATABASE - Структура базы данных AutoService
+# 🗄️ DATABASE - Структура базы данных Barber
 
-Полное описание схемы базы данных PostgreSQL для системы AutoService.
+Полное описание схемы базы данных PostgreSQL для системы Barber.
 
 ---
 
@@ -31,7 +31,7 @@ clients             - Дополнительная информация о кл�
 masters             - Мастера
 services            - Услуги
 master_services     - Специализация мастеров (many-to-many)
-posts               - Посты/боксы
+posts               - Рабочие места
 bookings            - Записи
 booking_history     - История изменений записей
 client_history      - История обслуживания клиентов
@@ -117,7 +117,7 @@ CREATE INDEX idx_clients_car_number ON clients(car_number);
 
 ### 3. masters - Мастера
 
-Информация о мастерах автосервиса.
+Информация о мастерах салона красоты.
 
 ```sql
 CREATE TABLE masters (
@@ -131,7 +131,7 @@ CREATE TABLE masters (
     updated_at          TIMESTAMP DEFAULT NOW()
 );
 
-COMMENT ON TABLE masters IS 'Мастера автосервиса';
+COMMENT ON TABLE masters IS 'Мастера салона красоты';
 COMMENT ON COLUMN masters.is_universal IS 'Универсальный (делает все услуги) или специализированный';
 ```
 
@@ -145,7 +145,7 @@ CREATE INDEX idx_masters_telegram_id ON masters(telegram_id);
 
 ### 4. services - Услуги
 
-Список услуг автосервиса.
+Список услуг салона красоты.
 
 ```sql
 CREATE TABLE services (
@@ -159,7 +159,7 @@ CREATE TABLE services (
     updated_at          TIMESTAMP DEFAULT NOW()
 );
 
-COMMENT ON TABLE services IS 'Услуги автосервиса';
+COMMENT ON TABLE services IS 'Услуги салона красоты';
 COMMENT ON COLUMN services.duration IS 'Длительность в минутах (30 или 60)';
 COMMENT ON COLUMN services.price IS 'Базовая цена услуги';
 COMMENT ON COLUMN services.is_active IS 'Активна ли услуга (показывается клиентам)';
@@ -210,9 +210,9 @@ CREATE INDEX idx_master_services_service ON master_services(service_id);
 
 ---
 
-### 6. posts - Посты/боксы
+### 6. posts - Рабочие места
 
-Посты для обслуживания автомобилей.
+Рабочие места для обслуживания клиентов.
 
 ```sql
 CREATE TABLE posts (

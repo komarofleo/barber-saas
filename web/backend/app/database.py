@@ -13,8 +13,8 @@ load_dotenv(dotenv_path=env_path)
 # В Docker используем имя сервиса 'postgres', локально - 'localhost'
 DB_HOST = os.getenv("DB_HOST", "postgres")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "autoservice_db")
-DB_USER = os.getenv("DB_USER", "autoservice_user")
+DB_NAME = os.getenv("DB_NAME", "barber_db")
+DB_USER = os.getenv("DB_USER", "barber_user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
 DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"

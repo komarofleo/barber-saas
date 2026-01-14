@@ -157,24 +157,27 @@ const SuperAdminCompanies: React.FC = () => {
 
   return (
     <div className="super-admin-companies-page">
-      <div className="companies-container">
-        {/* Заголовок страницы */}
-        <div className="page-header">
-          <button
-            className="dashboard-menu-toggle"
-            onClick={toggleSidebar}
-            title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
-          >
-            {sidebarOpen ? '◀' : '▶'}
-          </button>
-          <div className="header-content">
-            <h1 className="page-title">🏢 Управление компаниями</h1>
-            <p className="page-subtitle">
-              Просмотр и управление всеми зарегистрированными автосервисами
-            </p>
-          </div>
+      {/* Заголовок страницы - вынесен наружу */}
+      <div className="page-header">
+        <button
+          className="dashboard-menu-toggle"
+          onClick={toggleSidebar}
+          title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
+        >
+          {sidebarOpen ? '◀' : '▶'}
+        </button>
+        <div className="header-content">
+          <h1 className="page-title">🏢 Управление компаниями</h1>
+          <p className="page-subtitle">
+            Просмотр и управление всеми зарегистрированными салонами красоты
+          </p>
         </div>
+      </div>
 
+      {/* Spacer для компенсации fixed header */}
+      <div className="header-spacer"></div>
+
+      <div className="companies-container">
         {/* Панель фильтров */}
         <div className="filters-panel">
           <div className="filter-group">
@@ -357,6 +360,13 @@ const SuperAdminCompanies: React.FC = () => {
                         title="Просмотр"
                       >
                         👁
+                      </button>
+                      <button
+                        className="action-button edit"
+                        onClick={() => navigate(`/super-admin/companies/${company.id}/edit`)}
+                        title="Редактировать"
+                      >
+                        ✏️
                       </button>
                       <button
                         className={`action-button deactivate ${!company.is_active ? 'disabled' : ''}`}
@@ -601,6 +611,7 @@ const SuperAdminCompanies: React.FC = () => {
               <button
                 className="modal-button primary"
                 onClick={() => {
+                  setShowModal(false)
                   navigate(`/super-admin/companies/${selectedCompany.id}/edit`)
                 }}
               >

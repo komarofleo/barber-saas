@@ -16,6 +16,15 @@ router = Router()
 @router.message(F.text == "/start")
 async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start"""
+    # Получаем company_id из контекста диспетчера
+    company_id = None
+    try:
+        dp = state.resolve_dp()
+        if dp:
+            company_id = dp.get('company_id')
+    except:
+        pass
+    
     async for session in get_session():
         # Получаем или создаем пользователя
         user = await get_or_create_user(
@@ -24,6 +33,7 @@ async def cmd_start(message: Message, state: FSMContext):
             username=message.from_user.username,
             first_name=message.from_user.first_name,
             last_name=message.from_user.last_name,
+            company_id=company_id,
         )
 
         # Проверяем, зарегистрирован ли как клиент
@@ -34,7 +44,7 @@ async def cmd_start(message: Message, state: FSMContext):
             # Начинаем регистрацию
             await state.set_state(RegistrationStates.waiting_full_name)
             await message.answer(
-                "👋 Добро пожаловать в автосервис!\n\n"
+                "👋 Добро пожаловать в салон красоты!\n\n"
                 "Для начала работы необходимо пройти регистрацию.\n"
                 "Введите ваше ФИО:",
                 reply_markup=get_cancel_keyboard()

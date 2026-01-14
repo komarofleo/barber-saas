@@ -72,7 +72,7 @@
    Base = declarative_base()
 
    class Company(Base):
-       """Автосервисы (компании)"""
+       """Салоны красоты (компании)"""
        __tablename__ = "companies"
        
        id = Column(Integer, primary_key=True, index=True)
@@ -383,7 +383,7 @@
    
    class CompanyBase(BaseModel):
        """Базовая схема компании"""
-       name: str = Field(..., min_length=3, max_length=255, description="Название автосервиса")
+       name: str = Field(..., min_length=3, max_length=255, description="Название салона красоты")
        email: Optional[EmailStr] = Field(None, description="Email")
        phone: Optional[str] = Field(None, max_length=20, description="Телефон")
        telegram_bot_token: Optional[str] = Field(None, max_length=500, description="Токен бота")
@@ -1115,7 +1115,7 @@
 
 3. Проверить БД:
    ```bash
-   docker compose exec postgres psql -U autoservice_user -d autoservice_db -c "\dt public"
+   docker compose exec postgres psql -U barber_user -d barber_db -c "\dt public"
    ```
 
 ---

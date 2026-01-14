@@ -152,7 +152,7 @@ const CompanyRegistrationForm: React.FC = () => {
     {
       step: 1,
       title: 'Данные компании',
-      description: 'Основная информация о вашем автосервисе',
+      description: 'Основная информация о вашем салоне красоты',
     },
     {
       step: 2,
@@ -175,12 +175,12 @@ const CompanyRegistrationForm: React.FC = () => {
     if (!formData.name || formData.name.length < 3) {
       newErrors.push({
         field: 'name',
-        message: 'Название автосервиса должно содержать минимум 3 символа',
+        message: 'Название салона красоты должно содержать минимум 3 символа',
       })
     } else if (formData.name.length > 255) {
       newErrors.push({
         field: 'name',
-        message: 'Название автосервиса не должно превышать 255 символов',
+        message: 'Название салона красоты не должно превышать 255 символов',
       })
     }
 
@@ -394,7 +394,7 @@ const CompanyRegistrationForm: React.FC = () => {
         {/* Заголовок и описание в две колонки */}
         <div className="form-header-grid">
           <div className="form-header-column">
-            <h1 className="registration-title">Регистрация автосервиса</h1>
+            <h1 className="registration-title">Регистрация салона красоты</h1>
           </div>
           <div className="form-header-column">
             <p className="registration-subtitle">
@@ -420,7 +420,7 @@ const CompanyRegistrationForm: React.FC = () => {
               <div className="additional-form-column">
                 <div className="additional-form-field">
                   <label className="additional-field-label">
-                    Название автосервиса<span className="required-mark">*</span>
+                    Название салона красоты<span className="required-mark">*</span>
                   </label>
                   <input
                     type="text"

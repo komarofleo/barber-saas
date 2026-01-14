@@ -606,7 +606,7 @@ function EditUserModal({ user, onClose, onSave }: EditUserModalProps) {
             </div>
           </div>
 
-          <div className="form-row">
+          <div className="form-row form-row-checkboxes">
             <div className="form-group">
               <label className="checkbox-label">
                 <input

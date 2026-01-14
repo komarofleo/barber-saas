@@ -129,7 +129,7 @@ def get_available_dates(start_date: date, end_date: date) -> Set[date]:
     
     while current <= end_date:
         # Проверяем, что дата не в прошлом и не воскресенье (6 = воскресенье)
-        # В автосервисе работают 7 дней в неделю, но можно добавить проверку
+        # В салоне красоты работают 7 дней в неделю, но можно добавить проверку
         if current >= today:
             available.add(current)
         current += timedelta(days=1)

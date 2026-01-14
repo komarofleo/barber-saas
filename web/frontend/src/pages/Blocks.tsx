@@ -63,9 +63,9 @@ function Blocks() {
 
   const getBlockTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      'full_service': 'Весь автосервис',
+      'full_service': 'Весь салон красоты',
       'master': 'Мастер',
-      'post': 'Пост',
+      'post': 'Рабочее место',
       'service': 'Услуга'
     }
     return labels[type] || type
@@ -104,9 +104,9 @@ function Blocks() {
             className="filter-select"
           >
             <option value="all">Все</option>
-            <option value="full_service">Весь автосервис</option>
+            <option value="full_service">Весь салон красоты</option>
             <option value="master">Мастер</option>
-            <option value="post">Пост</option>
+            <option value="post">Рабочее место</option>
             <option value="service">Услуга</option>
           </select>
         </div>
@@ -170,7 +170,7 @@ function Blocks() {
                     {block.master_name && `Мастер: ${block.master_name}`}
                     {block.post_number && `Пост №${block.post_number}`}
                     {block.service_name && `Услуга: ${block.service_name}`}
-                    {block.block_type === 'full_service' && 'Весь автосервис'}
+                    {block.block_type === 'full_service' && 'Весь салон красоты'}
                   </td>
                   <td>{formatDate(block.start_date)}</td>
                   <td>{formatDate(block.end_date)}</td>
@@ -382,9 +382,9 @@ function CreateBlockModal({ onClose, onSave }: CreateBlockModalProps) {
               className="form-input"
               required
             >
-              <option value="full_service">Весь автосервис</option>
+              <option value="full_service">Весь салон красоты</option>
               <option value="master">Мастер</option>
-              <option value="post">Пост</option>
+              <option value="post">Рабочее место</option>
               <option value="service">Услуга</option>
             </select>
           </div>

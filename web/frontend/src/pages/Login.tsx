@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { authApi } from '../api/auth'
 import './Login.css'
 
 function Login() {
+  const { id: companyId } = useParams<{ id: string }>()
   const [loginType, setLoginType] = useState<'telegram' | 'email'>('telegram')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -85,7 +86,7 @@ function Login() {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1>AutoService</h1>
+        <h1>Barber</h1>
         <h2>Вход в админ-панель</h2>
         
         {/* Переключатель типа входа */}

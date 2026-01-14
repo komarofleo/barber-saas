@@ -136,7 +136,7 @@ const PaymentSuccess: React.FC = () => {
         
         <p className="success-subtitle">
           {isCompanyCreated 
-            ? 'Ваша компания зарегистрирована в AutoService SaaS'
+            ? 'Ваша компания зарегистрирована в Barber SaaS'
             : 'Мы обрабатываем ваш платеж и создаем аккаунт. Это может занять несколько секунд.'}
         </p>
 
@@ -181,7 +181,7 @@ const PaymentSuccess: React.FC = () => {
             <div className="info-card-icon">📊</div>
             <div className="info-card-content">
               <h3>Дашборд доступен</h3>
-              <p>Управляйте вашим автосервисом онлайн</p>
+              <p>Управляйте вашим салоном красоты онлайн</p>
             </div>
           </div>
         </div>
@@ -208,7 +208,7 @@ const PaymentSuccess: React.FC = () => {
               <h3>Нужна помощь?</h3>
               <ul className="help-links">
                 <li>
-                  <a href="mailto:support@autoservice-saas.com" className="help-link">
+                  <a href="mailto:support@barber-saas.com" className="help-link">
                     Написать в поддержку
                   </a>
                 </li>

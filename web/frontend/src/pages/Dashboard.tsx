@@ -158,7 +158,7 @@ function Dashboard() {
       
       setMastersToday(mastersWithBookings)
 
-      // Загружаем данные о постах и их загрузке
+      // Загружаем данные о рабочих местах и их загрузке
       const postsDataList = await postsApi.getPosts(1, 100, undefined, true)
       const activePosts = postsDataList.items.filter(post => post.is_active)
       setActivePostsCount(activePosts.length)
@@ -166,7 +166,7 @@ function Dashboard() {
       const postsWithBookings = postsDataList.items.map(post => {
         const postBookings = todayBookingsList.filter(b => b.post_id === post.id)
         return {
-          name: post.name || `Пост №${post.number}`,
+          name: post.name || `Рабочее место №${post.number}`,
           count: postBookings.length,
           postId: post.id
         }
@@ -250,9 +250,9 @@ function Dashboard() {
         tomorrowCount: tomorrowSlotsResult?.length || 0,
         timestamp: new Date().toISOString()
       })
-      console.log('ℹ️ ВАЖНО: Количество слотов (временных интервалов) не зависит от количества постов!')
+      console.log('ℹ️ ВАЖНО: Количество слотов (временных интервалов) не зависит от количества рабочих мест!')
       console.log('ℹ️ Слоты - это просто время: 9:00, 9:30, 10:00 и т.д.')
-      console.log('ℹ️ Количество постов влияет на то, сколько ЗАПИСЕЙ можно принять на одно время')
+      console.log('ℹ️ Количество рабочих мест влияет на то, сколько ЗАПИСЕЙ можно принять на одно время')
       
       // Фильтруем прошедшие слоты для сегодня
       // Создаем текущее время заново для точного сравнения
@@ -308,7 +308,7 @@ function Dashboard() {
     loadAvailableSlots()
   }
 
-  // Функция для расчета доступных записей с учетом занятых постов по слотам
+  // Функция для расчета доступных записей с учетом занятых рабочих мест по слотам
   const calculateAvailableBookings = (
     slots: string[],
     bookings: Booking[],
@@ -347,13 +347,13 @@ function Dashboard() {
           if (booking.post_id) {
             occupiedPosts.add(booking.post_id)
           } else {
-            // Запись без поста считается как занятый один пост
+            // Запись без рабочего места считается как занятое одно рабочее место
             bookingsWithoutPost++
           }
         }
       })
 
-      // Доступных записей на этот слот = активных постов - занятых постов
+      // Доступных записей на этот слот = активных рабочих мест - занятых рабочих мест
       const availableOnSlot = Math.max(0, activePostsCount - occupiedPosts.size - bookingsWithoutPost)
       totalAvailable += availableOnSlot
     })
@@ -361,7 +361,7 @@ function Dashboard() {
     return totalAvailable
   }
 
-  // Расчет доступных записей с учетом занятых постов по слотам
+  // Расчет доступных записей с учетом занятых рабочих мест по слотам
   const todayDate = new Date().toISOString().split('T')[0]
   const tomorrowDate = new Date()
   tomorrowDate.setDate(tomorrowDate.getDate() + 1)
@@ -545,7 +545,7 @@ function Dashboard() {
                   opacity: 0.9
                 }}>
                   • Слотов: {availableSlots.today.length}<br/>
-                  • Постов: {activePostsCount}<br/>
+                  • Рабочих мест: {activePostsCount}<br/>
                   • Создано: {todayBookingsCount}
                 </div>
               </div>
@@ -573,7 +573,7 @@ function Dashboard() {
                   opacity: 0.9
                 }}>
                   • Слотов: {availableSlots.tomorrow.length}<br/>
-                  • Постов: {activePostsCount}<br/>
+                  • Рабочих мест: {activePostsCount}<br/>
                   • Создано: {tomorrowBookingsCount}
                 </div>
               </div>
@@ -680,8 +680,8 @@ function Dashboard() {
       {postsData.length > 0 && (
         <div className="dashboard-section">
           <div className="section-header">
-            <h2>Загрузка постов на сегодня</h2>
-            <a href="/posts" className="view-all-link">Все посты →</a>
+            <h2>Загрузка рабочих мест на сегодня</h2>
+            <a href="/posts" className="view-all-link">Все рабочие места →</a>
           </div>
           
           <div className="chart-container-compact">
@@ -733,7 +733,7 @@ function Dashboard() {
                   <th>Клиент</th>
                   <th>Услуга</th>
                   <th>Мастер</th>
-                  <th>Пост</th>
+                  <th>Рабочее место</th>
                   <th>Статус</th>
                 </tr>
               </thead>
@@ -864,7 +864,7 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
     }
   }, [formData.service_id, services])
 
-  // Загрузка занятых постов при изменении даты, времени и длительности
+  // Загрузка занятых рабочих мест при изменении даты, времени и длительности
   useEffect(() => {
     if (formData.date && formData.time && formData.duration) {
       loadOccupiedPosts()
@@ -909,7 +909,7 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
     }
   }
 
-  // Функция для загрузки занятых постов на выбранное время
+  // Функция для загрузки занятых рабочих мест на выбранное время
   const loadOccupiedPosts = async () => {
     if (!formData.date || !formData.time || !formData.duration) {
       setOccupiedPostIds(new Set())
@@ -928,7 +928,7 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
       const startTime = new Date(`${formData.date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`)
       const endTime = new Date(startTime.getTime() + (formData.duration || 30) * 60 * 1000)
 
-      // Находим занятые посты
+      // Находим занятые рабочие места
       const occupied = new Set<number>()
       bookingsData.items.forEach(booking => {
         // Пропускаем отмененные и завершенные записи
@@ -949,9 +949,9 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
       })
 
       setOccupiedPostIds(occupied)
-      console.log('🚫 Занятые посты на', formData.date, formData.time, ':', Array.from(occupied))
+      console.log('🚫 Занятые рабочие места на', formData.date, formData.time, ':', Array.from(occupied))
     } catch (error) {
-      console.error('Ошибка загрузки занятых постов:', error)
+      console.error('Ошибка загрузки занятых рабочих мест:', error)
       setOccupiedPostIds(new Set())
     }
   }
@@ -1057,14 +1057,14 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
             </div>
 
             <div className="form-group">
-              <label>Пост</label>
+              <label>Рабочее место</label>
               <select
                 value={formData.post_id || ''}
                 onChange={(e) => setFormData({ ...formData, post_id: e.target.value ? parseInt(e.target.value) : undefined })}
                 className="form-input"
                 disabled={dataLoading}
               >
-                <option value="">Выберите пост</option>
+                <option value="">Выберите рабочее место</option>
                 {posts
                   .filter(post => !occupiedPostIds.has(post.id) || post.id === formData.post_id)
                   .map(post => {
@@ -1076,14 +1076,14 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
                         disabled={isOccupied}
                         style={isOccupied ? { color: '#999', fontStyle: 'italic' } : {}}
                       >
-                        {post.name || `Пост №${post.number}`} {isOccupied ? ' (Занят на это время)' : ''}
+                        {post.name || `Рабочее место №${post.number}`} {isOccupied ? ' (Занято на это время)' : ''}
                       </option>
                     )
                   })}
               </select>
               {occupiedPostIds.size > 0 && formData.time && (
                 <small style={{ color: '#666', fontSize: '12px', display: 'block', marginTop: '4px' }}>
-                  ⚠️ {occupiedPostIds.size} {occupiedPostIds.size === 1 ? 'пост занят' : 'постов занято'} на выбранное время
+                  ⚠️ {occupiedPostIds.size} {occupiedPostIds.size === 1 ? 'рабочее место занято' : 'рабочих мест занято'} на выбранное время
                 </small>
               )}
             </div>

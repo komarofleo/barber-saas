@@ -36,6 +36,7 @@ from app.schemas.public_schemas import (
     PlanResponse,
     CompanyResponse
 )
+from app.api.public import validate_bot_token, check_bot_token_exists
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -222,6 +223,8 @@ class CompanyUpdateData(BaseModel):
     name: Optional[str] = Field(None, min_length=3, max_length=255)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=20)
+    telegram_bot_token: Optional[str] = Field(None, min_length=30, max_length=500, description="Токен Telegram бота")
+    admin_telegram_id: Optional[int] = Field(None, ge=1, description="Telegram ID администратора")
     plan_id: Optional[int] = Field(None, ge=1)
     subscription_status: Optional[str] = Field(None, description="Статус подписки")
     can_create_bookings: Optional[bool] = None
@@ -512,12 +515,29 @@ async def get_companies(
     else:
         query = query.order_by(sort_column.desc())
     
-    # Получаем общее количество
-    total_result = await db.execute(
-        select(func.count(Company.id)).where(
-            query.whereclause
+    # Получаем общее количество (создаем отдельный запрос с теми же фильтрами)
+    count_query = select(func.count(Company.id))
+    
+    # Применяем те же фильтры для подсчета
+    if search:
+        search_pattern = f"%{search}%"
+        count_query = count_query.where(
+            or_(
+                Company.name.ilike(search_pattern),
+                Company.email.ilike(search_pattern)
+            )
         )
-    )
+    
+    if subscription_status:
+        count_query = count_query.where(Company.subscription_status == subscription_status)
+    
+    if is_active is not None:
+        count_query = count_query.where(Company.is_active == is_active)
+    
+    if plan_id:
+        count_query = count_query.where(Company.plan_id == plan_id)
+    
+    total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
     
     # Пагинация
@@ -593,6 +613,7 @@ async def get_companies(
                 "currency": payment.currency,
                 "status": payment.status,
                 "description": payment.description,
+                "extra_data": payment.extra_data if hasattr(payment, 'extra_data') else None,
                 "yookassa_payment_id": payment.yookassa_payment_id,
                 "yookassa_confirmation_url": payment.yookassa_confirmation_url,
                 "yookassa_payment_status": payment.yookassa_payment_status,
@@ -774,6 +795,38 @@ async def update_company(
     
     if update_data.phone is not None:
         company.phone = update_data.phone
+    
+    # Валидация и обновление токена бота
+    if update_data.telegram_bot_token is not None:
+        # Проверяем, что токен валиден
+        is_token_valid = await validate_bot_token(update_data.telegram_bot_token)
+        if not is_token_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Токен Telegram бота невалиден. Проверьте токен через @BotFather"
+            )
+        
+        # Проверяем, что токен не занят другой компанией
+        token_exists = await check_bot_token_exists(update_data.telegram_bot_token, db)
+        if token_exists:
+            # Если токен принадлежит другой компании, запрещаем изменение
+            existing_company = await db.execute(
+                select(Company).where(Company.telegram_bot_token == update_data.telegram_bot_token)
+            )
+            existing = existing_company.scalar_one_or_none()
+            if existing and existing.id != company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Токен Telegram бота уже используется другой компанией"
+                )
+        
+        company.telegram_bot_token = update_data.telegram_bot_token
+        logger.info(f"Обновлен токен бота для компании {company_id}")
+    
+    # Обновление Telegram ID администратора
+    if update_data.admin_telegram_id is not None:
+        company.admin_telegram_id = update_data.admin_telegram_id
+        logger.info(f"Обновлен Telegram ID администратора для компании {company_id}")
     
     if update_data.plan_id is not None:
         company.plan_id = update_data.plan_id

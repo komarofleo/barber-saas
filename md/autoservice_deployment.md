@@ -1,6 +1,6 @@
 # 🚀 DEPLOYMENT - Руководство по развертыванию
 
-Полное руководство по развертыванию системы AutoService на production сервере.
+Полное руководство по развертыванию системы Barber на production сервере.
 
 ---
 
@@ -78,13 +78,13 @@ docker compose version
 
 ```bash
 # Создание пользователя для приложения
-sudo useradd -m -s /bin/bash autoservice
+sudo useradd -m -s /bin/bash barber
 
 # Добавление в группу docker
-sudo usermod -aG docker autoservice
+sudo usermod -aG docker barber
 
 # Переключение на пользователя
-sudo su - autoservice
+sudo su - barber
 ```
 
 ### 5. Настройка firewall
@@ -115,15 +115,15 @@ sudo firewall-cmd --reload
 
 ```bash
 # Переход в домашнюю директорию
-cd /home/autoservice
+cd /home/barber
 
 # Git clone (если есть репозиторий)
-git clone https://github.com/your-repo/autoservice.git
-cd autoservice
+git clone https://github.com/your-repo/barber.git
+cd barber
 
 # Или копирование через SCP
 # На локальной машине:
-scp -r autoservice/ autoservice@your-server:/home/autoservice/
+scp -r barber/ barber@your-server:/home/barber/
 ```
 
 ### 2. Структура директорий
@@ -164,7 +164,7 @@ ADMIN_IDS=329621295
 # ==================== DATABASE ====================
 DB_HOST=postgres
 DB_PORT=5432
-DB_NAME=autoservice_db
+DB_NAME=barber_db
 DB_USER=autoservice_user
 DB_PASSWORD=STRONG_PASSWORD_HERE_MIN_16_CHARS
 

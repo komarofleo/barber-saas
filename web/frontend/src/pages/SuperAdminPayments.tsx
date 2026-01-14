@@ -193,24 +193,27 @@ const SuperAdminPayments: React.FC = () => {
 
   return (
     <div className="super-admin-payments-page">
-      <div className="payments-container">
-        {/* Заголовок страницы */}
-        <div className="page-header">
-          <button
-            className="dashboard-menu-toggle"
-            onClick={toggleSidebar}
-            title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
-          >
-            {sidebarOpen ? '◀' : '▶'}
-          </button>
-          <div className="header-content">
-            <h1 className="page-title">💰 Управление платежами</h1>
-            <p className="page-subtitle">
-              Просмотр и управление всеми платежами в системе
-            </p>
-          </div>
+      {/* Заголовок страницы - вынесен наружу */}
+      <div className="page-header">
+        <button
+          className="dashboard-menu-toggle"
+          onClick={toggleSidebar}
+          title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
+        >
+          {sidebarOpen ? '◀' : '▶'}
+        </button>
+        <div className="header-content">
+          <h1 className="page-title">💰 Управление платежами</h1>
+          <p className="page-subtitle">
+            Просмотр и управление всеми платежами в системе
+          </p>
         </div>
+      </div>
 
+      {/* Spacer для компенсации fixed header */}
+      <div className="header-spacer"></div>
+
+      <div className="payments-container">
         {/* Кнопка создания платежа - перемещена из header внутрь контента */}
         <div className="page-actions">
           <button

@@ -21,8 +21,8 @@ from celery import shared_task
 # Получаем настройки из переменных окружения
 DB_HOST = os.getenv("DB_HOST", "postgres")
 DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "autoservice_db")
-DB_USER = os.getenv("DB_USER", "autoservice_user")
+DB_NAME = os.getenv("DB_NAME", "barber_db")
+DB_USER = os.getenv("DB_USER", "barber_user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 

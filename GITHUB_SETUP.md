@@ -1,239 +1,183 @@
-# 🔗 GitHub Настройка
+# 🚀 Настройка GitHub для проекта Barber SaaS
 
-## 📋 Содержание
+## ✅ Репозиторий создан
 
-1. [Проблема с пушингом](#проблема-с-пушингом)
-2. [Решения](#решения)
-3. [Рекомендуемый способ (SSH)](#рекомендуемый-способ-ssh)
-4. [Альтернативный способ (HTTPS + Token)](#альтернативный-способ-https--token)
+Репозиторий успешно создан на GitHub:
+- **URL:** https://github.com/komarofleo/barber-saas
+- **SSH:** git@github.com:komarofleo/barber-saas.git
+- **HTTPS:** https://github.com/komarofleo/barber-saas.git
 
----
+## 📋 Инструкции по настройке
 
-## ❓ Проблема с пушингом
-
-При попытке выполнить `git push` появляется ошибка:
-```
-fatal: could not read Username for 'https://github.com': Device not configured
-```
-
-Это означает, что Git не может получить учетные данные для GitHub.
-
----
-
-## ✅ Решения
-
-Есть два основных способа решения проблемы:
-
-### Способ 1: SSH (Рекомендуемый)
-Безопасный и удобный способ, если у вас уже есть SSH ключ.
-
-### Способ 2: HTTPS + Personal Access Token
-Используется, если вы не хотите настраивать SSH ключи.
-
----
-
-## 🔑 Рекомендуемый способ: SSH
-
-### Шаг 1: Проверьте наличие SSH ключа
+### 1. Инициализация Git (если еще не инициализирован)
 
 ```bash
-ls -la ~/.ssh
+cd /Users/komarofleo/ai/barber
+git init
 ```
 
-Если вы видите файлы `id_rsa` и `id_rsa.pub` (или `id_ed25519` и `id_ed25519.pub`), SSH ключ уже есть!
-
-### Шаг 2: Добавьте SSH ключ в GitHub (если еще не добавлен)
-
-1. Скопируйте публичный ключ:
-```bash
-cat ~/.ssh/id_rsa.pub
-# или
-cat ~/.ssh/id_ed25519.pub
-```
-
-2. Перейдите на GitHub: https://github.com/settings/keys
-
-3. Нажмите "New SSH key"
-
-4. Вставьте публичный ключ
-
-5. Нажмите "Add SSH key"
-
-### Шаг 3: Измените remote URL на SSH
+### 2. Добавление remote репозитория
 
 ```bash
-cd /Users/komarofleo/ai/avtoservis
-git remote set-url origin git@github.com:komarofleo/autoservice-saas.git
+git remote add origin https://github.com/komarofleo/barber-saas.git
+# или через SSH (если настроен ключ):
+# git remote add origin git@github.com:komarofleo/barber-saas.git
 ```
 
-### Шаг 4: Пушим код
-
-```bash
-git push -u origin main
-```
-
-Если первый пуш, может попросить подтверждение:
-```
-The authenticity of host 'github.com' can't be established.
-ED25519 key fingerprint is SHA256:...
-Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
-```
-
-Напишите `yes` и нажмите Enter.
-
-### Шаг 5: Проверьте результат
-
-```bash
-# Открыть репозиторий в браузере
-open https://github.com/komarofleo/autoservice-saas
-```
-
----
-
-## 🔐 Альтернативный способ: HTTPS + Personal Access Token
-
-Если вы не хотите настраивать SSH ключи, можно использовать Personal Access Token.
-
-### Шаг 1: Создайте Personal Access Token
-
-1. Перейдите на GitHub: https://github.com/settings/tokens
-
-2. Нажмите "Generate new token" (или "Generate new token (classic)")
-
-3. Установите настройки:
-   - **Expiration**: No expiration (или выберите период)
-   - **Select scopes**: ☑️ repo (или выберите нужные)
-
-4. Нажмите "Generate token"
-
-5. **ВАЖНО**: Скопируйте токен (он будет показан только один раз!)
-
-### Шаг 2: Настройте credential helper
-
-```bash
-cd /Users/komarofleo/ai/avtoservis
-git config credential.helper store
-```
-
-### Шаг 3: Пушим с использованием токена
-
-```bash
-git push -u origin main
-```
-
-Когда Git спросит логин и пароль:
-- **Username**: `komarofleo` (ваш логин GitHub)
-- **Password**: вставьте Personal Access Token (НЕ ваш пароль GitHub!)
-
-### Шаг 4: Проверьте результат
-
-```bash
-# Открыть репозиторий в браузере
-open https://github.com/komarofleo/autoservice-saas
-```
-
----
-
-## 🚀 Быстрый старт для вас (команды)
-
-### Если у вас уже есть SSH ключ:
-
-```bash
-# Перейдите в папку проекта
-cd /Users/komarofleo/ai/avtoservis
-
-# Измените remote URL на SSH
-git remote set-url origin git@github.com:komarofleo/autoservice-saas.git
-
-# Пушим код
-git push -u origin main
-
-# Открыть репозиторий
-open https://github.com/komarofleo/autoservice-saas
-```
-
-### Если вы используете Personal Access Token:
-
-```bash
-# Перейдите в папку проекта
-cd /Users/komarofleo/ai/avtoservis
-
-# Настройте credential helper
-git config credential.helper store
-
-# Пушим код (введя токен как пароль)
-git push -u origin main
-
-# Открыть репозиторий
-open https://github.com/komarofleo/autoservice-saas
-```
-
----
-
-## 🔍 Проверка текущего состояния
-
-### Проверить текущий remote URL:
-
-```bash
-git remote -v
-```
-
-Вывод должен быть:
-```
-origin  git@github.com:komarofleo/autoservice-saas.git (fetch)
-origin  git@github.com:komarofleo/autoservice-saas.git (push)
-```
-
-### Проверить статус git:
+### 3. Проверка текущего состояния
 
 ```bash
 git status
 ```
 
-### Проверить последний коммит:
+### 4. Создание .gitignore (если еще нет)
+
+Убедитесь, что у вас есть `.gitignore` файл со следующим содержимым:
+
+```
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+*.log
+
+# Docker
+docker-compose.override.yml
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Backup files
+*.sql
+backups/
+*.tar.gz
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+```
+
+### 5. Первый коммит и push
 
 ```bash
-git log -1
+# Добавить все файлы
+git add .
+
+# Создать первый коммит
+git commit -m "feat: Переименование проекта с AutoService на Barber SaaS
+
+- Обновлена вся терминология: автосервис → салон красоты
+- Заменены все упоминания AutoService на Barber
+- Обновлены домены: barber-saas.com
+- Обновлены email адреса: support@barber-saas.com
+- Заменено 'пост' на 'рабочее место' в пользовательских сообщениях
+- Обновлены Docker контейнеры: barber_*
+- Обновлены все md файлы документации
+- Обновлен код backend, frontend и bot"
+
+# Переименовать ветку в main (если нужно)
+git branch -M main
+
+# Push в GitHub
+git push -u origin main
 ```
+
+### 6. Настройка для локальной разработки
+
+Так как проект запускается на localhost, убедитесь, что в `.env` файле указаны правильные настройки:
+
+```env
+# База данных
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=barber_db
+DB_USER=barber_user
+DB_PASSWORD=your_strong_password_here
+
+# Web
+WEB_SECRET_KEY=your_32_character_secret_key_here
+WEB_HOST=0.0.0.0
+WEB_PORT=8000
+
+# Юкасса (для платежей)
+YOOKASSA_SHOP_ID=your_shop_id
+YOOKASSA_SECRET_KEY=your_secret_key
+YOOKASSA_API_URL=https://api.yookassa.ru/v3
+YOOKASSA_RETURN_URL=http://localhost:3000/success
+YOOKASSA_WEBHOOK_URL=http://localhost:8000/api/public/webhooks/yookassa
+
+# Redis (для Celery)
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_DB=0
+
+# Супер-админ
+SUPER_ADMIN_EMAIL=admin@barber-saas.com
+SUPER_ADMIN_PASSWORD=your_strong_password
+SUPER_ADMIN_TELEGRAM_ID=your_telegram_id
+
+# Супер-админ бот
+SUPER_ADMIN_BOT_TOKEN=your_bot_token_from_botfather
+```
+
+### 7. Запуск проекта локально
+
+```bash
+# Запуск всех сервисов
+docker compose up -d
+
+# Применение миграций
+docker compose exec web python -m alembic upgrade head
+
+# Создание начальных данных
+docker compose exec web python scripts/seed.py
+```
+
+## 🔗 Полезные ссылки
+
+- **Репозиторий:** https://github.com/komarofleo/barber-saas
+- **Frontend:** http://localhost:3000
+- **Backend API:** http://localhost:8000
+- **API Docs:** http://localhost:8000/docs
+
+## 📝 Следующие шаги
+
+1. ✅ Репозиторий создан
+2. ⏳ Настроить Git remote и сделать первый push
+3. ⏳ Настроить CI/CD (опционально)
+4. ⏳ Настроить GitHub Actions для автоматических тестов (опционально)
+5. ⏳ Добавить описание проекта в README.md на GitHub
 
 ---
 
-## ✅ После успешного пушинга
-
-Вы должны увидеть:
-
-1. Файлы на GitHub: https://github.com/komarofleo/autoservice-saas
-2. README.md на главной странице репозитория
-3. Все файлы проекта загружены
-4. Коммит виден в истории
-
----
-
-## 📞 Если все еще не работает
-
-### Проверьте подключение к GitHub:
-
-```bash
-# Для SSH
-ssh -T git@github.com
-
-# Для HTTPS
-curl -I https://github.com
-```
-
-### Попробуйте еще раз с verbose:
-
-```bash
-git push -u origin main -v
-```
-
-### Обратитесь к документации GitHub:
-
-- SSH ключи: https://docs.github.com/ru/authentication/connecting-to-github-with-ssh
-- Personal Access Tokens: https://docs.github.com/ru/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens
-- Troubleshooting: https://docs.github.com/ru/authentication/troubleshooting-ssh
-
----
-
-**Удачи с пушингом на GitHub! 🚀**
-
+**Дата создания:** 14.01.2026  
+**Проект:** Barber SaaS v2.0

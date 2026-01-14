@@ -30,7 +30,7 @@ class EmailService:
         self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
         self.smtp_user = os.getenv("SMTP_USER", "")
         self.smtp_password = os.getenv("SMTP_PASSWORD", "")
-        self.smtp_from = os.getenv("SMTP_FROM", "noreply@autoservice-saas.com")
+        self.smtp_from = os.getenv("SMTP_FROM", "noreply@barber-saas.com")
         self.smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
         
         logger.info(f"EmailService инициализирован: {self.smtp_host}")
@@ -66,7 +66,7 @@ class EmailService:
         # Создаем сообщение
         message = MIMEMultipart("alternative")
         message["Subject"] = subject
-        message["From"] = formataddr(("AutoService SaaS", self.smtp_from))
+        message["From"] = formataddr(("Barber SaaS", self.smtp_from))
         message["To"] = to_email
         
         # Добавляем текстовую часть
@@ -111,7 +111,7 @@ class EmailService:
         Отправить приветственное письмо с данными для входа.
         
         Args:
-            company_name: Название автосервиса
+            company_name: Название салона красоты
             email: Email владельца
             password: Пароль (в открытом виде)
             dashboard_url: Ссылка на админ-панель
@@ -126,14 +126,14 @@ class EmailService:
             ...     company_name="ООО 'Точка'",
             ...     email="admin@avtoservis.ru",
             ...     password="AbCd1234XyZ",
-            ...     dashboard_url="https://autoservice-saas.com/company/001/dashboard",
+            ...     dashboard_url="https://barber-saas.com/company/001/dashboard",
             ...     plan_name="Business",
             ...     subscription_end_date=date(2024, 2, 5)
             ... )
         """
         logger.info(f"Отправка приветственного письма на {email}")
         
-        subject = "Добро пожаловать в AutoService SaaS!"
+        subject = "Добро пожаловать в Barber SaaS!"
         
         html_content = f"""
         <!DOCTYPE html>
@@ -141,14 +141,14 @@ class EmailService:
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Добро пожаловать в AutoService SaaS!</title>
+            <title>Добро пожаловать в Barber SaaS!</title>
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
                 <div style="background-color: #f8f9fa; border-radius: 5px; padding: 30px; text-align: center;">
                     <h1 style="color: #28a745; margin-bottom: 20px;">Добро пожаловать!</h1>
                     <p style="font-size: 16px; margin-bottom: 20px;">
-                        Ваш автосервис <strong>{company_name}</strong> успешно зарегистрирован в системе AutoService SaaS.
+                        Ваш салон красоты <strong>{company_name}</strong> успешно зарегистрирован в системе Barber SaaS.
                     </p>
                     
                     <div style="background-color: #e9ecef; border-radius: 5px; padding: 20px; margin-bottom: 20px; text-align: left;">
@@ -183,7 +183,7 @@ class EmailService:
                     
                     <p style="font-size: 14px; color: #666;">
                         С уважением,<br>
-                        Команда AutoService SaaS
+                        Команда Barber SaaS
                     </p>
                 </div>
             </div>
@@ -208,7 +208,7 @@ class EmailService:
         Отправить письмо об успешной оплате.
         
         Args:
-            company_name: Название автосервиса
+            company_name: Название салона красоты
             email: Email владельца
             amount: Сумма платежа
             dashboard_url: Ссылка на админ-панель

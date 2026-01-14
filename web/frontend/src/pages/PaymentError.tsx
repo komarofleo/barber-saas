@@ -52,7 +52,7 @@ const PaymentError: React.FC = () => {
 
   const handleContactSupport = () => {
     // Открываем email клиента
-    window.location.href = 'mailto:support@autoservice-saas.com'
+    window.location.href = 'mailto:support@barber-saas.com'
   }
 
   return (

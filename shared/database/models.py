@@ -72,9 +72,10 @@ class Client(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     full_name = Column(String(255), nullable=False)
     phone = Column(String(20), nullable=False, index=True)
-    car_brand = Column(String(100), nullable=True)
-    car_model = Column(String(100), nullable=True)
-    car_number = Column(String(20), nullable=True, index=True)
+    # Для салона красоты эти колонки не используются, но оставляем для совместимости
+    # car_brand = Column(String(100), nullable=True)
+    # car_model = Column(String(100), nullable=True)
+    # car_number = Column(String(20), nullable=True, index=True)
     total_visits = Column(Integer, default=0, nullable=False)
     total_amount = Column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

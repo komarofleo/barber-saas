@@ -48,7 +48,7 @@ class CompanyRegistration(BaseModel):
     """
     Схема для регистрации новой компании.
     
-    Включает все необходимые данные для создания автосервиса:
+    Включает все необходимые данные для создания салона красоты:
     - Контактная информация
     - Данные бота
     - Выбор тарифа
@@ -57,7 +57,7 @@ class CompanyRegistration(BaseModel):
         ...,
         min_length=3,
         max_length=255,
-        description="Название автосервиса"
+        description="Название салона красоты"
     )
     email: EmailStr = Field(
         ...,
@@ -123,8 +123,8 @@ class PaymentCreate(BaseModel):
             "example": {
                 "plan_id": 3,
                 "amount": 5000.00,
-                "description": "Подписка на тариф Business для автосервиса ООО 'Точка'",
-                "return_url": "https://autoservice-saas.com/success"
+                "description": "Подписка на тариф Business для салона красоты ООО 'Точка'",
+                "return_url": "https://barber-saas.com/success"
             }
         }
 

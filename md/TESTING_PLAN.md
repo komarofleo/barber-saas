@@ -1,4 +1,4 @@
-# 📋 План тестирования AutoService SaaS v2.0
+# 📋 План тестирования Barber SaaS v2.0
 
 **Версия:** 2.0 (Multi-Tenant)  
 **Дата:** 07.01.2026  
@@ -206,7 +206,7 @@ docker compose exec web python scripts/test_isolation.py --auto
 - [ ] Входные данные:
   ```json
   {
-    "name": "Тестовый автосервис",
+    "name": "Тестовый салон красоты",
     "email": "test@example.com",
     "phone": "+79001234567",
     "telegram_bot_token": "valid_bot_token",
@@ -909,7 +909,7 @@ zap-cli quick-scan --self-contained --start-options '-config api.addrs.addr.name
 ### Шаблон отчета:
 
 ```markdown
-# Отчет о тестировании AutoService SaaS v2.0
+# Отчет о тестировании Barber SaaS v2.0
 
 **Дата:** _________  
 **Тестировщик:** _________  
@@ -1046,7 +1046,7 @@ docker compose logs celery-worker -f
 ### Проверка базы данных
 ```bash
 # Подключение к PostgreSQL
-docker compose exec postgres psql -U autoservice_user -d autoservice_db
+docker compose exec postgres psql -U barber_user -d barber_db
 
 # Список схем
 \dn

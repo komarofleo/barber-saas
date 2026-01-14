@@ -95,7 +95,7 @@ function SubscriptionBarrier({
         
         <div className="barrier-support">
           <p>
-            Нужна помощь? <a href="mailto:support@autoservice-saas.com">Свяжитесь с нами</a>
+            Нужна помощь? <a href="mailto:support@barber-saas.com">Свяжитесь с нами</a>
           </p>
         </div>
       </div>

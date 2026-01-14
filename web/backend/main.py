@@ -15,7 +15,7 @@ from app.api import public, webhooks, super_admin
 
 from app.api import webhooks
 
-app = FastAPI(title="AutoService API", version="1.0.0")
+app = FastAPI(title="Barber API", version="1.0.0")
 
 # CORS
 app.add_middleware(
@@ -60,4 +60,4 @@ async def health_check():
 @app.get("/")
 async def root():
     """Корневой endpoint"""
-    return {"message": "AutoService API"}
+    return {"message": "Barber API"}

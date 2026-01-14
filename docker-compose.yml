@@ -1,10 +1,10 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: autoservice_postgres
+    container_name: barber_postgres
     environment:
-      POSTGRES_DB: ${DB_NAME:-autoservice_db}
-      POSTGRES_USER: ${DB_USER:-autoservice_user}
+      POSTGRES_DB: ${DB_NAME:-barber_db}
+      POSTGRES_USER: ${DB_USER:-barber_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
@@ -12,23 +12,23 @@ services:
     ports:
       - "5433:5432"
     networks:
-      - autoservice_network
+      - barber_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-autoservice_user}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-barber_user}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: autoservice_redis
+    container_name: barber_redis
     ports:
       - "6380:6379"
     volumes:
       - redis_data:/data
     networks:
-      - autoservice_network
+      - barber_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -40,7 +40,7 @@ services:
     build:
       context: .
       dockerfile: ./bot/Dockerfile
-    container_name: autoservice_bot
+    container_name: barber_bot
     env_file:
       - .env
     depends_on:
@@ -49,14 +49,14 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - autoservice_network
+      - barber_network
     restart: unless-stopped
 
   super-admin-bot:
     build:
       context: .
       dockerfile: ./bot/Dockerfile
-    container_name: autoservice_super_admin_bot
+    container_name: barber_super_admin_bot
     command: python -m bot.super_admin_bot
     env_file:
       - .env
@@ -70,7 +70,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - autoservice_network
+      - barber_network
     restart: unless-stopped
     volumes:
       - ./bot:/app/bot
@@ -81,7 +81,7 @@ services:
     build:
       context: .
       dockerfile: ./web/backend/Dockerfile
-    container_name: autoservice_web
+    container_name: barber_web
     env_file:
       - .env
     environment:
@@ -95,7 +95,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - autoservice_network
+      - barber_network
     restart: unless-stopped
     volumes:
       - ./web/backend:/app
@@ -105,20 +105,20 @@ services:
     build:
       context: .
       dockerfile: ./web/frontend/Dockerfile
-    container_name: autoservice_frontend
+    container_name: barber_frontend
     ports:
       - "3000:80"
     depends_on:
       - web
     networks:
-      - autoservice_network
+      - barber_network
     restart: unless-stopped
 
   celery-worker:
     build:
       context: .
       dockerfile: ./web/backend/Dockerfile
-    container_name: autoservice_celery_worker
+    container_name: barber_celery_worker
     command: celery -A celeryconfig.celery_app worker --loglevel=info --concurrency=2
     env_file:
       - .env
@@ -131,7 +131,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - autoservice_network
+      - barber_network
     restart: unless-stopped
     volumes:
       - ./web/backend:/app
@@ -141,7 +141,7 @@ services:
     build:
       context: .
       dockerfile: ./web/backend/Dockerfile
-    container_name: autoservice_celery_beat
+    container_name: barber_celery_beat
     command: celery -A celeryconfig.celery_app beat --loglevel=info
     env_file:
       - .env
@@ -154,7 +154,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - autoservice_network
+      - barber_network
     restart: unless-stopped
     volumes:
       - ./web/backend:/app
@@ -165,6 +165,6 @@ volumes:
   redis_data:
 
 networks:
-  autoservice_network:
+  barber_network:
     driver: bridge
 

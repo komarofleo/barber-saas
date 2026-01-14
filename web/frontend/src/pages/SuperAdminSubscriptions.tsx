@@ -162,24 +162,27 @@ const SuperAdminSubscriptions: React.FC = () => {
 
   return (
     <div className="super-admin-subscriptions-page">
-      <div className="subscriptions-container">
-        {/* Заголовок страницы */}
-        <div className="page-header">
-          <button
-            className="dashboard-menu-toggle"
-            onClick={toggleSidebar}
-            title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
-          >
-            {sidebarOpen ? '◀' : '▶'}
-          </button>
-          <div className="header-content">
-            <h1 className="page-title">📊 Управление подписками</h1>
-            <p className="page-subtitle">
-              Просмотр и управление всеми подписками компаний
-            </p>
-          </div>
+      {/* Заголовок страницы - вынесен наружу */}
+      <div className="page-header">
+        <button
+          className="dashboard-menu-toggle"
+          onClick={toggleSidebar}
+          title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
+        >
+          {sidebarOpen ? '◀' : '▶'}
+        </button>
+        <div className="header-content">
+          <h1 className="page-title">📊 Управление подписками</h1>
+          <p className="page-subtitle">
+            Просмотр и управление всеми подписками компаний
+          </p>
         </div>
+      </div>
 
+      {/* Spacer для компенсации fixed header */}
+      <div className="header-spacer"></div>
+
+      <div className="subscriptions-container">
         {/* Панель фильтров */}
         <div className="filters-panel">
           <div className="filter-group">

@@ -3,7 +3,7 @@ from celery import Celery
 from app.config import settings
 
 celery_app = Celery(
-    "autoservice",
+    "barber",
     broker=f"redis://redis:6379/0",
     backend=f"redis://redis:6379/0",
     include=["app.tasks.notifications", "app.tasks.subscription_notifications"]

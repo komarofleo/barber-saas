@@ -1,5 +1,5 @@
 """
-Middleware модуль для AutoService.
+Middleware модуль для Barber.
 
 Содержит middleware для:
 - Мульти-тенантности (tenant middleware)

@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     # База данных
     DB_HOST: str = os.getenv("DB_HOST", "postgres")
     DB_PORT: int = int(os.getenv("DB_PORT", "5432"))
-    DB_NAME: str = os.getenv("DB_NAME", "autoservice_db")
-    DB_USER: str = os.getenv("DB_USER", "autoservice_user")
+    DB_NAME: str = os.getenv("DB_NAME", "barber_db")
+    DB_USER: str = os.getenv("DB_USER", "barber_user")
     DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
     
     # Web
@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     YOOKASSA_SHOP_ID: str = os.getenv("YOOKASSA_SHOP_ID", "")
     YOOKASSA_SECRET_KEY: str = os.getenv("YOOKASSA_SECRET_KEY", "")
     YOOKASSA_API_URL: str = os.getenv("YOOKASSA_API_URL", "https://api.yookassa.ru/v3")
-    YOOKASSA_RETURN_URL: str = os.getenv("YOOKASSA_RETURN_URL", "https://autoservice-saas.com/success")
-    YOOKASSA_WEBHOOK_URL: str = os.getenv("YOOKASSA_WEBHOOK_URL", "https://autoservice-saas.com/api/public/webhooks/yookassa")
+    YOOKASSA_RETURN_URL: str = os.getenv("YOOKASSA_RETURN_URL", "http://localhost:3000/success")
+    YOOKASSA_WEBHOOK_URL: str = os.getenv("YOOKASSA_WEBHOOK_URL", "http://localhost:8000/api/public/webhooks/yookassa")
     
     # Redis (Celery брокер)
     REDIS_HOST: str = os.getenv("REDIS_HOST", "redis")

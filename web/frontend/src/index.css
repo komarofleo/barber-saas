@@ -9,6 +9,7 @@ html {
   padding: 0 !important;
   height: 100%;
   overflow-x: hidden;
+  position: relative;
 }
 
 body {
@@ -17,9 +18,7 @@ body {
   height: 100%;
   overflow-x: hidden;
   position: relative;
-}
-
-body {
+  top: 0 !important;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
@@ -31,7 +30,33 @@ body {
 #root {
   margin: 0 !important;
   padding: 0 !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
   height: 100%;
+  position: relative;
+  top: 0 !important;
+}
+
+/* Убираем все возможные отступы у всех элементов супер-админа */
+.super-admin-layout,
+.super-admin-layout *,
+.main-content,
+.page-content,
+.super-admin-companies-page,
+.super-admin-payments-page,
+.super-admin-subscriptions-page,
+.super-admin-dashboard {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Синий хедер должен быть строго на верху */
+.page-header,
+.dashboard-header {
+  margin-top: 0 !important;
+  padding-top: 30px !important;
+  top: 0 !important;
+  position: fixed !important;
 }
 
 code {

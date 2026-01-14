@@ -22,6 +22,8 @@ import PaymentError from './pages/PaymentError'
 import SuperAdminLogin from './pages/SuperAdminLogin'
 import SuperAdminDashboard from './pages/SuperAdminDashboard'
 import SuperAdminCompanies from './pages/SuperAdminCompanies'
+import SuperAdminCompanyDetails from './pages/SuperAdminCompanyDetails'
+import SuperAdminCompanyEdit from './pages/SuperAdminCompanyEdit'
 import SuperAdminSubscriptions from './pages/SuperAdminSubscriptions'
 import SuperAdminPayments from './pages/SuperAdminPayments'
 import Layout from './components/Layout'
@@ -114,6 +116,7 @@ function AppRoutes() {
     <Routes>
       {/* Публичные маршруты */}
       <Route path="/login" element={<Login />} />
+      <Route path="/company/:id/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/payment/success" element={<PaymentSuccess />} />
       <Route path="/payment/error" element={<PaymentError />} />
@@ -250,6 +253,14 @@ function AppRoutes() {
       <Route
         path="/super-admin/companies"
         element={<SuperAdminProtectedRoute><SuperAdminCompanies /></SuperAdminProtectedRoute>}
+      />
+      <Route
+        path="/super-admin/companies/:id"
+        element={<SuperAdminProtectedRoute><SuperAdminCompanyDetails /></SuperAdminProtectedRoute>}
+      />
+      <Route
+        path="/super-admin/companies/:id/edit"
+        element={<SuperAdminProtectedRoute><SuperAdminCompanyEdit /></SuperAdminProtectedRoute>}
       />
       <Route
         path="/super-admin/subscriptions"

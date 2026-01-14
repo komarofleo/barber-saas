@@ -205,7 +205,7 @@ function Billing() {
           <h3>Нужна помощь?</h3>
           <p>
             Если у вас возникли вопросы по подписке или платежам, 
-            обратитесь в поддержку: <a href="mailto:support@autoservice-saas.com">support@autoservice-saas.com</a>
+            обратитесь в поддержку: <a href="mailto:support@barber-saas.com">support@barber-saas.com</a>
           </p>
         </div>
       </div>

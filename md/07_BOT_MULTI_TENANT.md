@@ -525,8 +525,8 @@
    # Database
    DB_HOST = os.getenv("DB_HOST", "postgres")
    DB_PORT = int(os.getenv("DB_PORT", "5432"))
-   DB_NAME = os.getenv("DB_NAME", "autoservice_db")
-   DB_USER = os.getenv("DB_USER", "autoservice_user")
+   DB_NAME = os.getenv("DB_NAME", "barber_db")
+   DB_USER = os.getenv("DB_USER", "barber_user")
    DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
    # Redis
@@ -921,7 +921,7 @@
 
 4. Проверить работу со схемами:
    ```bash
-   docker compose exec postgres psql -U autoservice_user -d autoservice_db -c "\dn"
+   docker compose exec postgres psql -U barber_user -d barber_db -c "\dn"
    ```
 
 5. Рестартнуть конкретного бота:

@@ -7,13 +7,23 @@
   padding-top: 0 !important;
   margin-top: 0 !important;
   margin: 0 !important;
+  position: relative;
+  top: 0 !important;
+  overflow: visible;
+}
+
+/* Spacer для компенсации fixed header */
+.header-spacer {
+  height: 130px; /* Высота header'а */
+  width: 100%;
 }
 
 .companies-container {
   max-width: 1600px;
   margin: 0 auto;
-  margin-top: 100px; /* Компенсация высоты фиксированного хедера */
+  margin-top: 0 !important;
   animation: fadeIn 0.3s ease;
+  padding-top: 0 !important;
 }
 
 @keyframes fadeIn {
@@ -33,19 +43,22 @@
   align-items: center;
   gap: 16px;
   margin: 0 !important;
+  margin-top: 0 !important;
   padding: 30px 40px;
   background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%);
   position: fixed !important;
   top: 0 !important;
-  left: 280px;
-  right: 0;
-  z-index: 999;
-  width: calc(100% - 280px);
+  left: 280px !important;
+  right: 0 !important;
+  z-index: 999 !important;
+  width: calc(100% - 280px) !important;
   transition: left 0.3s ease, width 0.3s ease;
   transform: translateY(0) !important;
   border: none !important;
   border-top: none !important;
   box-shadow: none !important;
+  height: auto !important;
+  min-height: auto !important;
 }
 
 /* Когда sidebar закрыт - через селектор layout */
@@ -408,6 +421,18 @@
   border-color: #17a2b8;
 }
 
+.action-button.edit {
+  background: #f59e0b;
+  color: white;
+  border-color: #f59e0b;
+}
+
+.action-button.edit:hover {
+  background: #d97706;
+  border-color: #d97706;
+  color: white;
+}
+
 .action-button.deactivate:hover:not(:disabled) {
   border-color: #dc3545;
 }
@@ -763,7 +788,7 @@
   }
 
   .companies-container {
-    margin-top: 100px;
+    margin-top: 0 !important;
   }
 
   .page-header {
@@ -793,7 +818,7 @@
   }
 
   .companies-container {
-    margin-top: 100px;
+    margin-top: 0 !important;
   }
 
   .page-header {
@@ -844,7 +869,7 @@
   }
 
   .companies-container {
-    margin-top: 100px;
+    margin-top: 0 !important;
   }
 
   .page-header {
@@ -897,3 +922,129 @@
   }
 }
 
+/* Форма редактирования компании */
+.edit-company-form {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  margin-top: 0 !important; /* Компенсация высоты фиксированного хедера */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  animation: fadeIn 0.3s ease;
+}
+
+.form-section {
+  margin-bottom: 32px;
+  padding-bottom: 32px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.form-section:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.form-section .section-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #283747;
+  margin: 0 0 24px 0;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.form-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #555;
+  margin: 0;
+}
+
+.form-input,
+.form-select {
+  padding: 12px 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 15px;
+  transition: all 0.3s ease;
+  outline: none;
+  background: white;
+  font-family: inherit;
+}
+
+.form-input:focus,
+.form-select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+}
+
+.form-select {
+  cursor: pointer;
+}
+
+.form-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 15px;
+  color: #555;
+  font-weight: 500;
+}
+
+.form-checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #667eea;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 2px solid #e2e8f0;
+}
+
+.form-button {
+  padding: 12px 32px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+}
+
+.form-button.secondary {
+  background: white;
+  border: 2px solid #e2e8f0;
+  color: #555;
+}
+
+.form-button.secondary:hover:not(:disabled) {
+  border-color: #667eea;
+  transform: translateY(-2px);
+}
+
+.form-button.primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.form-button.primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.3);
+}
+
+.form-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

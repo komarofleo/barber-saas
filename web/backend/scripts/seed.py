@@ -7,10 +7,10 @@ from datetime import datetime
 # Добавляем путь к корневой директории проекта
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy import text
 from passlib.context import CryptContext
-from app.services.tenant_service import get_session_with_schema
+from app.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -21,8 +21,15 @@ async def seed_database():
     print("🌱 Заполнение БД начальными данными...")
     
     try:
-        # Создаем сессию для public схемы
-        async for session in get_session_with_schema("public"):
+        # Создаем подключение к БД для public схемы
+        database_url = (
+            f"postgresql+asyncpg://{settings.DB_USER}:{settings.DB_PASSWORD}"
+            f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+        )
+        engine = create_async_engine(database_url, echo=False)
+        async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        
+        async with async_session_maker() as session:
             
             # Проверяем, есть ли уже тарифные планы
             result = await session.execute(text("SELECT COUNT(*) FROM plans"))
@@ -37,7 +44,7 @@ async def seed_database():
                 plans = [
                     {
                         'name': 'Starter',
-                        'description': 'Начальный тариф для небольших автосервисов',
+                        'description': 'Начальный тариф для небольших салонов красоты',
                         'price_monthly': 2990.00,
                         'price_yearly': 29900.00,
                         'max_bookings_per_month': 50,
@@ -63,7 +70,7 @@ async def seed_database():
                     },
                     {
                         'name': 'Business',
-                        'description': 'Полный функционал для крупных сетей автосервисов',
+                        'description': 'Полный функционал для крупных сетей салонов красоты',
                         'price_monthly': 11990.00,
                         'price_yearly': 119900.00,
                         'max_bookings_per_month': 1000,
@@ -104,7 +111,7 @@ async def seed_database():
                 
                 admin_data = {
                     'username': os.getenv('SUPER_ADMIN_USERNAME', 'admin'),
-                    'email': os.getenv('SUPER_ADMIN_EMAIL', 'admin@autoservice.com'),
+                    'email': os.getenv('SUPER_ADMIN_EMAIL', 'admin@barber-saas.com'),
                     'password_hash': pwd_context.hash(os.getenv('SUPER_ADMIN_PASSWORD', 'admin123')),
                     'is_super_admin': True,
                     'is_active': True
@@ -123,6 +130,8 @@ async def seed_database():
             # Фиксируем изменения
             await session.commit()
             print("\n✅ Начальные данные успешно добавлены!")
+        
+        await engine.dispose()
             
     except Exception as e:
         print(f"❌ Ошибка при заполнении БД: {e}")

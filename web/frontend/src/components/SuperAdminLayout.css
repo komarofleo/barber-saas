@@ -4,9 +4,12 @@
   display: flex;
   min-height: 100vh;
   background: #f5f7fa;
-  margin: 0;
-  padding: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
   position: relative;
+  top: 0 !important;
 }
 
 /* Sidebar */
@@ -195,6 +198,8 @@
   border: none;
   border-top: none;
   box-shadow: none;
+  position: relative;
+  top: 0 !important;
 }
 
 .sidebar.closed ~ .main-content {
@@ -249,12 +254,14 @@
 /* Page Content - чистый минималистичный дизайн */
 .page-content {
   flex: 1;
-  padding: 0 !important;
+  padding: 32px !important;
   margin: 0 !important;
   margin-top: 0 !important;
-  padding-top: 0 !important;
+  padding-top: 180px !important; /* Отступ для фиксированных header'ов (header ~126px + запас) */
   overflow-y: auto;
   background: transparent;
+  position: relative;
+  top: 0 !important;
 }
 
 /* Footer */
@@ -324,7 +331,8 @@
   }
 
   .page-content {
-    padding: 24px;
+    padding: 24px !important;
+    padding-top: 100px !important; /* Отступ для фиксированных header'ов на планшетах */
   }
 }
 
@@ -363,7 +371,8 @@
   }
 
   .page-content {
-    padding: 20px;
+    padding: 20px !important;
+    padding-top: 100px !important; /* Отступ для фиксированных header'ов на мобильных */
   }
 
   .main-footer {
@@ -420,7 +429,8 @@
   }
 
   .page-content {
-    padding: 16px;
+    padding: 16px !important;
+    padding-top: 100px !important; /* Отступ для фиксированных header'ов на маленьких экранах */
   }
 
   .main-footer {

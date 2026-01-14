@@ -23,7 +23,7 @@ function Bookings() {
   
   // Фильтры - читаем из URL или используем значения по умолчанию
   const [searchName, setSearchName] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get('status') || 'new')
+  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get('status') || 'all')
   const [dateCreatedFrom, setDateCreatedFrom] = useState('')
   const [dateCreatedTo, setDateCreatedTo] = useState('')
   const [selectedDates, setSelectedDates] = useState<string[]>([])

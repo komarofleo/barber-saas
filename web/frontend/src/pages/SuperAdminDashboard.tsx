@@ -90,31 +90,34 @@ const SuperAdminDashboard: React.FC = () => {
 
   return (
     <div className="super-admin-dashboard">
-      <div className="dashboard-container">
-        {/* Заголовок страницы - элегантный и минималистичный */}
-        <div className="dashboard-header">
-          <button
-            className="dashboard-menu-toggle"
-            onClick={toggleSidebar}
-            title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
-          >
-            {sidebarOpen ? '◀' : '▶'}
-          </button>
-          <div className="header-content">
-            <h1 className="dashboard-title">Дашборд</h1>
-            <p className="dashboard-subtitle">
-              Общая статистика и управление системой
-            </p>
-          </div>
-          <button
-            className="refresh-button"
-            onClick={() => fetchStats()}
-            title="Обновить данные"
-          >
-            <span className="refresh-icon">↻</span>
-          </button>
+      {/* Заголовок страницы - вынесен наружу для правильного позиционирования */}
+      <div className="dashboard-header">
+        <button
+          className="dashboard-menu-toggle"
+          onClick={toggleSidebar}
+          title={sidebarOpen ? 'Свернуть меню' : 'Развернуть меню'}
+        >
+          {sidebarOpen ? '◀' : '▶'}
+        </button>
+        <div className="header-content">
+          <h1 className="dashboard-title">Дашборд</h1>
+          <p className="dashboard-subtitle">
+            Общая статистика и управление системой
+          </p>
         </div>
+        <button
+          className="refresh-button"
+          onClick={() => fetchStats()}
+          title="Обновить данные"
+        >
+          <span className="refresh-icon">↻</span>
+        </button>
+      </div>
 
+      {/* Spacer для компенсации fixed header */}
+      <div className="header-spacer"></div>
+
+      <div className="dashboard-container">
         {/* Загрузка */}
         {loading && (
           <div className="dashboard-loading">

@@ -811,22 +811,22 @@
 
 1. Проверить схемы:
    ```bash
-   docker compose exec postgres psql -U autoservice_user -d autoservice_db -c "\dn"
+   docker compose exec postgres psql -U barber_user -d barber_db -c "\dn"
    ```
 
 2. Проверить таблицы в схеме:
    ```bash
-   docker compose exec postgres psql -U autoservice_user -d autoservice_db -c "\dt tenant_001"
+   docker compose exec postgres psql -U barber_user -d barber_db -c "\dt tenant_001"
    ```
 
 3. Проверить search_path:
    ```bash
-   docker compose exec postgres psql -U autoservice_user -d autoservice_db -c "SHOW search_path;"
+   docker compose exec postgres psql -U barber_user -d barber_db -c "SHOW search_path;"
    ```
 
 4. Сбросить search_path:
    ```bash
-   docker compose exec postgres psql -U autoservice_user -d autoservice_db -c "SET search_path TO public;"
+   docker compose exec postgres psql -U barber_user -d barber_db -c "SET search_path TO public;"
    ```
 
 ---

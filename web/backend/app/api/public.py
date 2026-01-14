@@ -190,7 +190,7 @@ async def register_company(
     if not registration_data.name or len(registration_data.name) < 3:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Название автосервиса должно содержать минимум 3 символа"
+            detail="Название салона красоты должно содержать минимум 3 символа"
         )
     
     # 2. Проверка токена бота через Telegram API
@@ -238,7 +238,7 @@ async def register_company(
     # Временно используем payment_id=0, потом заменим на реальный после создания платежа
     payment_data = await create_payment(
         amount=Decimal(str(plan.price_monthly)),
-        description=f"Подписка на тариф {plan.name} для автосервиса '{registration_data.name}'",
+        description=f"Подписка на тариф {plan.name} для салона красоты '{registration_data.name}'",
         return_url=f"{settings.YOOKASSA_RETURN_URL}?payment_id=0"  # Будет обновлено после создания платежа
     )
     

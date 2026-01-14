@@ -2,7 +2,7 @@
 from datetime import date, time, datetime, timedelta
 from typing import Optional, List, Set
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, text
 from sqlalchemy.orm import selectinload
 
 from shared.database.models import (
@@ -26,9 +26,50 @@ async def create_user(
     first_name: Optional[str] = None,
     last_name: Optional[str] = None,
     phone: Optional[str] = None,
+    company_id: Optional[int] = None,
 ) -> User:
-    """Создать пользователя"""
-    is_admin = telegram_id in ADMIN_IDS
+    """
+    Создать пользователя.
+    
+    Args:
+        session: Сессия БД
+        telegram_id: Telegram ID пользователя
+        username: Имя пользователя
+        first_name: Имя
+        last_name: Фамилия
+        phone: Телефон
+        company_id: ID компании (для проверки прав админа)
+    """
+    # Проверяем, является ли пользователь админом компании
+    is_admin = False
+    if company_id:
+        # Запрашиваем админов компании из public схемы
+        try:
+            result = await session.execute(
+                text("""
+                    SELECT admin_telegram_id, telegram_admin_ids
+                    FROM public.companies
+                    WHERE id = :company_id
+                """),
+                {"company_id": company_id}
+            )
+            row = result.fetchone()
+            if row:
+                admin_telegram_id = row[0]
+                telegram_admin_ids = row[1] or []
+                
+                # Проверяем, является ли пользователь админом
+                if admin_telegram_id == telegram_id:
+                    is_admin = True
+                elif telegram_id in telegram_admin_ids:
+                    is_admin = True
+        except Exception as e:
+            # Если не удалось проверить, используем глобальный список как fallback
+            is_admin = telegram_id in ADMIN_IDS
+    else:
+        # Если company_id не передан, используем глобальный список
+        is_admin = telegram_id in ADMIN_IDS
+    
     user = User(
         telegram_id=telegram_id,
         username=username,
@@ -49,11 +90,22 @@ async def get_or_create_user(
     username: Optional[str] = None,
     first_name: Optional[str] = None,
     last_name: Optional[str] = None,
+    company_id: Optional[int] = None,
 ) -> User:
-    """Получить или создать пользователя"""
+    """
+    Получить или создать пользователя.
+    
+    Args:
+        session: Сессия БД
+        telegram_id: Telegram ID пользователя
+        username: Имя пользователя
+        first_name: Имя
+        last_name: Фамилия
+        company_id: ID компании (для проверки прав админа)
+    """
     user = await get_user_by_telegram_id(session, telegram_id)
     if not user:
-        user = await create_user(session, telegram_id, username, first_name, last_name)
+        user = await create_user(session, telegram_id, username, first_name, last_name, company_id=company_id)
     else:
         # Обновить данные если изменились
         if username and user.username != username:
@@ -62,6 +114,37 @@ async def get_or_create_user(
             user.first_name = first_name
         if last_name and user.last_name != last_name:
             user.last_name = last_name
+        
+        # Обновляем права админа если company_id передан
+        if company_id:
+            try:
+                result = await session.execute(
+                    text("""
+                        SELECT admin_telegram_id, telegram_admin_ids
+                        FROM public.companies
+                        WHERE id = :company_id
+                    """),
+                    {"company_id": company_id}
+                )
+                row = result.fetchone()
+                if row:
+                    admin_telegram_id = row[0]
+                    telegram_admin_ids = row[1] or []
+                    
+                    # Проверяем, является ли пользователь админом
+                    should_be_admin = False
+                    if admin_telegram_id == telegram_id:
+                        should_be_admin = True
+                    elif telegram_id in telegram_admin_ids:
+                        should_be_admin = True
+                    
+                    # Обновляем is_admin если изменилось
+                    if user.is_admin != should_be_admin:
+                        user.is_admin = should_be_admin
+            except Exception:
+                # Если не удалось проверить, оставляем как есть
+                pass
+        
         await session.commit()
         await session.refresh(user)
     return user

@@ -199,7 +199,7 @@ const SuperAdminLogin: React.FC = () => {
                 value={formData.username}
                 onChange={handleChange}
                 className={`form-input ${errors.username ? 'error' : ''}`}
-                placeholder="Введите имя пользователя"
+                placeholder="Введите имя пользователя (например: admin)"
                 autoComplete="username"
                 required
               />
@@ -299,10 +299,10 @@ const SuperAdminLogin: React.FC = () => {
             Если вы забыли пароль или не можете войти, свяжитесь с поддержкой
           </p>
           <div className="support-links">
-            <a href="mailto:support@autoservice-saas.com" className="support-link">
+            <a href="mailto:support@barber-saas.com" className="support-link">
               📧 Email поддержка
             </a>
-            <a href="https://t.me/autoservice_support" className="support-link">
+            <a href="https://t.me/barber_support" className="support-link">
               🤖 Telegram поддержка
             </a>
           </div>

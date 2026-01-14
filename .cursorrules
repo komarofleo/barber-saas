@@ -20,9 +20,9 @@ You are an expert developer. Follow these rules strictly to ensure code quality 
 - Use **Sequential Thinking** for complex architectural decisions to avoid logic gaps.
 
 
-# 🎯 Правила разработки AutoService SaaS
+# 🎯 Правила разработки Barber SaaS
 
-**Проект:** AutoService SaaS (Multi-Tenant)  
+**Проект:** Barber SaaS (Multi-Tenant)  
 **Версия:** 2.0  
 **Язык разработки:** Русский
 
@@ -254,7 +254,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 class CompanyRegistration(BaseModel):
     """Схема для регистрации компании"""
-    name: str = Field(..., min_length=3, max_length=255, description="Название автосервиса")
+    name: str = Field(..., min_length=3, max_length=255, description="Название салона красоты")
     email: EmailStr
     telegram_bot_token: str = Field(..., min_length=50, max_length=500, description="Токен бота")
     plan_id: int = Field(..., ge=1, description="ID тарифного плана")
@@ -688,7 +688,7 @@ from pydantic import BaseModel, EmailStr, Field, validator
 
 class CompanyRegistration(BaseModel):
     """Схема для регистрации компании с валидацией"""
-    name: str = Field(..., min_length=3, max_length=255, description="Название автосервиса")
+    name: str = Field(..., min_length=3, max_length=255, description="Название салона красоты")
     email: EmailStr
     phone: str = Field(..., max_length=20, pattern=r'^\+?7\d{10}$', description="Телефон")
     telegram_bot_token: str = Field(..., min_length=50, max_length=500, description="Токен бота")
@@ -885,7 +885,7 @@ git commit -m "docs: Обновлена документация проекта
 
 ## 🎯 Цель проекта
 
-Создать мульти-тенантную SaaS платформу для управления автосервисами с:
+Создать мульти-тенантную SaaS платформу для управления салонами красоты с:
 - Изоляцией данных между клиентами
 - Системой подписок и платежей через Юкассу
 - Автоматическими напоминаниями об оплате

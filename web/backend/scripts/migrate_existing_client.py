@@ -42,8 +42,8 @@ load_dotenv(dotenv_path=env_path)
 
 DB_HOST = os.getenv("DB_HOST", "postgres")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "autoservice_db")
-DB_USER = os.getenv("DB_USER", "autoservice_user")
+DB_NAME = os.getenv("DB_NAME", "barber_db")
+DB_USER = os.getenv("DB_USER", "barber_user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
 DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
@@ -202,7 +202,7 @@ async def migrate_to_tenant():
                         created_at, updated_at
                     )
                     VALUES (
-                        1, 'AutoService #1', 'autoservice1@example.com', '+79001234567',
+                        1, 'Barber #1', 'barber1@example.com', '+79001234567',
                         'test_bot_token_for_tenant_001',
                         3, 'active', :end_date,
                         true, true, false,

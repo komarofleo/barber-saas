@@ -7,14 +7,21 @@
   margin: 0 !important;
   margin-top: 0 !important;
   padding-top: 0 !important;
+  position: relative;
+}
+
+/* Spacer для компенсации fixed header */
+.header-spacer {
+  height: 130px; /* Высота header'а */
+  width: 100%;
 }
 
 .dashboard-container {
   max-width: 1600px;
   margin: 0 auto;
-  margin-top: 100px; /* Компенсация высоты фиксированного хедера */
+  margin-top: 0 !important;
   padding: 40px 32px;
-  padding-top: 0;
+  padding-top: 0 !important;
   animation: fadeIn 0.6s ease;
 }
 
@@ -40,15 +47,16 @@
   background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%);
   position: fixed !important;
   top: 0 !important;
-  left: 280px;
-  right: 0;
-  z-index: 999;
-  width: calc(100% - 280px);
+  left: 280px !important;
+  right: 0 !important;
+  z-index: 999 !important;
+  width: calc(100% - 280px) !important;
   transition: left 0.3s ease, width 0.3s ease;
   transform: translateY(0) !important;
   border: none !important;
   border-top: none !important;
   box-shadow: none !important;
+  height: auto !important;
 }
 
 /* Когда sidebar закрыт - через селектор layout */
@@ -129,10 +137,16 @@
   transition: transform 0.3s ease;
 }
 
+/* Отступ для контента после фиксированного header'а */
+.dashboard-content {
+  margin-top: 140px !important; /* Отступ для фиксированного header'а */
+}
+
 /* Состояния загрузки и ошибок */
 .dashboard-loading {
   text-align: center;
   padding: 80px 20px;
+  margin-top: 140px !important; /* Отступ для фиксированного header'а */
 }
 
 .spinner {
@@ -660,7 +674,7 @@
   .dashboard-container {
     padding: 32px 24px;
     padding-top: 0;
-    margin-top: 100px;
+    margin-top: 0 !important;
   }
 
   .dashboard-header {
@@ -692,7 +706,7 @@
   .dashboard-container {
     padding: 24px 20px;
     padding-top: 0;
-    margin-top: 100px;
+    margin-top: 0 !important;
   }
 
   .dashboard-header {
@@ -736,7 +750,7 @@
   .dashboard-container {
     padding: 20px 16px;
     padding-top: 0;
-    margin-top: 100px;
+    margin-top: 0 !important;
   }
 
   .dashboard-header {

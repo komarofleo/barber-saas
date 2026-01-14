@@ -16,7 +16,7 @@ async def test_create_payment():
     
     # Создаем engine для public схемы
     # Используем те же параметры, что и в docker-compose
-    DATABASE_URL = "postgresql+asyncpg://postgres@postgres:5432/autoservice_db"
+    DATABASE_URL = "postgresql+asyncpg://postgres@postgres:5432/barber_db"
     engine = create_async_engine(DATABASE_URL)
     
     async with AsyncSession(engine) as session:

@@ -175,7 +175,7 @@ async def yookassa_webhook(
                     )
                 
                 company = Company(
-                    name=extra_data.get("company_name", "Неизвестный автосервис"),
+                    name=extra_data.get("company_name", "Неизвестный салон красоты"),
                     email=extra_data.get("email", ""),
                     phone=extra_data.get("phone"),
                     telegram_bot_token=extra_data.get("telegram_bot_token", ""),
@@ -233,7 +233,7 @@ async def yookassa_webhook(
                         company_name=company.name,
                         email=company.email,
                         password=password,
-                        dashboard_url=f"https://autoservice-saas.com/company/{company.id:03d}/dashboard",
+                        dashboard_url=f"https://barber-saas.com/company/{company.id:03d}/dashboard",
                         plan_name=plan.name,
                         subscription_end_date=company.subscription_end_date
                     )
@@ -245,7 +245,7 @@ async def yookassa_webhook(
                         company_name=company.name,
                         plan_name=plan.name,
                         subscription_end_date=company.subscription_end_date,
-                        dashboard_url=f"https://autoservice-saas.com/company/{company.id:03d}/dashboard",
+                        dashboard_url=f"https://barber-saas.com/company/{company.id:03d}/dashboard",
                         can_create_bookings=True
                     )
                     if company.admin_telegram_id:

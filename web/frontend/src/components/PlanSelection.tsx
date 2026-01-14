@@ -100,7 +100,7 @@ const PlanSelection: React.FC<PlanSelectionProps> = ({
       <div className="plan-selection-header">
         <h2 className="selection-title">Выберите тарифный план</h2>
         <p className="selection-description">
-          Подберите оптимальный тариф для вашего автосервиса
+          Подберите оптимальный тариф для вашего салона красоты
         </p>
       </div>
 

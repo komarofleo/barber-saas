@@ -67,7 +67,7 @@ const RegistrationForm: React.FC = () => {
         
         // Валидация названия
         if (!formData.name || formData.name.length < 3) {
-            newErrors.push({ field: 'name', message: 'Название автосервиса должно содержать минимум 3 символа' });
+            newErrors.push({ field: 'name', message: 'Название салона красоты должно содержать минимум 3 символа' });
         }
         
         // Валидация email
@@ -150,7 +150,7 @@ const RegistrationForm: React.FC = () => {
     return (
         <div className="registration-container">
             <div className="registration-form">
-                <h1 className="form-title">Регистрация автосервиса</h1>
+                <h1 className="form-title">Регистрация салона красоты</h1>
                 <p className="form-subtitle">Заполните форму для создания вашей учетной записи</p>
                 
                 {errors.length > 0 && (
@@ -165,7 +165,7 @@ const RegistrationForm: React.FC = () => {
                 
                 <form onSubmit={handleSubmit}>
                     <div className="form-group">
-                        <label htmlFor="name">Название автосервиса *</label>
+                        <label htmlFor="name">Название салона красоты *</label>
                         <input
                             type="text"
                             id="name"

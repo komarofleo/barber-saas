@@ -28,8 +28,8 @@ except ImportError:
         
         DB_HOST = os.getenv("DB_HOST", "postgres")
         DB_PORT = int(os.getenv("DB_PORT", "5432"))
-        DB_NAME = os.getenv("DB_NAME", "autoservice_db")
-        DB_USER = os.getenv("DB_USER", "autoservice_user")
+        DB_NAME = os.getenv("DB_NAME", "barber_db")
+        DB_USER = os.getenv("DB_USER", "barber_user")
         DB_PASSWORD = os.getenv("DB_PASSWORD", "")
         
         DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"

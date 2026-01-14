@@ -451,7 +451,7 @@ async def confirm_attendance(callback: CallbackQuery):
             f"✅ Явка подтверждена!\n\n"
             f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
             f"⏰ Время: {booking.time.strftime('%H:%M')}\n\n"
-            f"Ждем вас в автосервисе!"
+            f"Ждем вас в салоне красоты!"
         )
         await callback.answer("✅ Явка подтверждена")
 

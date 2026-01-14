@@ -17,7 +17,7 @@ from typing import Dict, Optional
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from bot.database.connection import init_db, get_session, get_tenant_session
+from bot.database.connection import init_db, get_session
 from bot.database.connection import AsyncSession
 from bot.config import ADMIN_IDS
 
@@ -115,6 +115,13 @@ async def run_bot_for_company(company: Company) -> Optional[Dict[str, any]]:
         bot = Bot(token=company.telegram_bot_token)
         dp = Dispatcher(storage=MemoryStorage())
         
+        # Формируем список админов компании
+        admin_ids = []
+        if company.admin_telegram_id:
+            admin_ids.append(company.admin_telegram_id)
+        if company.telegram_admin_ids:
+            admin_ids.extend(company.telegram_admin_ids)
+        
         # Сохраняем контекст компании в диспетчере
         dp['company_id'] = company.id
         dp['company_name'] = company.name
@@ -123,7 +130,8 @@ async def run_bot_for_company(company: Company) -> Optional[Dict[str, any]]:
         dp['can_create_bookings'] = company.can_create_bookings
         dp['subscription_status'] = company.subscription_status
         dp['subscription_end_date'] = company.subscription_end_date
-        dp['admin_telegram_ids'] = ADMIN_IDS
+        dp['admin_telegram_ids'] = admin_ids
+        dp['admin_telegram_id'] = company.admin_telegram_id  # Основной админ
         
         logger.info(
             f"Контекст бота '{company.name}': "

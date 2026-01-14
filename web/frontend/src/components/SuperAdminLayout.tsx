@@ -100,7 +100,7 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         {/* Логотип */}
         <div className="sidebar-logo">
           <div className="logo-icon">🚀</div>
-          <div className="logo-text">AutoService</div>
+          <div className="logo-text">Barber</div>
         </div>
 
         {/* Навигация */}
@@ -154,7 +154,7 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         {/* Footer */}
         <footer className="main-footer">
           <p className="footer-text">
-            © 2026 AutoService SaaS. Все права защищены.
+            © 2026 Barber SaaS. Все права защищены.
           </p>
           <p className="footer-links">
             <a href="/docs" className="footer-link">
@@ -163,7 +163,7 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
             <a href="/support" className="footer-link">
               Поддержка
             </a>
-            <a href="mailto:support@autoservice-saas.com" className="footer-link">
+            <a href="mailto:support@barber-saas.com" className="footer-link">
               Связаться
             </a>
           </p>

@@ -161,7 +161,7 @@ async def show_booking_for_master(callback: CallbackQuery):
                 text += f" ({client.car_number})"
             text += "\n"
         if post:
-            text += f"🏢 Пост: {post.name}\n"
+            text += f"🏢 Рабочее место: {post.name}\n"
         text += f"📊 Статус: {booking.status}\n"
         if booking.comment:
             text += f"\n💬 Комментарий: {booking.comment}\n"

@@ -2,6 +2,7 @@
 import logging
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.connection import get_session
@@ -25,9 +26,44 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def is_company_admin(telegram_id: int, state: FSMContext) -> bool:
+    """
+    Проверить, является ли пользователь админом компании.
+    
+    Args:
+        telegram_id: Telegram ID пользователя
+        state: FSM контекст для доступа к диспетчеру
+        
+    Returns:
+        True если пользователь является админом компании
+    """
+    try:
+        dp = state.resolve_dp()
+        if dp:
+            admin_telegram_ids = dp.get('admin_telegram_ids', [])
+            admin_telegram_id = dp.get('admin_telegram_id')
+            
+            # Проверяем основной админ
+            if admin_telegram_id == telegram_id:
+                return True
+            
+            # Проверяем список админов
+            if telegram_id in admin_telegram_ids:
+                return True
+    except:
+        pass
+    
+    return False
+
+
 @router.callback_query(F.data.startswith("booking_"))
-async def show_booking_details(callback: CallbackQuery):
+async def show_booking_details(callback: CallbackQuery, state: FSMContext):
     """Показать детали заказа"""
+    # Проверяем права через контекст компании
+    if not is_company_admin(callback.from_user.id, state):
+        await callback.answer("❌ У вас нет прав", show_alert=True)
+        return
+    
     try:
         booking_id = int(callback.data.split("_")[1])
     except (ValueError, IndexError):
@@ -36,8 +72,8 @@ async def show_booking_details(callback: CallbackQuery):
 
     async for session in get_session():
         user = await get_user_by_telegram_id(session, callback.from_user.id)
-        if not user or not user.is_admin:
-            await callback.answer("❌ У вас нет прав", show_alert=True)
+        if not user:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
 
         booking = await get_booking_by_id(session, booking_id)
@@ -73,7 +109,7 @@ async def show_booking_details(callback: CallbackQuery):
         if master:
             text += f"👨‍🔧 Мастер: {master.full_name}\n"
         if post:
-            text += f"🏢 Пост: {post.name}\n"
+            text += f"🏢 Рабочее место: {post.name}\n"
         
         if booking.comment:
             text += f"\n💬 Комментарий: {booking.comment}\n"
@@ -95,8 +131,13 @@ async def show_booking_details(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("confirm_"))
-async def confirm_booking(callback: CallbackQuery):
+async def confirm_booking(callback: CallbackQuery, state: FSMContext):
     """Начать подтверждение заказа - выбор мастера"""
+    # Проверяем права через контекст компании
+    if not is_company_admin(callback.from_user.id, state):
+        await callback.answer("❌ У вас нет прав", show_alert=True)
+        return
+    
     try:
         booking_id = int(callback.data.split("_")[1])
     except (ValueError, IndexError):
@@ -105,8 +146,8 @@ async def confirm_booking(callback: CallbackQuery):
 
     async for session in get_session():
         user = await get_user_by_telegram_id(session, callback.from_user.id)
-        if not user or not user.is_admin:
-            await callback.answer("❌ У вас нет прав", show_alert=True)
+        if not user:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
 
         booking = await get_booking_by_id(session, booking_id)
@@ -135,7 +176,7 @@ async def confirm_booking(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("assign_master_"))
-async def assign_master_to_booking(callback: CallbackQuery):
+async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
     """Назначить мастера заказу"""
     try:
         parts = callback.data.split("_")
@@ -148,10 +189,15 @@ async def assign_master_to_booking(callback: CallbackQuery):
         await callback.answer("❌ Ошибка", show_alert=True)
         return
 
+    # Проверяем права через контекст компании
+    if not is_company_admin(callback.from_user.id, state):
+        await callback.answer("❌ У вас нет прав", show_alert=True)
+        return
+    
     async for session in get_session():
         user = await get_user_by_telegram_id(session, callback.from_user.id)
-        if not user or not user.is_admin:
-            await callback.answer("❌ У вас нет прав", show_alert=True)
+        if not user:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
 
         booking = await get_booking_by_id(session, booking_id)
@@ -205,7 +251,7 @@ async def assign_master_to_booking(callback: CallbackQuery):
         text += f"👨‍🔧 Мастер: {master.full_name if master else 'Автоматически'}\n"
         text += f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
         text += f"⏰ Время: {booking.time.strftime('%H:%M')}\n\n"
-        text += "🏢 Выберите пост:"
+        text += "🏢 Выберите рабочее место:"
 
         await callback.message.edit_text(
             text,
@@ -215,8 +261,13 @@ async def assign_master_to_booking(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("assign_post_"))
-async def assign_post_to_booking(callback: CallbackQuery):
+async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
     """Назначить пост заказу и подтвердить"""
+    # Проверяем права через контекст компании
+    if not is_company_admin(callback.from_user.id, state):
+        await callback.answer("❌ У вас нет прав", show_alert=True)
+        return
+    
     try:
         parts = callback.data.split("_")
         booking_id = int(parts[2])
@@ -231,8 +282,8 @@ async def assign_post_to_booking(callback: CallbackQuery):
 
     async for session in get_session():
         user = await get_user_by_telegram_id(session, callback.from_user.id)
-        if not user or not user.is_admin:
-            await callback.answer("❌ У вас нет прав", show_alert=True)
+        if not user:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
 
         booking = await get_booking_by_id(session, booking_id)
@@ -268,7 +319,7 @@ async def assign_post_to_booking(callback: CallbackQuery):
         await callback.message.edit_text(
             f"✅ Заказ #{booking.booking_number} подтвержден!\n\n"
             f"👨‍🔧 Мастер: {master_name}\n"
-            f"🏢 Пост: {post_name}\n\n"
+            f"🏢 Рабочее место: {post_name}\n\n"
             f"Клиент будет уведомлен."
         )
         await callback.answer("✅ Заказ подтвержден")
@@ -284,7 +335,7 @@ async def assign_post_to_booking(callback: CallbackQuery):
                     f"⏰ Время: {booking.time.strftime('%H:%M')}\n"
                     f"🛠️ Услуга: {service_name}\n"
                     f"👨‍🔧 Мастер: {master_name}\n"
-                    f"🏢 Пост: {post_name}\n\n"
+                    f"🏢 Рабочее место: {post_name}\n\n"
                     f"Пожалуйста, подтвердите явку:"
                 )
                 await callback.bot.send_message(
@@ -297,7 +348,7 @@ async def assign_post_to_booking(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("reject_"))
-async def reject_booking(callback: CallbackQuery):
+async def reject_booking(callback: CallbackQuery, state: FSMContext):
     """Отклонить заказ"""
     try:
         booking_id = int(callback.data.split("_")[1])
@@ -305,10 +356,15 @@ async def reject_booking(callback: CallbackQuery):
         await callback.answer("❌ Ошибка", show_alert=True)
         return
 
+    # Проверяем права через контекст компании
+    if not is_company_admin(callback.from_user.id, state):
+        await callback.answer("❌ У вас нет прав", show_alert=True)
+        return
+    
     async for session in get_session():
         user = await get_user_by_telegram_id(session, callback.from_user.id)
-        if not user or not user.is_admin:
-            await callback.answer("❌ У вас нет прав", show_alert=True)
+        if not user:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
 
         booking = await update_booking_status(session, booking_id, "cancelled")
@@ -324,12 +380,17 @@ async def reject_booking(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "back_to_bookings")
-async def back_to_bookings(callback: CallbackQuery):
+async def back_to_bookings(callback: CallbackQuery, state: FSMContext):
     """Вернуться к списку заказов"""
+    # Проверяем права через контекст компании
+    if not is_company_admin(callback.from_user.id, state):
+        await callback.answer("❌ У вас нет прав", show_alert=True)
+        return
+    
     async for session in get_session():
         user = await get_user_by_telegram_id(session, callback.from_user.id)
-        if not user or not user.is_admin:
-            await callback.answer("❌ У вас нет прав", show_alert=True)
+        if not user:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
 
         bookings = await get_bookings_by_status(session, "new")
@@ -351,12 +412,17 @@ async def close_bookings_list(callback: CallbackQuery):
 
 
 @router.message(F.text == "✅ Все заказы")
-async def show_all_bookings(message: Message):
+async def show_all_bookings(message: Message, state: FSMContext):
     """Показать все заказы"""
+    # Проверяем права через контекст компании
+    if not is_company_admin(message.from_user.id, state):
+        await message.answer("❌ У вас нет прав администратора")
+        return
+    
     async for session in get_session():
         user = await get_user_by_telegram_id(session, message.from_user.id)
-        if not user or not user.is_admin:
-            await message.answer("❌ У вас нет прав администратора")
+        if not user:
+            await message.answer("❌ Пользователь не найден")
             return
 
         # Получаем заказы со статусом confirmed
@@ -372,12 +438,17 @@ async def show_all_bookings(message: Message):
 
 
 @router.message(F.text == "📊 Статистика")
-async def show_statistics(message: Message):
+async def show_statistics(message: Message, state: FSMContext):
     """Показать статистику"""
+    # Проверяем права через контекст компании
+    if not is_company_admin(message.from_user.id, state):
+        await message.answer("❌ У вас нет прав администратора")
+        return
+    
     async for session in get_session():
         user = await get_user_by_telegram_id(session, message.from_user.id)
-        if not user or not user.is_admin:
-            await message.answer("❌ У вас нет прав администратора")
+        if not user:
+            await message.answer("❌ Пользователь не найден")
             return
 
         from sqlalchemy import select, func

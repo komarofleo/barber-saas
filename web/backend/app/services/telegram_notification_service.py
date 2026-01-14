@@ -104,7 +104,7 @@ class TelegramNotificationService:
         
         Args:
             telegram_id: Telegram ID владельца
-            company_name: Название автосервиса
+            company_name: Название салона красоты
             plan_name: Название тарифного плана
             subscription_end_date: Дата окончания подписки
             dashboard_url: Ссылка на админ-панель
@@ -119,13 +119,13 @@ class TelegramNotificationService:
             ...     company_name="ООО 'Точка'",
             ...     plan_name="Business",
             ...     subscription_end_date=date(2024, 2, 5),
-            ...     dashboard_url="https://autoservice-saas.com/company/001/dashboard"
+            ...     dashboard_url="https://barber-saas.com/company/001/dashboard"
             ... )
         """
         logger.info(f"Отправка уведомления об активации: {company_name}")
         
         message = f"""
-        <b>✅ Ваш автосервис успешно зарегистрирован!</b>
+        <b>✅ Ваш салон красоты успешно зарегистрирован!</b>
 
 <b>📋 Название:</b> {company_name}
 
@@ -159,7 +159,7 @@ class TelegramNotificationService:
         
         Args:
             telegram_id: Telegram ID владельца
-            company_name: Название автосервиса
+            company_name: Название салона красоты
             days_left: Дней до окончания подписки
             dashboard_url: Ссылка на админ-панель
         
@@ -171,7 +171,7 @@ class TelegramNotificationService:
             ...     telegram_id=329621295,
             ...     company_name="ООО 'Точка'",
             ...     days_left=7,
-            ...     dashboard_url="https://autoservice-saas.com/company/001/dashboard"
+            ...     dashboard_url="https://barber-saas.com/company/001/dashboard"
             ... )
         """
         logger.info(f"Отправка напоминания: {company_name}, осталось {days_left} дней")
@@ -179,7 +179,7 @@ class TelegramNotificationService:
         message = f"""
         <b>⚠️ Внимание!</b>
 
-Подписка автосервиса <b>{company_name}</b> истекает через <b>{days_left} дней</b>.
+Подписка салона красоты <b>{company_name}</b> истекает через <b>{days_left} дней</b>.
 
 Для продления подписки:
 <a href="{dashboard_url}">Перейти в админ-панель</a>
@@ -200,7 +200,7 @@ class TelegramNotificationService:
         
         Args:
             telegram_id: Telegram ID владельца
-            company_name: Название автосервиса
+            company_name: Название салона красоты
             dashboard_url: Ссылка на админ-панель
         
         Returns:
@@ -210,7 +210,7 @@ class TelegramNotificationService:
             >>> await service.send_booking_blocked_notification(
             ...     telegram_id=329621295,
             ...     company_name="ООО 'Точка'",
-            ...     dashboard_url="https://autoservice-saas.com/company/001/dashboard"
+            ...     dashboard_url="https://barber-saas.com/company/001/dashboard"
             ... )
         """
         logger.warning(f"Отправка уведомления о блокировке: {company_name}")
@@ -218,7 +218,7 @@ class TelegramNotificationService:
         message = f"""
         <b>❌ Создание записей заблокировано!</b>
 
-Подписка автосервиса <b>{company_name}</b> истекла.
+Подписка салона красоты <b>{company_name}</b> истекла.
 
 Для возобновления возможности создания записей:
 <a href="{dashboard_url}">Продлите подписку</a>
@@ -240,7 +240,7 @@ class TelegramNotificationService:
         
         Args:
             telegram_id: Telegram ID владельца
-            company_name: Название автосервиса
+            company_name: Название салона красоты
             amount: Сумма платежа
             subscription_end_date: Дата окончания подписки
         
@@ -252,12 +252,12 @@ class TelegramNotificationService:
         message = f"""
         <b>💳 Платеж принят!</b>
 
-Подписка автосервиса <b>{company_name}</b> успешно продлена на 30 дней.
+Подписка салона красоты <b>{company_name}</b> успешно продлена на 30 дней.
 
 <b>💰 Сумма:</b> {amount:.2f} RUB
 <b>📅 Дата окончания:</b> {subscription_end_date.strftime('%d.%m.%Y')}
 
-Спасибо за использование AutoService SaaS! 🚗
+Спасибо за использование Barber SaaS! 💇
         """
         
         return await self.send_message(telegram_id, message)

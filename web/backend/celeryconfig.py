@@ -1,5 +1,5 @@
 """
-Конфигурация Celery для AutoService SaaS.
+Конфигурация Celery для Barber SaaS.
 
 Этот модуль обеспечивает:
 - Настройку Celery App
@@ -15,7 +15,7 @@ from app.config import settings
 # ==================== Celery App ====================
 
 celery_app = Celery(
-    "autoservice_saas",
+    "barber_saas",
     broker=f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/0",
     backend=f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/0",
     include=[

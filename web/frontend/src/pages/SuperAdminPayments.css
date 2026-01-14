@@ -7,12 +7,21 @@
   padding-top: 0 !important;
   margin-top: 0 !important;
   margin: 0 !important;
+  position: relative;
+  top: 0 !important;
+}
+
+/* Spacer для компенсации fixed header */
+.header-spacer {
+  height: 130px; /* Высота header'а */
+  width: 100%;
 }
 
 .payments-container {
   max-width: 1600px;
   margin: 0 auto;
-  margin-top: 100px; /* Компенсация высоты фиксированного хедера */
+  margin-top: 0 !important;
+  padding-top: 0 !important;
   animation: fadeIn 0.3s ease;
 }
 
@@ -33,19 +42,22 @@
   align-items: center;
   gap: 16px;
   margin: 0 !important;
+  margin-top: 0 !important;
   padding: 30px 40px;
   background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%);
   position: fixed !important;
   top: 0 !important;
-  left: 280px;
-  right: 0;
-  z-index: 999;
-  width: calc(100% - 280px);
+  left: 280px !important;
+  right: 0 !important;
+  z-index: 999 !important;
+  width: calc(100% - 280px) !important;
   transition: left 0.3s ease, width 0.3s ease;
   transform: translateY(0) !important;
   border: none !important;
   border-top: none !important;
   box-shadow: none !important;
+  height: auto !important;
+  min-height: auto !important;
 }
 
 /* Когда sidebar закрыт - через селектор layout */
@@ -675,7 +687,7 @@
   }
 
   .payments-container {
-    margin-top: 100px;
+    margin-top: 0 !important;
   }
 
   .page-header {
@@ -712,7 +724,7 @@
   }
 
   .payments-container {
-    margin-top: 100px;
+    margin-top: 0 !important;
   }
 
   .page-header {
@@ -763,7 +775,7 @@
   }
 
   .payments-container {
-    margin-top: 100px;
+    margin-top: 0 !important;
   }
 
   .page-header {
