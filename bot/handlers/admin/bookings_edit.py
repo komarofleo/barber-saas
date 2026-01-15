@@ -86,22 +86,15 @@ async def change_booking_status(callback: CallbackQuery, state: FSMContext):
         await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
         
         # Обновляем статус
-        booking = await update_booking_status(session, booking_id, new_status)
+        booking = await update_booking_status(session, booking_id, new_status, company_id=company_id)
         
         if not booking:
             await callback.answer("❌ Ошибка при изменении статуса", show_alert=True)
             return
 
         # Получаем данные заказа для отображения
-        booking_data_result = await session.execute(
-            text('''
-                SELECT b.booking_number, b.status, b.date, b.time
-                FROM bookings b
-                WHERE b.id = :booking_id
-            '''),
-            {"booking_id": booking_id}
-        )
-        booking_data = booking_data_result.fetchone()
+        # Используем данные из booking (уже обновленный объект)
+        booking_number = getattr(booking, "booking_number", f"#{booking_id}")
         
         status_names = {
             "new": "Новый",
@@ -111,7 +104,7 @@ async def change_booking_status(callback: CallbackQuery, state: FSMContext):
         }
         
         await callback.message.edit_text(
-            f"✅ Статус заказа {booking_data[0]} изменен на: {status_names.get(new_status, new_status)}"
+            f"✅ Статус заказа {booking_number} изменен на: {status_names.get(new_status, new_status)}"
         )
         await callback.answer("✅ Статус изменен")
         
@@ -993,14 +986,38 @@ async def create_admin_booking_final(callback: CallbackQuery, state: FSMContext,
             company_id=company_id
         )
         
+        # Авто-назначение мастера при выборе "Автоматически"
+        if master_id is None:
+            from bot.database.crud import get_masters, get_master_bookings_by_date
+            masters = await get_masters(session, company_id=company_id)
+            selected_master = None
+            min_bookings = float("inf")
+            for m in masters:
+                cnt = len(await get_master_bookings_by_date(session, m.id, booking_date))
+                if cnt < min_bookings:
+                    min_bookings = cnt
+                    selected_master = m
+            if selected_master:
+                master_id = selected_master.id
+        
+        # Авто-назначение поста при выборе "Автоматически"
+        if post_id is None:
+            posts = await get_posts(session, company_id=company_id)
+            if posts:
+                post_id = posts[0].id
+        
         # Обновляем мастера и пост если указаны
         if master_id or post_id:
+            # После commit search_path мог сброситься - выставляем перед апдейтом
+            schema_name = f"tenant_{company_id}"
+            await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
             await update_booking_status(
                 session=session,
                 booking_id=booking.id,
                 status="confirmed",  # Созданные админом заказы сразу подтверждены
                 master_id=master_id,
-                post_id=post_id
+                post_id=post_id,
+                company_id=company_id
             )
         
         # Получаем данные для отображения

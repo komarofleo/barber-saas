@@ -421,6 +421,57 @@ async def get_client_by_user_id(session: AsyncSession, user_id: int, company_id:
         return None
 
 
+async def get_all_clients(session: AsyncSession, company_id: Optional[int] = None) -> List[Client]:
+    """Получить список всех клиентов"""
+    import logging
+    logger = logging.getLogger(__name__)
+    from sqlalchemy import text
+    
+    # Если company_id не указан, пытаемся определить из search_path
+    if not company_id:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+    
+    if not company_id:
+        logger.error("❌ company_id обязателен для get_all_clients в tenant схеме!")
+        return []
+    
+    schema_name = f"tenant_{company_id}"
+    logger.info(f"🔍 Получаем список клиентов из схемы {schema_name}")
+    
+    # Устанавливаем search_path
+    await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    
+    # Используем прямой SQL запрос
+    result = await session.execute(
+        text('SELECT id, user_id, full_name, phone, created_at, updated_at FROM clients ORDER BY full_name')
+    )
+    rows = result.fetchall()
+    
+    # Преобразуем в объекты Client
+    clients = []
+    for row in rows:
+        client = type('Client', (), {})()
+        client.id = row[0]
+        client.user_id = row[1]
+        client.full_name = row[2]
+        client.phone = row[3]
+        client.created_at = row[4]
+        client.updated_at = row[5]
+        clients.append(client)
+    
+    logger.info(f"✅ Найдено клиентов: {len(clients)}")
+    return clients
+
+
 async def create_client(
     session: AsyncSession,
     user_id: int,
@@ -610,9 +661,10 @@ async def get_available_dates(
     start_date: date,
     end_date: date,
 ) -> Set[date]:
-    """Получить доступные даты для записи"""
+    """Получить доступные даты для записи (проверяет блокировки и наличие свободных слотов)"""
     from sqlalchemy import and_, func
-    from shared.database.models import BlockedSlot, Setting
+    from shared.database.models import BlockedSlot, Setting, Booking, Post
+    from bot.config import WORK_START_TIME, WORK_END_TIME, SLOT_DURATION
     
     # Получаем настройки
     result = await session.execute(
@@ -622,10 +674,25 @@ async def get_available_dates(
     if accepting_setting and accepting_setting.value.lower() == "false":
         return set()  # Прием заявок отключен
     
+    # Получаем общее количество активных постов
+    total_posts_query = select(func.count(Post.id)).where(Post.is_active == True)
+    total_posts_result = await session.execute(total_posts_query)
+    total_posts = total_posts_result.scalar() or 0
+    
+    if total_posts == 0:
+        return set()  # Если нет постов, нет доступных дат
+    
     # Получаем все даты в диапазоне
     available = set()
     current = start_date
     today = date.today()
+    
+    # Парсим время начала и конца работы
+    start_hour, start_min = map(int, WORK_START_TIME.split(":"))
+    end_hour, end_min = map(int, WORK_END_TIME.split(":"))
+    
+    work_start = time(start_hour, start_min)
+    work_end = time(end_hour, end_min)
     
     while current <= end_date:
         if current < today:
@@ -644,7 +711,35 @@ async def get_available_dates(
         )
         blocked = result.scalar_one_or_none()
         
-        if not blocked:
+        if blocked:
+            current += timedelta(days=1)
+            continue
+        
+        # Проверяем, есть ли хотя бы один свободный слот на эту дату
+        # Для этого проверяем, не заняты ли все посты на весь рабочий день
+        bookings_query = select(Booking).where(
+            and_(
+                Booking.date == current,
+                Booking.status.in_(["new", "confirmed"])
+            )
+        )
+        bookings_result = await session.execute(bookings_query)
+        existing_bookings = bookings_result.scalars().all()
+        
+        # Подсчитываем количество занятых постов
+        occupied_posts = set()
+        bookings_without_post = 0
+        
+        for booking in existing_bookings:
+            if booking.post_id:
+                occupied_posts.add(booking.post_id)
+            else:
+                bookings_without_post += 1
+        
+        total_occupied = len(occupied_posts) + bookings_without_post
+        
+        # Если занято меньше постов, чем всего, значит есть свободные слоты
+        if total_occupied < total_posts:
             available.add(current)
         
         current += timedelta(days=1)
@@ -652,20 +747,121 @@ async def get_available_dates(
     return available
 
 
-async def get_masters(session: AsyncSession) -> List[Master]:
+async def get_masters(session: AsyncSession, company_id: Optional[int] = None) -> List[Master]:
     """Получить список всех мастеров"""
-    result = await session.execute(
-        select(Master).order_by(Master.full_name)
-    )
-    return list(result.scalars().all())
+    import logging
+    logger = logging.getLogger(__name__)
+    from sqlalchemy import text
+    
+    # Если company_id не указан, пытаемся определить из search_path
+    if not company_id:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+                    logger.info(f"🔍 Определен company_id={company_id} из search_path: {search_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+    
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"🔍 Получаем список мастеров из схемы {schema_name}")
+        
+        # Устанавливаем search_path
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        # Используем прямой SQL запрос
+        result = await session.execute(
+            text('SELECT id, user_id, full_name, phone, telegram_id, specialization, is_universal, created_at, updated_at FROM masters ORDER BY full_name')
+        )
+        rows = result.fetchall()
+        
+        # Преобразуем в объекты Master
+        masters = []
+        for row in rows:
+            master = type('Master', (), {})()
+            master.id = row[0]
+            master.user_id = row[1]
+            master.full_name = row[2]
+            master.phone = row[3]
+            master.telegram_id = row[4]
+            master.specialization = row[5]
+            master.is_universal = row[6] if row[6] is not None else True
+            master.created_at = row[7]
+            master.updated_at = row[8]
+            # Для совместимости со старым кодом
+            master.is_active = True  # Мастера всегда активны, если они в таблице
+            masters.append(master)
+        
+        logger.info(f"✅ Найдено мастеров: {len(masters)}")
+        return masters
+    else:
+        # Fallback на ORM (может не работать в tenant схемах)
+        logger.warning("⚠️ company_id не указан, используем ORM (может не работать)")
+        result = await session.execute(
+            select(Master).order_by(Master.full_name)
+        )
+        return list(result.scalars().all())
 
 
-async def get_posts(session: AsyncSession) -> List[Post]:
+async def get_posts(session: AsyncSession, company_id: Optional[int] = None) -> List[Post]:
     """Получить список всех постов"""
-    result = await session.execute(
-        select(Post).order_by(Post.name)
-    )
-    return list(result.scalars().all())
+    import logging
+    logger = logging.getLogger(__name__)
+    from sqlalchemy import text
+    
+    # Если company_id не указан, пытаемся определить из search_path
+    if not company_id:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+                    logger.info(f"🔍 Определен company_id={company_id} из search_path: {search_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+    
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"🔍 Получаем список постов из схемы {schema_name}")
+        
+        # Устанавливаем search_path
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        # Используем прямой SQL запрос
+        result = await session.execute(
+            text('SELECT id, number, name, is_active, created_at, updated_at FROM posts ORDER BY name')
+        )
+        rows = result.fetchall()
+        
+        # Преобразуем в объекты Post
+        posts = []
+        for row in rows:
+            post = type('Post', (), {})()
+            post.id = row[0]
+            post.number = row[1]
+            post.name = row[2]
+            post.is_active = row[3] if row[3] is not None else True
+            post.created_at = row[4]
+            post.updated_at = row[5]
+            posts.append(post)
+        
+        logger.info(f"✅ Найдено постов: {len(posts)}")
+        return posts
+    else:
+        # Fallback на ORM (может не работать в tenant схемах)
+        logger.warning("⚠️ company_id не указан, используем ORM (может не работать)")
+        result = await session.execute(
+            select(Post).order_by(Post.name)
+        )
+        return list(result.scalars().all())
 
 
 async def get_services(session: AsyncSession, active_only: bool = True, company_id: Optional[int] = None) -> List[Service]:
@@ -1147,7 +1343,19 @@ async def get_bookings_by_status(session: AsyncSession, status: str, company_id:
 async def get_booking_by_id(session: AsyncSession, booking_id: int, company_id: Optional[int] = None) -> Optional[Booking]:
     """Получить запись по ID"""
     import logging
+    import traceback
     logger = logging.getLogger(__name__)
+    
+    # ЛОГИРУЕМ ВСЕ ВХОДЯЩИЕ ПАРАМЕТРЫ
+    logger.info(f"🔵 [get_booking_by_id] ВХОД: booking_id={booking_id} (type={type(booking_id)}), company_id={company_id}")
+    
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: Если booking_id == 0, это новый заказ, не возвращаем ничего
+    # ДО ВСЕХ ОСТАЛЬНЫХ ОПЕРАЦИЙ!
+    if booking_id == 0:
+        # Получаем traceback, чтобы понять, откуда вызывается
+        tb = ''.join(traceback.format_stack()[-5:-1])  # Последние 4 уровня стека
+        logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Попытка получить запись с ID=0 - это новый заказ, возвращаем None\n{tb}")
+        return None
     
     # Если company_id не указан, пытаемся определить из search_path
     if not company_id:
@@ -1319,13 +1527,34 @@ async def update_booking_status(
     status: str,
     master_id: Optional[int] = None,
     post_id: Optional[int] = None,
+    company_id: Optional[int] = None,
 ) -> Optional[Booking]:
     """Обновить статус записи"""
     import logging
     logger = logging.getLogger(__name__)
     
-    # Получаем booking (search_path уже должен быть установлен)
-    booking = await get_booking_by_id(session, booking_id)
+    # Определяем company_id и schema_name
+    schema_name = None
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+    else:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+                    schema_name = f"tenant_{company_id}"
+        except Exception:
+            pass
+    
+    if schema_name:
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    
+    # Получаем booking
+    booking = await get_booking_by_id(session, booking_id, company_id=company_id)
     if not booking:
         logger.error(f"❌ [CRUD] Запись {booking_id} не найдена")
         return None
@@ -1362,20 +1591,9 @@ async def update_booking_status(
     
     logger.info(f"✅ [CRUD] Статус записи {booking_id} обновлен на '{status}'")
     
-    # Получаем обновленную запись (передаем company_id если он был определен из search_path)
-    # Определяем company_id из search_path если нужно
-    company_id = None
-    try:
-        result = await session.execute(text("SHOW search_path"))
-        search_path = result.scalar()
-        if search_path and "tenant_" in search_path:
-            import re
-            match = re.search(r'tenant_(\d+)', search_path)
-            if match:
-                company_id = int(match.group(1))
-    except Exception:
-        pass
-    
+    # Получаем обновленную запись
+    if schema_name:
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
     booking = await get_booking_by_id(session, booking_id, company_id=company_id)
     if not booking:
         logger.warning(f"⚠️ [CRUD] Не удалось получить обновленную запись {booking_id}, но обновление выполнено успешно")

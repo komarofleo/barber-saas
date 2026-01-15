@@ -485,7 +485,13 @@ async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
         posts = await get_posts(session, company_id=company_id)
         if not posts:
             # Если нет постов, подтверждаем заказ сразу
-            booking = await update_booking_status(session, booking_id, "confirmed", master_id=master_id)
+            booking = await update_booking_status(
+                session,
+                booking_id,
+                "confirmed",
+                master_id=master_id,
+                company_id=company_id,
+            )
             await callback.message.edit_text(
                 f"✅ Заказ #{booking.booking_number} подтвержден!\n\n"
                 f"Мастер назначен.\n"
@@ -623,9 +629,12 @@ async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
         
         # Подтверждаем заказ с назначенными мастером и постом
         booking = await update_booking_status(
-            session, booking_id, "confirmed",
+            session,
+            booking_id,
+            "confirmed",
             master_id=master_id,
-            post_id=post_id
+            post_id=post_id,
+            company_id=company_id,
         )
 
         if not booking:
