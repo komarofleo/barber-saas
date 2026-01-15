@@ -416,6 +416,77 @@ async def process_datetime_time_selection(callback: CallbackQuery, state: FSMCon
         await show_booking_details(callback, state)
 
 
+@router.callback_query(F.data.startswith("time_"), AdminEditBookingStates.editing_datetime)
+async def process_datetime_time_selection_simple(callback: CallbackQuery, state: FSMContext):
+    """
+    Обработка выбора времени вида time_{hour}_{minute} при изменении даты/времени заказа.
+    Используется теми клавиатурами, что отдают только стартовое время.
+    """
+    try:
+        parts = callback.data.split("_")
+        hour = int(parts[1])
+        minute = int(parts[2])
+        start_time = time(hour, minute)
+    except (ValueError, IndexError):
+        await callback.answer("❌ Ошибка выбора времени", show_alert=True)
+        return
+
+    ctx = get_company_context_from_bot(callback.bot)
+    company_id = ctx.get("company_id")
+    if not company_id:
+        await callback.answer("❌ Ошибка конфигурации бота", show_alert=True)
+        return
+
+    data = await state.get_data()
+    booking_id = data.get("booking_id")
+    booking_date = data.get("booking_date")
+    duration = data.get("duration", 60)
+
+    if not booking_date:
+        await callback.answer("❌ Ошибка: дата не выбрана", show_alert=True)
+        return
+
+    # Вычисляем end_time по длительности
+    start_dt = datetime.combine(booking_date, start_time)
+    end_dt = start_dt + timedelta(minutes=duration)
+    end_time = end_dt.time()
+
+    async for session in get_session():
+        schema_name = f'tenant_{company_id}'
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+
+        await session.execute(
+            text(
+                """
+                UPDATE bookings
+                SET date = :date, time = :time, end_time = :end_time, duration = :duration
+                WHERE id = :booking_id
+                """
+            ),
+            {
+                "date": booking_date,
+                "time": start_time,
+                "end_time": end_time,
+                "duration": duration,
+                "booking_id": booking_id,
+            },
+        )
+        await session.commit()
+
+        await callback.message.edit_text(
+            f"✅ Дата и время заказа #{booking_id} изменены:\n\n"
+            f"📅 Дата: {booking_date.strftime('%d.%m.%Y')}\n"
+            f"⏰ Время: {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}"
+        )
+        await callback.answer("✅ Дата и время изменены")
+
+        await state.clear()
+
+        from bot.handlers.admin.bookings import show_booking_details
+        callback.data = f"booking_{booking_id}"
+        await show_booking_details(callback, state)
+
+
 @router.callback_query(F.data.startswith("edit_master_"))
 async def edit_booking_master(callback: CallbackQuery, state: FSMContext):
     """Изменить мастера заказа"""
@@ -1311,6 +1382,8 @@ async def edit_datetime_change_month(callback: CallbackQuery, state: FSMContext)
             reply_markup=calendar
         )
         await callback.answer()
+
+
 
 
 @router.callback_query(F.data.startswith("calendar_month_"), AdminBookingStates.choosing_date)

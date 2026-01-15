@@ -40,10 +40,13 @@ from bot.handlers.client.my_bookings import router as my_bookings_router
 from bot.handlers.client.profile import router as profile_router
 from bot.handlers.admin.menu import router as admin_menu_router
 from bot.handlers.admin.bookings import router as admin_bookings_router
+from bot.handlers.admin.bookings_edit import router as admin_bookings_edit_router
 from bot.handlers.master.work_order import router as master_router
 
 # Импортируем middleware
 from bot.middleware.subscription import SubscriptionMiddleware
+from aiogram import F
+from aiogram.types import CallbackQuery
 
 # Инициализируем сервис tenant
 tenant_service = TenantService()
@@ -179,14 +182,20 @@ async def run_bot_for_company(company: Company) -> Optional[Dict[str, any]]:
         logger.info(f"SubscriptionMiddleware применен для компании '{company.name}'")
         
         # Регистрируем роутеры
+        # ВАЖНО: Admin роутеры регистрируем ПЕРВЫМИ, чтобы они имели приоритет
+        # bookings_edit_router должен быть ПЕРЕД bookings_router, чтобы обработчики с состояниями имели приоритет
+        dp.include_router(admin_menu_router)
+        dp.include_router(admin_bookings_edit_router)  # Более специфичные обработчики с состояниями - первыми
+        dp.include_router(admin_bookings_router)
+        dp.include_router(master_router)
+        # Client роутеры регистрируем после admin, чтобы не перехватывали админские кнопки
         dp.include_router(start_router)
         dp.include_router(booking_router)
         dp.include_router(calendar_router)
         dp.include_router(my_bookings_router)
         dp.include_router(profile_router)
-        dp.include_router(admin_menu_router)
-        dp.include_router(admin_bookings_router)
-        dp.include_router(master_router)
+
+        # Фоллбек и явный логгер убираем, чтобы не перехватывать валидные callback'и.
         
         # Убеждаемся, что диспетчер сохранен перед запуском polling
         logger.info(f"🔍 Проверка перед polling: диспетчеров в словаре={len(_dispatchers_by_token)}, bot._dispatcher установлен={hasattr(bot, '_dispatcher')}")
