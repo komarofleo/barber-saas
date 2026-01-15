@@ -4,6 +4,7 @@ import { clientsApi, Client, ClientCreateRequest } from '../api/clients'
 import { servicesApi, Service } from '../api/services'
 import { mastersApi, Master } from '../api/masters'
 import { postsApi, Post } from '../api/posts'
+import { SuccessNotification } from '../components/SuccessNotification'
 import './Calendar.css'
 
 type ViewMode = 'month' | 'week' | 'day'
@@ -18,6 +19,7 @@ function Calendar() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [createModalDate, setCreateModalDate] = useState<string>('')
   const [createModalTime, setCreateModalTime] = useState<string>('')
+  const [showSuccessNotification, setShowSuccessNotification] = useState(false)
   
   // Состояния для drag and drop
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null)
@@ -680,7 +682,17 @@ function Calendar() {
 
   return (
     <div className="calendar-page">
-      <div className="page-header">
+      {showSuccessNotification && (
+        <SuccessNotification
+          message="✅ Сообщение отправлено клиенту в Telegram"
+          onClose={() => {
+            console.log('📌 Закрываем уведомление')
+            setShowSuccessNotification(false)
+          }}
+          duration={5000}
+        />
+      )}
+      <div className="page-header-simple">
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <h1>Календарь</h1>
           <div className="calendar-legend">
@@ -755,10 +767,40 @@ function Calendar() {
           }}
           onStatusChange={async (bookingId: number, status: string) => {
             try {
-              await bookingsApi.updateBooking(bookingId, { status })
+              const updatedBooking = await bookingsApi.updateBooking(bookingId, { status })
+              console.log('✅ Статус обновлен, получен ответ:', updatedBooking)
+              
               if (viewingBooking && viewingBooking.id === bookingId) {
-                setViewingBooking({ ...viewingBooking, status })
+                setViewingBooking({ ...viewingBooking, ...updatedBooking })
               }
+              
+              // Показываем уведомление при смене статуса, если уведомление было отправлено
+              const notificationSent = updatedBooking.notification_sent === true
+              const hasTelegramId = updatedBooking.client_telegram_id && updatedBooking.client_telegram_id > 0
+              
+              console.log('📋 Проверка показа уведомления:', { 
+                notification_sent: updatedBooking.notification_sent, 
+                client_telegram_id: updatedBooking.client_telegram_id,
+                hasTelegramId,
+                notificationSent,
+                status
+              })
+              
+              // Показываем уведомление, если оно было отправлено успешно
+              if (notificationSent) {
+                console.log('✅ Показываем уведомление об успешной отправке')
+                setShowSuccessNotification(true)
+                // Автоматически скрываем через 5 секунд
+                setTimeout(() => {
+                  setShowSuccessNotification(false)
+                }, 5000)
+              } else if (hasTelegramId) {
+                // Если есть telegram_id, но уведомление не отправилось - показываем предупреждение
+                console.log('⚠️ У клиента есть telegram_id, но уведомление не отправлено')
+              } else {
+                console.log('ℹ️ У клиента нет telegram_id - уведомление не требуется')
+              }
+              
               loadBookings()
             } catch (error: any) {
               console.error('Ошибка изменения статуса:', error)
@@ -1089,8 +1131,8 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
       // Находим занятые посты
       const occupied = new Set<number>()
       bookingsData.items.forEach(booking => {
-        // Пропускаем отмененные и завершенные записи
-        if (booking.status === 'cancelled' || booking.status === 'completed') {
+        // Учитываем только активные статусы (new/confirmed). Остальные не блокируют посты.
+        if (booking.status !== 'new' && booking.status !== 'confirmed') {
           return
         }
 
@@ -1351,10 +1393,6 @@ function CreateClientQuickModal({ onClose, onSuccess }: CreateClientQuickModalPr
   const [formData, setFormData] = useState<ClientCreateRequest>({
     full_name: '',
     phone: '',
-    car_brand: '',
-    car_model: '',
-    car_year: undefined,
-    car_number: '',
   })
   const [loading, setLoading] = useState(false)
 
@@ -1370,10 +1408,6 @@ function CreateClientQuickModal({ onClose, onSuccess }: CreateClientQuickModalPr
       const newClient = await clientsApi.createClient({
         full_name: formData.full_name.trim(),
         phone: formData.phone.trim(),
-        car_brand: formData.car_brand?.trim() || undefined,
-        car_model: formData.car_model?.trim() || undefined,
-        car_year: formData.car_year || undefined,
-        car_number: formData.car_number?.trim() || undefined,
       })
       onSuccess(newClient)
     } catch (error: any) {
@@ -1415,56 +1449,6 @@ function CreateClientQuickModal({ onClose, onSuccess }: CreateClientQuickModalPr
               className="form-input"
               placeholder="+7 (999) 123-45-67"
             />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Марка авто</label>
-              <input
-                type="text"
-                value={formData.car_brand || ''}
-                onChange={(e) => setFormData({ ...formData, car_brand: e.target.value })}
-                className="form-input"
-                placeholder="Toyota"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Модель</label>
-              <input
-                type="text"
-                value={formData.car_model || ''}
-                onChange={(e) => setFormData({ ...formData, car_model: e.target.value })}
-                className="form-input"
-                placeholder="Camry"
-              />
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Год</label>
-              <input
-                type="number"
-                value={formData.car_year || ''}
-                onChange={(e) => setFormData({ ...formData, car_year: e.target.value ? parseInt(e.target.value) : undefined })}
-                className="form-input"
-                placeholder="2020"
-                min="1900"
-                max={new Date().getFullYear() + 1}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Госномер</label>
-              <input
-                type="text"
-                value={formData.car_number || ''}
-                onChange={(e) => setFormData({ ...formData, car_number: e.target.value })}
-                className="form-input"
-                placeholder="А123БВ77"
-              />
-            </div>
           </div>
 
           <div className="modal-footer">
