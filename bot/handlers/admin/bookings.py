@@ -13,14 +13,21 @@ from bot.database.crud import (
     update_booking_status,
     get_masters,
     get_posts,
+    get_all_clients,
+    get_services,
+    create_booking,
 )
 from bot.keyboards.admin import (
     get_bookings_keyboard, get_confirm_keyboard, get_admin_main_keyboard,
-    get_masters_keyboard, get_posts_keyboard
+    get_masters_keyboard, get_posts_keyboard, get_booking_actions_keyboard
 )
 from bot.keyboards.client import get_confirm_attendance_keyboard
 from shared.database.models import Master, Post
 from sqlalchemy import select, text, func
+from datetime import date, time, timedelta
+from bot.states.admin_states import AdminBookingStates, AdminEditBookingStates
+from bot.utils.calendar import generate_calendar, get_available_dates
+from bot.utils.time_slots import generate_time_slots
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -199,6 +206,11 @@ async def show_booking_details(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Ошибка", show_alert=True)
         return
 
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: Если booking_id == 0, это новый заказ, не обрабатываем
+    if booking_id == 0:
+        logger.debug(f"🔵 [show_booking_details] Пропускаем: booking_id=0 - это новый заказ. Обрабатывается в bookings_edit.py")
+        return  # НЕ вызываем callback.answer(), чтобы не блокировать обработчик в bookings_edit.py
+
     # Получаем контекст компании
     ctx = get_company_context_from_bot(callback.bot)
     company_id = ctx.get('company_id')
@@ -294,15 +306,12 @@ async def show_booking_details(callback: CallbackQuery, state: FSMContext):
         if booking_data[7]:  # admin_comment
             text_msg += f"\n📝 Комментарий админа: {booking_data[7]}\n"
 
-        # Показываем кнопки подтверждения только для новых заказов
-        if booking_data[5] == "new":  # status
-            await callback.message.edit_text(text_msg, reply_markup=get_confirm_keyboard(booking_id))
-        else:
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад к списку", callback_data="back_to_bookings")],
-            ])
-            await callback.message.edit_text(text_msg, reply_markup=keyboard)
+        # Показываем кнопки действий с заказом
+        from bot.keyboards.admin import get_booking_actions_keyboard
+        await callback.message.edit_text(
+            text_msg, 
+            reply_markup=get_booking_actions_keyboard(booking_id, booking_data[5])  # status
+        )
         
         await callback.answer()
 
@@ -315,6 +324,11 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext):
     except (ValueError, IndexError):
         await callback.answer("❌ Ошибка", show_alert=True)
         return
+
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: Если booking_id == 0, это новый заказ, не обрабатываем
+    if booking_id == 0:
+        logger.debug(f"🔵 [confirm_booking] Пропускаем: booking_id=0 - это новый заказ. Обрабатывается в bookings_edit.py")
+        return  # НЕ вызываем callback.answer(), чтобы не блокировать обработчик в bookings_edit.py
 
     # Получаем контекст компании
     ctx = get_company_context_from_bot(callback.bot)
@@ -345,7 +359,7 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext):
             return
 
         # Получаем список мастеров
-        masters = await get_masters(session)
+        masters = await get_masters(session, company_id=company_id)
         if not masters:
             await callback.answer("❌ Нет доступных мастеров", show_alert=True)
             return
@@ -366,16 +380,51 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("assign_master_"))
 async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
-    """Назначить мастера заказу"""
+    """
+    Назначить мастера существующему заказу.
+    
+    Обрабатывает только существующие заказы (booking_id > 0).
+    Новые заказы обрабатываются в bookings_edit.py через admin_select_master.
+    
+    Формат callback_data: assign_master_{booking_id}_{master_id}
+    - booking_id > 0: существующий заказ
+    - master_id: ID мастера или "auto" для автоматического выбора
+    """
+    logger.info(f"🔵 [assign_master_to_booking] НАЧАЛО: callback_data='{callback.data}', user_id={callback.from_user.id}")
+    
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: Исключаем новые заказы и неправильные форматы
+    if callback.data.startswith("assign_master_0_") or callback.data.startswith("new_master_"):
+        logger.debug(f"🔵 [assign_master_to_booking] Пропускаем: это новый заказ или неправильный формат")
+        await callback.answer("", show_alert=False)
+        return
+    
+    # Парсим callback_data: assign_master_{booking_id}_{master_id}
     try:
         parts = callback.data.split("_")
+        if len(parts) < 4:
+            logger.warning(f"⚠️ [assign_master_to_booking] Неверный формат callback_data: '{callback.data}'")
+            await callback.answer("❌ Ошибка формата", show_alert=True)
+            return
+        
         booking_id = int(parts[2])
+        
+        # КРИТИЧЕСКАЯ ПРОВЕРКА: booking_id должен быть > 0 (существующий заказ)
+        if booking_id <= 0:
+            logger.warning(f"⚠️ [assign_master_to_booking] booking_id={booking_id} <= 0, это новый заказ. Пропускаем.")
+            await callback.answer("", show_alert=False)
+            return
+        
+        # Парсим master_id
         if parts[3] == "auto":
             master_id = None
         else:
             master_id = int(parts[3])
-    except (ValueError, IndexError):
-        await callback.answer("❌ Ошибка", show_alert=True)
+        
+        logger.info(f"🔵 [assign_master_to_booking] Парсинг: booking_id={booking_id}, master_id={master_id}")
+        
+    except (ValueError, IndexError) as e:
+        logger.error(f"❌ [assign_master_to_booking] Ошибка парсинга: {e}, callback_data='{callback.data}'")
+        await callback.answer("❌ Ошибка обработки", show_alert=True)
         return
 
     # Получаем контекст компании
@@ -383,33 +432,39 @@ async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
     company_id = ctx.get('company_id')
     
     if not company_id:
+        logger.error("❌ [assign_master_to_booking] company_id не найден")
         await callback.answer("❌ Ошибка конфигурации бота", show_alert=True)
         return
 
-    # Проверяем права
+    # Проверяем права администратора
     if not is_company_admin_from_bot(callback.from_user.id, callback.bot):
+        logger.warning(f"⚠️ [assign_master_to_booking] Пользователь {callback.from_user.id} не является админом")
         await callback.answer("❌ У вас нет прав", show_alert=True)
         return
 
     async for session in get_session():
-        # Устанавливаем search_path
+        # Устанавливаем search_path для tenant схемы
         schema_name = f"tenant_{company_id}"
         await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
         
-        user = await get_user_by_telegram_id(session, callback.from_user.id)
+        # Проверяем пользователя
+        user = await get_user_by_telegram_id(session, callback.from_user.id, company_id=company_id)
         if not user:
+            logger.error(f"❌ [assign_master_to_booking] Пользователь {callback.from_user.id} не найден")
             await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
 
+        # Получаем заказ из БД
         booking = await get_booking_by_id(session, booking_id, company_id=company_id)
         if not booking:
+            logger.error(f"❌ [assign_master_to_booking] Заказ {booking_id} не найден в БД")
             await callback.answer("❌ Заказ не найден", show_alert=True)
             return
 
         # Если мастер не выбран, выбираем наименее загруженного
         if master_id is None:
             from bot.database.crud import get_master_bookings_by_date
-            masters = await get_masters(session)
+            masters = await get_masters(session, company_id=company_id)
             if not masters:
                 await callback.answer("❌ Нет доступных мастеров", show_alert=True)
                 return
@@ -424,11 +479,12 @@ async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
             
             if selected_master:
                 master_id = selected_master.id
+                logger.info(f"🔵 [assign_master_to_booking] Автоматически выбран мастер: {master_id}")
 
         # Получаем список постов
-        posts = await get_posts(session)
+        posts = await get_posts(session, company_id=company_id)
         if not posts:
-            # Если нет постов, подтверждаем сразу
+            # Если нет постов, подтверждаем заказ сразу
             booking = await update_booking_status(session, booking_id, "confirmed", master_id=master_id)
             await callback.message.edit_text(
                 f"✅ Заказ #{booking.booking_number} подтвержден!\n\n"
@@ -459,24 +515,68 @@ async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
 
 
-@router.callback_query(F.data.startswith("assign_post_"))
+@router.callback_query(
+    F.data.startswith("assign_post_") & 
+    ~F.data.startswith("assign_post_0_")  # Исключаем новые заказы (booking_id=0)
+)
 async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
-    """Назначить пост заказу и подтвердить"""
-    logger.info(f"🔵 [HANDLER] assign_post_to_booking: callback_data='{callback.data}', user={callback.from_user.id}")
+    """
+    Назначить пост существующему заказу и подтвердить.
     
+    Обрабатывает только существующие заказы (booking_id > 0).
+    Новые заказы обрабатываются в bookings_edit.py через admin_select_post.
+    
+    Формат callback_data: assign_post_{booking_id}_{master_id}_{post_id}
+    - booking_id > 0: существующий заказ
+    - master_id: ID мастера или "0" если не выбран
+    - post_id: ID поста или "auto" для автоматического выбора
+    """
+    logger.info(f"🔵 [assign_post_to_booking] НАЧАЛО: callback_data='{callback.data}', user={callback.from_user.id}")
+    
+    # КРИТИЧЕСКАЯ ПРОВЕРКА ПЕРВЫМ ДЕЛОМ: Исключаем новые заказы
     try:
         parts = callback.data.split("_")
-        booking_id = int(parts[2])
+        if len(parts) < 5:
+            logger.warning(f"⚠️ [assign_post_to_booking] Неверный формат callback_data: '{callback.data}'")
+            await callback.answer("❌ Ошибка формата", show_alert=True)
+            return
+        
+        booking_id_from_callback = parts[2]  # Может быть "0" для нового заказа
+        
+        # КРИТИЧЕСКАЯ ПРОВЕРКА: Если booking_id = "0", это новый заказ - НЕ ОБРАБАТЫВАЕМ
+        # НЕ вызываем callback.answer(), чтобы обработчик в bookings_edit.py мог обработать callback
+        if booking_id_from_callback == "0":
+            logger.debug(f"🔵 [assign_post_to_booking] Пропускаем: это новый заказ (booking_id=0). Обрабатывается в bookings_edit.py")
+            return  # НЕ вызываем callback.answer(), чтобы не блокировать обработчик в bookings_edit.py
+        
+        booking_id = int(booking_id_from_callback)
+        
+        # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: booking_id должен быть > 0
+        if booking_id <= 0:
+            logger.debug(f"🔵 [assign_post_to_booking] Пропускаем: booking_id={booking_id} <= 0. Обрабатывается в bookings_edit.py")
+            return  # НЕ вызываем callback.answer(), чтобы не блокировать обработчик в bookings_edit.py
+        
         master_id = int(parts[3]) if parts[3] != "0" else None
         if parts[4] == "auto":
             post_id = None
         else:
             post_id = int(parts[4])
-        logger.info(f"🔵 [HANDLER] Парсинг: booking_id={booking_id}, master_id={master_id}, post_id={post_id}")
+        
+        logger.info(f"🔵 [assign_post_to_booking] Парсинг: booking_id={booking_id}, master_id={master_id}, post_id={post_id}")
+        
     except (ValueError, IndexError) as e:
-        logger.error(f"❌ [HANDLER] Ошибка парсинга callback_data: {e}")
-        await callback.answer("❌ Ошибка", show_alert=True)
+        logger.error(f"❌ [assign_post_to_booking] Ошибка парсинга callback_data: {e}, callback_data='{callback.data}'")
+        await callback.answer("❌ Ошибка обработки", show_alert=True)
         return
+    
+    # Проверяем состояние FSM - если это choosing_post, то это новый заказ
+    current_state = await state.get_state()
+    logger.info(f"🔵 [assign_post_to_booking] current_state={current_state}")
+    
+    from bot.states.admin_states import AdminBookingStates
+    if current_state == AdminBookingStates.choosing_post:
+        logger.debug(f"🔵 [assign_post_to_booking] Пропускаем: состояние choosing_post - это новый заказ. Обрабатывается в bookings_edit.py")
+        return  # НЕ вызываем callback.answer(), чтобы не блокировать обработчик в bookings_edit.py
 
     # Получаем контекст компании
     ctx = get_company_context_from_bot(callback.bot)
@@ -514,7 +614,7 @@ async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
         # Если пост не выбран, выбираем первый доступный
         if post_id is None:
             logger.info(f"🔵 [HANDLER] Пост не выбран, выбираем первый доступный")
-            posts = await get_posts(session)
+            posts = await get_posts(session, company_id=company_id)
             if posts:
                 post_id = posts[0].id
                 logger.info(f"🔵 [HANDLER] Выбран пост: {post_id}")
