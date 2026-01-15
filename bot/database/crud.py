@@ -1321,23 +1321,70 @@ async def update_booking_status(
     post_id: Optional[int] = None,
 ) -> Optional[Booking]:
     """Обновить статус записи"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Получаем booking (search_path уже должен быть установлен)
     booking = await get_booking_by_id(session, booking_id)
     if not booking:
+        logger.error(f"❌ [CRUD] Запись {booking_id} не найдена")
         return None
 
-    booking.status = status
+    logger.info(f"🔵 [CRUD] Обновляем статус записи {booking_id}: {booking.status} -> {status}")
+    
+    # Обновляем через SQL запрос (search_path уже установлен)
+    update_fields = ["status = :status"]
+    params = {"status": status, "booking_id": booking_id}
+    
     if master_id:
-        booking.master_id = master_id
+        update_fields.append("master_id = :master_id")
+        params["master_id"] = master_id
+        logger.info(f"🔵 [CRUD] Назначаем мастера: {master_id}")
+    
     if post_id:
-        booking.post_id = post_id
+        update_fields.append("post_id = :post_id")
+        params["post_id"] = post_id
+        logger.info(f"🔵 [CRUD] Назначаем пост: {post_id}")
+    
     if status == "confirmed":
-        booking.confirmed_at = datetime.utcnow()
+        update_fields.append("confirmed_at = CURRENT_TIMESTAMP")
     elif status == "completed":
-        booking.completed_at = datetime.utcnow()
+        update_fields.append("completed_at = CURRENT_TIMESTAMP")
     elif status == "cancelled":
-        booking.cancelled_at = datetime.utcnow()
-
+        update_fields.append("cancelled_at = CURRENT_TIMESTAMP")
+    
+    # Выполняем UPDATE через SQL (search_path уже установлен)
+    await session.execute(
+        text(f"UPDATE bookings SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE id = :booking_id"),
+        params
+    )
     await session.commit()
-    await session.refresh(booking)
+    
+    logger.info(f"✅ [CRUD] Статус записи {booking_id} обновлен на '{status}'")
+    
+    # Получаем обновленную запись (передаем company_id если он был определен из search_path)
+    # Определяем company_id из search_path если нужно
+    company_id = None
+    try:
+        result = await session.execute(text("SHOW search_path"))
+        search_path = result.scalar()
+        if search_path and "tenant_" in search_path:
+            import re
+            match = re.search(r'tenant_(\d+)', search_path)
+            if match:
+                company_id = int(match.group(1))
+    except Exception:
+        pass
+    
+    booking = await get_booking_by_id(session, booking_id, company_id=company_id)
+    if not booking:
+        logger.warning(f"⚠️ [CRUD] Не удалось получить обновленную запись {booking_id}, но обновление выполнено успешно")
+        # Создаем минимальный объект booking для возврата
+        booking = type('Booking', (), {})()
+        booking.id = booking_id
+        booking.status = status
+        booking.master_id = master_id
+        booking.post_id = post_id
+    
     return booking
 

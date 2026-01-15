@@ -227,44 +227,75 @@ async def show_booking_details(callback: CallbackQuery, state: FSMContext):
             await callback.answer("❌ Заказ не найден", show_alert=True)
             return
 
-        # Формируем текст с деталями заказа
-        client = booking.client
-        service = booking.service
-        master = booking.master
-        post = booking.post
+        # Получаем данные заказа из БД напрямую
+        booking_data_result = await session.execute(
+            text('''
+                SELECT 
+                    b.booking_number, b.date, b.time, b.end_time, b.duration, b.status,
+                    b.comment, b.admin_comment, b.master_id, b.post_id, b.service_id,
+                    c.full_name as client_name, c.phone as client_phone,
+                    s.name as service_name, s.price as service_price
+                FROM bookings b
+                LEFT JOIN clients c ON b.client_id = c.id
+                LEFT JOIN services s ON b.service_id = s.id
+                WHERE b.id = :booking_id
+            '''),
+            {"booking_id": booking_id}
+        )
+        booking_data = booking_data_result.fetchone()
+        
+        if not booking_data:
+            await callback.answer("❌ Заказ не найден", show_alert=True)
+            return
+        
+        # Получаем имя мастера если есть
+        master_name = None
+        if booking_data[8]:  # master_id
+            master_result = await session.execute(
+                text('SELECT full_name FROM masters WHERE id = :master_id'),
+                {"master_id": booking_data[8]}
+            )
+            master_row = master_result.fetchone()
+            if master_row:
+                master_name = master_row[0]
+        
+        # Получаем имя поста если есть
+        post_name = None
+        if booking_data[9]:  # post_id
+            post_result = await session.execute(
+                text('SELECT name FROM posts WHERE id = :post_id'),
+                {"post_id": booking_data[9]}
+            )
+            post_row = post_result.fetchone()
+            if post_row:
+                post_name = post_row[0]
 
-        text_msg = f"📋 Заказ #{booking.booking_number}\n\n"
-        text_msg += f"👤 Клиент: {client.full_name if client else 'Неизвестно'}\n"
-        text_msg += f"📞 Телефон: {client.phone if client else 'Не указан'}\n"
+        # Формируем текст с деталями заказа
+        text_msg = f"📋 Заказ {booking_data[0]}\n\n"  # booking_number
+        text_msg += f"👤 Клиент: {booking_data[11] or 'Неизвестно'}\n"  # client_name
+        text_msg += f"📞 Телефон: {booking_data[12] or 'Не указан'}\n"  # client_phone
         
-        if client and hasattr(client, 'car_brand') and client.car_brand:
-            text_msg += f"🚗 Авто: {client.car_brand}"
-            if hasattr(client, 'car_model') and client.car_model:
-                text_msg += f" {client.car_model}"
-            if hasattr(client, 'car_number') and client.car_number:
-                text_msg += f" ({client.car_number})"
-            text_msg += "\n"
+        text_msg += f"\n🛠️ Услуга: {booking_data[13] or 'Не указана'}\n"  # service_name
+        if booking_data[14]:  # service_price
+            text_msg += f"💰 Цена: {booking_data[14]}₽\n"
+        text_msg += f"📅 Дата: {booking_data[1].strftime('%d.%m.%Y')}\n"  # date
+        text_msg += f"⏰ Время: {booking_data[2].strftime('%H:%M')} - {booking_data[3].strftime('%H:%M')}\n"  # time - end_time
+        text_msg += f"⏱️ Длительность: {booking_data[4]} мин\n"  # duration
+        text_msg += f"📊 Статус: {booking_data[5]}\n"  # status
         
-        text_msg += f"\n🛠️ Услуга: {service.name if service else 'Не указана'}\n"
-        text_msg += f"💰 Цена: {service.price}₽\n" if service else ""
-        text_msg += f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
-        text_msg += f"⏰ Время: {booking.time.strftime('%H:%M')} - {booking.end_time.strftime('%H:%M')}\n"
-        text_msg += f"⏱️ Длительность: {booking.duration} мин\n"
-        text_msg += f"📊 Статус: {booking.status}\n"
+        if master_name:
+            text_msg += f"👨‍🔧 Мастер: {master_name}\n"
+        if post_name:
+            text_msg += f"🏢 Рабочее место: {post_name}\n"
         
-        if master:
-            text_msg += f"👨‍🔧 Мастер: {master.full_name}\n"
-        if post:
-            text_msg += f"🏢 Рабочее место: {post.name}\n"
+        if booking_data[6]:  # comment
+            text_msg += f"\n💬 Комментарий: {booking_data[6]}\n"
         
-        if booking.comment:
-            text_msg += f"\n💬 Комментарий: {booking.comment}\n"
-        
-        if booking.admin_comment:
-            text_msg += f"\n📝 Комментарий админа: {booking.admin_comment}\n"
+        if booking_data[7]:  # admin_comment
+            text_msg += f"\n📝 Комментарий админа: {booking_data[7]}\n"
 
         # Показываем кнопки подтверждения только для новых заказов
-        if booking.status == "new":
+        if booking_data[5] == "new":  # status
             await callback.message.edit_text(text_msg, reply_markup=get_confirm_keyboard(booking_id))
         else:
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -398,7 +429,7 @@ async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
         posts = await get_posts(session)
         if not posts:
             # Если нет постов, подтверждаем сразу
-            booking = await update_booking_status(session, booking_id, "confirmed", master_id=master_id, company_id=company_id)
+            booking = await update_booking_status(session, booking_id, "confirmed", master_id=master_id)
             await callback.message.edit_text(
                 f"✅ Заказ #{booking.booking_number} подтвержден!\n\n"
                 f"Мастер назначен.\n"
@@ -431,6 +462,8 @@ async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("assign_post_"))
 async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
     """Назначить пост заказу и подтвердить"""
+    logger.info(f"🔵 [HANDLER] assign_post_to_booking: callback_data='{callback.data}', user={callback.from_user.id}")
+    
     try:
         parts = callback.data.split("_")
         booking_id = int(parts[2])
@@ -439,7 +472,9 @@ async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
             post_id = None
         else:
             post_id = int(parts[4])
-    except (ValueError, IndexError):
+        logger.info(f"🔵 [HANDLER] Парсинг: booking_id={booking_id}, master_id={master_id}, post_id={post_id}")
+    except (ValueError, IndexError) as e:
+        logger.error(f"❌ [HANDLER] Ошибка парсинга callback_data: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
         return
 
@@ -448,8 +483,11 @@ async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
     company_id = ctx.get('company_id')
     
     if not company_id:
+        logger.error("❌ [HANDLER] company_id не найден в контексте!")
         await callback.answer("❌ Ошибка конфигурации бота", show_alert=True)
         return
+
+    logger.info(f"🔵 [HANDLER] company_id={company_id}")
 
     # Проверяем права
     if not is_company_admin_from_bot(callback.from_user.id, callback.bot):
@@ -459,6 +497,7 @@ async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
     async for session in get_session():
         # Устанавливаем search_path
         schema_name = f"tenant_{company_id}"
+        logger.info(f"🔵 [HANDLER] Устанавливаем search_path: {schema_name}")
         await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
         
         user = await get_user_by_telegram_id(session, callback.from_user.id)
@@ -468,64 +507,127 @@ async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
 
         booking = await get_booking_by_id(session, booking_id, company_id=company_id)
         if not booking:
+            logger.error(f"❌ [HANDLER] Заказ {booking_id} не найден")
             await callback.answer("❌ Заказ не найден", show_alert=True)
             return
 
         # Если пост не выбран, выбираем первый доступный
         if post_id is None:
+            logger.info(f"🔵 [HANDLER] Пост не выбран, выбираем первый доступный")
             posts = await get_posts(session)
             if posts:
                 post_id = posts[0].id
+                logger.info(f"🔵 [HANDLER] Выбран пост: {post_id}")
 
+        logger.info(f"🔵 [HANDLER] Обновляем статус заказа {booking_id}: master_id={master_id}, post_id={post_id}")
+        
         # Подтверждаем заказ с назначенными мастером и постом
         booking = await update_booking_status(
             session, booking_id, "confirmed",
             master_id=master_id,
-            post_id=post_id,
-            company_id=company_id
+            post_id=post_id
         )
 
         if not booking:
+            logger.error(f"❌ [HANDLER] Ошибка при обновлении статуса заказа {booking_id}")
             await callback.answer("❌ Ошибка при подтверждении", show_alert=True)
             return
 
+        logger.info(f"✅ [HANDLER] Заказ {booking_id} успешно подтвержден")
+
+        # Получаем имена мастера и поста из БД
         master_name = "Автоматически"
-        if booking.master:
-            master_name = booking.master.full_name
+        if master_id:
+            master_result = await session.execute(
+                text('SELECT full_name FROM masters WHERE id = :master_id'),
+                {"master_id": master_id}
+            )
+            master_row = master_result.fetchone()
+            if master_row:
+                master_name = master_row[0]
         
         post_name = "Не назначен"
-        if booking.post:
-            post_name = booking.post.name
+        if post_id:
+            post_result = await session.execute(
+                text('SELECT name FROM posts WHERE id = :post_id'),
+                {"post_id": post_id}
+            )
+            post_row = post_result.fetchone()
+            if post_row:
+                post_name = post_row[0]
 
+        # Получаем booking_number из БД
+        booking_number_result = await session.execute(
+            text('SELECT booking_number FROM bookings WHERE id = :booking_id'),
+            {"booking_id": booking_id}
+        )
+        booking_number_row = booking_number_result.fetchone()
+        booking_number = booking_number_row[0] if booking_number_row else f"#{booking_id}"
+
+        logger.info(f"🔵 [HANDLER] Отправляем сообщение о подтверждении: booking_number={booking_number}, master={master_name}, post={post_name}")
+        
         await callback.message.edit_text(
-            f"✅ Заказ #{booking.booking_number} подтвержден!\n\n"
+            f"✅ Заказ {booking_number} подтвержден!\n\n"
             f"👨‍🔧 Мастер: {master_name}\n"
             f"🏢 Рабочее место: {post_name}\n\n"
             f"Клиент будет уведомлен."
         )
         await callback.answer("✅ Заказ подтвержден")
         
+        # Получаем данные клиента для уведомления
+        client_result = await session.execute(
+            text('''
+                SELECT c.user_id, u.telegram_id 
+                FROM bookings b
+                JOIN clients c ON b.client_id = c.id
+                LEFT JOIN users u ON c.user_id = u.id
+                WHERE b.id = :booking_id
+            '''),
+            {"booking_id": booking_id}
+        )
+        client_row = client_result.fetchone()
+        
         # Отправляем уведомление клиенту
         try:
-            if booking.client and booking.client.user and booking.client.user.telegram_id:
-                service_name = booking.service.name if booking.service else "Не указана"
-                client_message = (
-                    f"✅ Ваша запись подтверждена!\n\n"
-                    f"📋 Номер записи: {booking.booking_number}\n"
-                    f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
-                    f"⏰ Время: {booking.time.strftime('%H:%M')}\n"
-                    f"🛠️ Услуга: {service_name}\n"
-                    f"👨‍🔧 Мастер: {master_name}\n"
-                    f"🏢 Рабочее место: {post_name}\n\n"
-                    f"Пожалуйста, подтвердите явку:"
+            if client_row and client_row[1]:  # client_row[1] = telegram_id
+                client_telegram_id = client_row[1]
+                
+                # Получаем данные заказа для уведомления
+                booking_data_result = await session.execute(
+                    text('''
+                        SELECT b.booking_number, b.date, b.time, s.name as service_name
+                        FROM bookings b
+                        LEFT JOIN services s ON b.service_id = s.id
+                        WHERE b.id = :booking_id
+                    '''),
+                    {"booking_id": booking_id}
                 )
-                await callback.bot.send_message(
-                    chat_id=booking.client.user.telegram_id,
-                    text=client_message,
-                    reply_markup=get_confirm_attendance_keyboard(booking.id)
-                )
+                booking_data_row = booking_data_result.fetchone()
+                
+                if booking_data_row:
+                    booking_number = booking_data_row[0]
+                    booking_date = booking_data_row[1]
+                    booking_time = booking_data_row[2]
+                    service_name = booking_data_row[3] or "Не указана"
+                    
+                    client_message = (
+                        f"✅ Ваша запись подтверждена!\n\n"
+                        f"📋 Номер записи: {booking_number}\n"
+                        f"📅 Дата: {booking_date.strftime('%d.%m.%Y')}\n"
+                        f"⏰ Время: {booking_time.strftime('%H:%M')}\n"
+                        f"🛠️ Услуга: {service_name}\n"
+                        f"👨‍🔧 Мастер: {master_name}\n"
+                        f"🏢 Рабочее место: {post_name}\n\n"
+                        f"Пожалуйста, подтвердите явку:"
+                    )
+                    await callback.bot.send_message(
+                        chat_id=client_telegram_id,
+                        text=client_message,
+                        reply_markup=get_confirm_attendance_keyboard(booking_id)
+                    )
+                    logger.info(f"✅ [HANDLER] Уведомление отправлено клиенту {client_telegram_id}")
         except Exception as e:
-            logger.error(f"Ошибка отправки уведомления клиенту: {e}", exc_info=True)
+            logger.error(f"❌ [HANDLER] Ошибка отправки уведомления клиенту: {e}", exc_info=True)
 
 
 @router.callback_query(F.data.startswith("reject_"))
