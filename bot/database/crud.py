@@ -118,6 +118,9 @@ async def create_user(
         phone: Телефон
         company_id: ID компании (для проверки прав админа)
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # В tenant схеме User имеет только full_name, а не first_name/last_name
     # Объединяем first_name и last_name в full_name
     full_name = None
@@ -856,35 +859,432 @@ async def get_bookings_by_client(session: AsyncSession, client_id: int) -> List[
     return list(result.scalars().all())
 
 
-async def get_bookings_by_status(session: AsyncSession, status: str) -> List[Booking]:
+async def get_all_bookings(session: AsyncSession, company_id: Optional[int] = None, limit: Optional[int] = None) -> List[Booking]:
+    """Получить все записи (независимо от статуса)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"🔵 [CRUD] get_all_bookings: company_id={company_id}, limit={limit}")
+
+    if not company_id:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            logger.info(f"🔵 [CRUD] Текущий search_path: {search_path}")
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+                    logger.info(f"🔵 [CRUD] Определен company_id={company_id} из search_path: {search_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"🔵 [CRUD] Получаем все записи из схемы {schema_name}")
+
+        # Устанавливаем search_path
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        logger.info(f"🔵 [CRUD] Установлен search_path: {schema_name}")
+        
+        # Используем прямой SQL запрос для получения всех записей
+        query = f"""
+            SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
+                   b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+                   b.payment_method, b.comment, b.admin_comment, b.created_at, b.updated_at,
+                   b.confirmed_at, b.completed_at, b.cancelled_at, b.created_by
+            FROM "{schema_name}".bookings b
+            ORDER BY b.date DESC, b.time DESC
+        """
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        logger.info(f"🔵 [CRUD] Выполняем SQL запрос: SELECT ... FROM {schema_name}.bookings")
+        result = await session.execute(text(query))
+        rows = result.fetchall()
+        logger.info(f"🔵 [CRUD] SQL запрос выполнен, получено строк: {len(rows)}")
+        
+        if len(rows) == 0:
+            logger.warning(f"⚠️ [CRUD] Нет записей в схеме {schema_name}")
+            # Проверяем, есть ли вообще записи в таблице
+            count_result = await session.execute(
+                text(f'SELECT COUNT(*) FROM "{schema_name}".bookings')
+            )
+            total_count = count_result.scalar()
+            logger.info(f"🔵 [CRUD] Всего записей в таблице bookings: {total_count}")
+        
+        # Преобразуем результаты в объекты Booking (та же логика что в get_bookings_by_status)
+        bookings = []
+        for row in rows:
+            booking = type('Booking', (), {})()
+            booking.id = row[0]
+            booking.booking_number = row[1]
+            booking.client_id = row[2]
+            booking.service_id = row[3]
+            booking.master_id = row[4]
+            booking.post_id = row[5]
+            booking.date = row[6]
+            booking.time = row[7]
+            booking.duration = row[8]
+            booking.end_time = row[9]
+            booking.status = row[10]
+            booking.amount = row[11]
+            booking.is_paid = row[12] if row[12] is not None else False
+            booking.payment_method = row[13]
+            booking.comment = row[14]
+            booking.admin_comment = row[15]
+            booking.created_at = row[16]
+            booking.updated_at = row[17]
+            booking.confirmed_at = row[18]
+            booking.completed_at = row[19]
+            booking.cancelled_at = row[20]
+            booking.created_by = row[21]
+            
+            # Загружаем связанные объекты
+            if booking.client_id:
+                client_result = await session.execute(
+                    text(f'SELECT id, user_id, full_name, phone FROM "{schema_name}".clients WHERE id = :client_id'),
+                    {"client_id": booking.client_id}
+                )
+                client_row = client_result.fetchone()
+                if client_row:
+                    booking.client = type('Client', (), {})()
+                    booking.client.id = client_row[0]
+                    booking.client.user_id = client_row[1]
+                    booking.client.full_name = client_row[2]
+                    booking.client.phone = client_row[3]
+            
+            if booking.service_id:
+                service = await get_service_by_id(session, booking.service_id, company_id=company_id)
+                booking.service = service
+            
+            if booking.master_id:
+                master_result = await session.execute(
+                    text(f'SELECT id, full_name, phone FROM "{schema_name}".masters WHERE id = :master_id'),
+                    {"master_id": booking.master_id}
+                )
+                master_row = master_result.fetchone()
+                if master_row:
+                    booking.master = type('Master', (), {})()
+                    booking.master.id = master_row[0]
+                    booking.master.full_name = master_row[1]
+                    booking.master.phone = master_row[2]
+            
+            if booking.post_id:
+                post_result = await session.execute(
+                    text(f'SELECT id, number, name FROM "{schema_name}".posts WHERE id = :post_id'),
+                    {"post_id": booking.post_id}
+                )
+                post_row = post_result.fetchone()
+                if post_row:
+                    booking.post = type('Post', (), {})()
+                    booking.post.id = post_row[0]
+                    booking.post.number = post_row[1]
+                    booking.post.name = post_row[2]
+            
+            bookings.append(booking)
+        
+        logger.info(f"✅ Найдено всех записей: {len(bookings)}")
+        return bookings
+    else:
+        logger.error("❌ company_id обязателен для get_all_bookings в tenant схеме!")
+        return []
+
+
+async def get_bookings_by_status(session: AsyncSession, status: str, company_id: Optional[int] = None) -> List[Booking]:
     """Получить записи по статусу"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"🔵 [CRUD] get_bookings_by_status: status='{status}', company_id={company_id}")
+    
+    # Если company_id не указан, пытаемся определить из search_path
+    if not company_id:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            logger.info(f"🔵 [CRUD] Текущий search_path: {search_path}")
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+                    logger.info(f"🔵 [CRUD] Определен company_id={company_id} из search_path: {search_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+    
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"🔵 [CRUD] Получаем записи со статусом '{status}' из схемы {schema_name}")
+        
+        # Устанавливаем search_path (если еще не установлен)
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        logger.info(f"🔵 [CRUD] Установлен search_path: {schema_name}")
+    
+    # Используем прямой SQL запрос - search_path уже установлен
+    logger.info(f"🔵 [CRUD] Выполняем SQL запрос: SELECT ... WHERE status='{status}'")
     result = await session.execute(
-        select(Booking)
-        .where(Booking.status == status)
-        .order_by(Booking.date.asc(), Booking.time.asc())
-        .options(
-            selectinload(Booking.client).selectinload(Client.user),
-            selectinload(Booking.service),
-            selectinload(Booking.master),
-            selectinload(Booking.post),
-        )
+        text("""
+            SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
+                   b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+                   b.payment_method, b.comment, b.admin_comment, b.created_at, b.updated_at,
+                   b.confirmed_at, b.completed_at, b.cancelled_at, b.created_by
+            FROM bookings b
+            WHERE b.status = :status
+            ORDER BY b.date ASC, b.time ASC
+        """),
+        {"status": status}
     )
-    return list(result.scalars().all())
+    rows = result.fetchall()
+    logger.info(f"🔵 [CRUD] SQL запрос выполнен, получено строк: {len(rows)}")
+    
+    if len(rows) == 0:
+        logger.warning(f"⚠️ [CRUD] Нет записей со статусом '{status}'")
+        # Проверяем, есть ли вообще записи в таблице
+        count_result = await session.execute(text('SELECT COUNT(*) FROM bookings'))
+        total_count = count_result.scalar()
+        logger.info(f"🔵 [CRUD] Всего записей в таблице bookings: {total_count}")
+        if total_count > 0:
+            # Проверяем, какие статусы есть
+            status_result = await session.execute(text('SELECT DISTINCT status FROM bookings'))
+            statuses = [row[0] for row in status_result.fetchall()]
+            logger.info(f"🔵 [CRUD] Найденные статусы в таблице: {statuses}")
+    
+    # Преобразуем результаты в объекты Booking
+    bookings = []
+    logger.info(f"🔵 [CRUD] Начинаем преобразование {len(rows)} строк в объекты Booking")
+    for idx, row in enumerate(rows):
+        logger.debug(f"🔵 [CRUD] Обрабатываем строку {idx+1}/{len(rows)}: booking_id={row[0]}, status={row[10]}")
+        booking = type('Booking', (), {})()
+        booking.id = row[0]
+        booking.booking_number = row[1]
+        booking.client_id = row[2]
+        booking.service_id = row[3]
+        booking.master_id = row[4]
+        booking.post_id = row[5]
+        booking.date = row[6]
+        booking.time = row[7]
+        booking.duration = row[8]
+        booking.end_time = row[9]
+        booking.status = row[10]
+        booking.amount = row[11]
+        booking.is_paid = row[12] if row[12] is not None else False
+        booking.payment_method = row[13]
+        booking.comment = row[14]
+        booking.admin_comment = row[15]
+        booking.created_at = row[16]
+        booking.updated_at = row[17]
+        booking.confirmed_at = row[18]
+        booking.completed_at = row[19]
+        booking.cancelled_at = row[20]
+        booking.created_by = row[21]
+        
+        # Загружаем связанные объекты
+        if booking.client_id:
+            # Получаем клиента по client_id (search_path уже установлен)
+            client_result = await session.execute(
+                text('SELECT id, user_id, full_name, phone FROM clients WHERE id = :client_id'),
+                {"client_id": booking.client_id}
+            )
+            client_row = client_result.fetchone()
+            if client_row:
+                booking.client = type('Client', (), {})()
+                booking.client.id = client_row[0]
+                booking.client.user_id = client_row[1]
+                booking.client.full_name = client_row[2]
+                booking.client.phone = client_row[3]
+                # Загружаем user если есть
+                if booking.client.user_id:
+                    user_result = await session.execute(
+                        text('SELECT id, telegram_id, username, full_name, phone, role FROM users WHERE id = :user_id'),
+                        {"user_id": booking.client.user_id}
+                    )
+                    user_row = user_result.fetchone()
+                    if user_row:
+                        booking.client.user = type('User', (), {})()
+                        booking.client.user.id = user_row[0]
+                        booking.client.user.telegram_id = user_row[1]
+                        booking.client.user.username = user_row[2]
+                        booking.client.user.full_name = user_row[3]
+                        booking.client.user.phone = user_row[4]
+                        booking.client.user.role = user_row[5]
+        
+        if booking.service_id:
+            service = await get_service_by_id(session, booking.service_id, company_id=company_id)
+            booking.service = service
+        
+        if booking.master_id:
+            master_result = await session.execute(
+                text('SELECT id, full_name, phone FROM masters WHERE id = :master_id'),
+                {"master_id": booking.master_id}
+            )
+            master_row = master_result.fetchone()
+            if master_row:
+                booking.master = type('Master', (), {})()
+                booking.master.id = master_row[0]
+                booking.master.full_name = master_row[1]
+                booking.master.phone = master_row[2]
+        
+        if booking.post_id:
+            post_result = await session.execute(
+                text('SELECT id, number, name FROM posts WHERE id = :post_id'),
+                {"post_id": booking.post_id}
+            )
+            post_row = post_result.fetchone()
+            if post_row:
+                booking.post = type('Post', (), {})()
+                booking.post.id = post_row[0]
+                booking.post.number = post_row[1]
+                booking.post.name = post_row[2]
+        
+        bookings.append(booking)
+    
+    logger.info(f"✅ Найдено записей со статусом '{status}': {len(bookings)}")
+    return bookings
 
 
-async def get_booking_by_id(session: AsyncSession, booking_id: int) -> Optional[Booking]:
+async def get_booking_by_id(session: AsyncSession, booking_id: int, company_id: Optional[int] = None) -> Optional[Booking]:
     """Получить запись по ID"""
-    result = await session.execute(
-        select(Booking)
-        .where(Booking.id == booking_id)
-        .options(
-            selectinload(Booking.client).selectinload(Client.user),
-            selectinload(Booking.service),
-            selectinload(Booking.master),
-            selectinload(Booking.post),
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Если company_id не указан, пытаемся определить из search_path
+    if not company_id:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+                    logger.info(f"🔍 Определен company_id={company_id} из search_path: {search_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить company_id из search_path: {e}")
+    
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"🔍 Получаем запись по ID={booking_id} из схемы {schema_name}")
+        
+        # Устанавливаем search_path
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        # Используем прямой SQL запрос для получения записи
+        result = await session.execute(
+            text(f"""
+                SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
+                       b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+                       b.payment_method, b.comment, b.admin_comment, b.created_at, b.updated_at,
+                       b.confirmed_at, b.completed_at, b.cancelled_at, b.created_by
+                FROM "{schema_name}".bookings b
+                WHERE b.id = :booking_id
+            """),
+            {"booking_id": booking_id}
         )
-    )
-    return result.scalar_one_or_none()
+        row = result.fetchone()
+        
+        if not row:
+            return None
+        
+        # Создаем объект Booking
+        booking = type('Booking', (), {})()
+        booking.id = row[0]
+        booking.booking_number = row[1]
+        booking.client_id = row[2]
+        booking.service_id = row[3]
+        booking.master_id = row[4]
+        booking.post_id = row[5]
+        booking.date = row[6]
+        booking.time = row[7]
+        booking.duration = row[8]
+        booking.end_time = row[9]
+        booking.status = row[10]
+        booking.amount = row[11]
+        booking.is_paid = row[12] if row[12] is not None else False
+        booking.payment_method = row[13]
+        booking.comment = row[14]
+        booking.admin_comment = row[15]
+        booking.created_at = row[16]
+        booking.updated_at = row[17]
+        booking.confirmed_at = row[18]
+        booking.completed_at = row[19]
+        booking.cancelled_at = row[20]
+        booking.created_by = row[21]
+        
+        # Загружаем связанные объекты
+        if booking.client_id:
+            client_result = await session.execute(
+                text(f'SELECT id, user_id, full_name, phone FROM "{schema_name}".clients WHERE id = :client_id'),
+                {"client_id": booking.client_id}
+            )
+            client_row = client_result.fetchone()
+            if client_row:
+                booking.client = type('Client', (), {})()
+                booking.client.id = client_row[0]
+                booking.client.user_id = client_row[1]
+                booking.client.full_name = client_row[2]
+                booking.client.phone = client_row[3]
+                # Загружаем user если есть
+                if booking.client.user_id:
+                    user_result = await session.execute(
+                        text(f'SELECT id, telegram_id, username, full_name, phone, role FROM "{schema_name}".users WHERE id = :user_id'),
+                        {"user_id": booking.client.user_id}
+                    )
+                    user_row = user_result.fetchone()
+                    if user_row:
+                        booking.client.user = type('User', (), {})()
+                        booking.client.user.id = user_row[0]
+                        booking.client.user.telegram_id = user_row[1]
+                        booking.client.user.username = user_row[2]
+                        booking.client.user.full_name = user_row[3]
+                        booking.client.user.phone = user_row[4]
+                        booking.client.user.role = user_row[5]
+        
+        if booking.service_id:
+            service = await get_service_by_id(session, booking.service_id, company_id=company_id)
+            booking.service = service
+        
+        if booking.master_id:
+            master_result = await session.execute(
+                text(f'SELECT id, full_name, phone FROM "{schema_name}".masters WHERE id = :master_id'),
+                {"master_id": booking.master_id}
+            )
+            master_row = master_result.fetchone()
+            if master_row:
+                booking.master = type('Master', (), {})()
+                booking.master.id = master_row[0]
+                booking.master.full_name = master_row[1]
+                booking.master.phone = master_row[2]
+        
+        if booking.post_id:
+            post_result = await session.execute(
+                text(f'SELECT id, number, name FROM "{schema_name}".posts WHERE id = :post_id'),
+                {"post_id": booking.post_id}
+            )
+            post_row = post_result.fetchone()
+            if post_row:
+                booking.post = type('Post', (), {})()
+                booking.post.id = post_row[0]
+                booking.post.number = post_row[1]
+                booking.post.name = post_row[2]
+        
+        logger.info(f"✅ Запись найдена: id={booking.id}, booking_number={booking.booking_number}")
+        return booking
+    else:
+        # Fallback на ORM (может не работать в tenant схемах)
+        logger.warning("⚠️ company_id не указан, используем ORM (может не работать)")
+        result = await session.execute(
+            select(Booking)
+            .where(Booking.id == booking_id)
+            .options(
+                selectinload(Booking.client).selectinload(Client.user),
+                selectinload(Booking.service),
+                selectinload(Booking.master),
+                selectinload(Booking.post),
+            )
+        )
+        return result.scalar_one_or_none()
 
 
 async def get_master_bookings_by_date(
