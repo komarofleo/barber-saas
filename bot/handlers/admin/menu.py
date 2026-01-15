@@ -5,10 +5,14 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
 from bot.database.connection import get_session
-from bot.database.crud import get_user_by_telegram_id, get_bookings_by_status
+from bot.database.crud import get_user_by_telegram_id, get_bookings_by_status, get_all_clients, get_services
 from bot.keyboards.admin import get_admin_main_keyboard, get_bookings_keyboard
-from bot.keyboards.client import get_client_main_keyboard
+from bot.keyboards.client import get_client_main_keyboard, get_services_keyboard
+from bot.states.admin_states import AdminBookingStates
+from bot.utils.calendar import generate_calendar, get_available_dates
+from bot.utils.time_slots import generate_time_slots
 from sqlalchemy import text
+from datetime import date, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -196,3 +200,64 @@ async def exit_admin_panel(message: Message, state: FSMContext):
             "✅ Вы вышли из админ-панели",
             reply_markup=get_client_main_keyboard()
         )
+
+
+@router.message(F.text == "➕ Создать заказ")
+async def create_new_booking(message: Message, state: FSMContext):
+    """Начать создание нового заказа"""
+    logger.info(f"🔵 [HANDLER] create_new_booking: от пользователя {message.from_user.id}")
+    
+    # Проверяем права
+    if not is_company_admin(message.from_user.id, message):
+        await message.answer("❌ У вас нет прав администратора")
+        return
+    
+    # Получаем контекст компании
+    ctx = get_company_context(message)
+    company_id = ctx.get('company_id')
+    
+    if not company_id:
+        logger.error("❌ company_id не найден в контексте!")
+        await message.answer("❌ Ошибка конфигурации бота")
+        return
+    
+    # Начинаем процесс создания заказа - выбираем клиента
+    await state.set_state(AdminBookingStates.choosing_client)
+    
+    async for session in get_session():
+        schema_name = f"tenant_{company_id}"
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        # Получаем список клиентов
+        clients = await get_all_clients(session, company_id=company_id)
+        
+        if not clients:
+            await message.answer("❌ Нет клиентов в системе. Сначала создайте клиента.")
+            await state.clear()
+            return
+        
+        # Создаем клавиатуру с клиентами
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        buttons = []
+        for client in clients[:20]:  # Показываем первые 20
+            text_btn = f"{client.full_name} ({client.phone})"
+            if len(text_btn) > 60:
+                text_btn = text_btn[:57] + "..."
+            buttons.append([
+                InlineKeyboardButton(
+                    text=text_btn,
+                    callback_data=f"admin_client_{client.id}"
+                )
+            ])
+        
+        buttons.append([InlineKeyboardButton(text="➕ Добавить нового клиента", callback_data="admin_create_new_client")])
+        buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin_cancel_booking")])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        
+        await message.answer(
+            "➕ Создание нового заказа\n\n"
+            "👤 Выберите клиента:",
+            reply_markup=keyboard
+        )
+

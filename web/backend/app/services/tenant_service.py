@@ -273,13 +273,17 @@ class TenantService:
         async_session_maker = await self._get_async_session_maker()
         
         async with async_session_maker() as session:
-            # Устанавливаем search_path для этой сессии
-            # Используем SET вместо SET LOCAL, чтобы search_path применялся ко всем запросам в сессии
-            await session.execute(
-                text(f'SET search_path TO "{schema_name}", public')
-            )
-            # НЕ коммитим здесь - контекстный менеджер сам управляет транзакцией
-            yield session
+            # Устанавливаем search_path для этой сессии.
+            # ВАЖНО: после использования сбрасываем search_path обратно в public,
+            # чтобы не было утечки схемы при возврате соединения в пул.
+            await session.execute(text(f'SET search_path TO "{schema_name}", public'))
+            try:
+                yield session
+            finally:
+                try:
+                    await session.execute(text('SET search_path TO public'))
+                except Exception as e:
+                    logger.warning(f"Не удалось сбросить search_path в public для {schema_name}: {e}")
 
 
 _tenant_service: Optional[TenantService] = None

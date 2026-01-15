@@ -29,7 +29,7 @@ async def tenant_service():
 class TestMultiTenantIsolation:
     """Тесты изоляции данных между компаниями."""
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_data_isolation(tenant_service, db):
         """Тест изоляции данных между компаниями."""
         company_1_id = 1
@@ -107,7 +107,7 @@ class TestMultiTenantIsolation:
 class TestTenantServiceErrors:
     """Тесты обработки ошибок в TenantService."""
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_create_duplicate_schema(tenant_service):
         """Тест создания дубликата схемы."""
         company_id = 1
@@ -123,7 +123,7 @@ class TestTenantServiceErrors:
         # Удаляем схему
         await tenant_service.drop_tenant_schema(company_id)
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_drop_nonexistent_schema(tenant_service):
         """Тест удаления несуществующей схемы."""
         company_id = 1
@@ -132,7 +132,7 @@ class TestTenantServiceErrors:
         result = await tenant_service.drop_tenant_schema(company_id)
         assert result is True, "Должен вернуться True (схема не существовала)"
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_clone_nonexistent_table(tenant_service):
         """Тест клонирования несуществующей таблицы."""
         company_id = 1
@@ -148,7 +148,7 @@ class TestTenantServiceErrors:
 class TestTenantServiceSessionManagement:
     """Тесты управления tenant сессиями."""
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_multiple_tenant_sessions(tenant_service):
         """Тест нескольких tenant сессий одновременно."""
         company_1_id = 1
@@ -172,7 +172,7 @@ class TestTenantServiceSessionManagement:
         for company_id in [company_1_id, company_2_id, company_3_id]:
             await tenant_service.drop_tenant_schema(company_id)
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_tenant_session_search_path(tenant_service):
         """Тест установки search_path в tenant сессии."""
         company_id = 1

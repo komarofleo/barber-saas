@@ -125,10 +125,8 @@ function Posts() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1>Посты</h1>
-        </div>
+      <div className="page-header-simple">
+        <h1>Посты</h1>
       </div>
 
       <div className="posts-controls-bar">
@@ -152,17 +150,6 @@ function Posts() {
             Неактивные
           </button>
         </div>
-        <div className="posts-actions">
-          <button className="btn-secondary" onClick={handleExport}>
-            📥 Экспорт CSV
-          </button>
-          <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-            + Добавить пост
-          </button>
-        </div>
-      </div>
-
-      <div className="posts-filters">
         <form onSubmit={handleSearch} className="search-form">
           <input
             type="text"
@@ -173,6 +160,14 @@ function Posts() {
           />
           <button type="submit" className="btn-search">🔍 Поиск</button>
         </form>
+        <div className="posts-actions">
+          <button className="btn-secondary" onClick={handleExport}>
+            📥 Экспорт CSV
+          </button>
+          <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+            + Добавить пост
+          </button>
+        </div>
       </div>
 
       {loading ? (

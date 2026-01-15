@@ -37,12 +37,24 @@ const PlanSelection: React.FC<PlanSelectionProps> = ({
       const { getPlans } = await import('../api/public')
       const fetchedPlans = await getPlans()
       
+      // Убираем дубликаты по name и display_order, оставляя только уникальные
+      const uniquePlansMap = new Map<string, Plan>()
+      fetchedPlans.forEach(plan => {
+        const key = `${plan.name}-${plan.display_order}`
+        if (!uniquePlansMap.has(key)) {
+          uniquePlansMap.set(key, plan)
+        }
+      })
+      
       // Сортируем планы по display_order
-      const sortedPlans = fetchedPlans.sort((a, b) => 
+      const sortedPlans = Array.from(uniquePlansMap.values()).sort((a, b) => 
         a.display_order - b.display_order
       )
       
-      setPlans(sortedPlans)
+      // Ограничиваем до 3 планов
+      const limitedPlans = sortedPlans.slice(0, 3)
+      
+      setPlans(limitedPlans)
       
       // Автовыбираем первый активный план, если еще ничего не выбрано
       if (sortedPlans.length > 0 && !selectedPlanId) {

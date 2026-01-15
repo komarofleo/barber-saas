@@ -45,6 +45,22 @@ class SubscriptionMiddleware(BaseMiddleware):
         Returns:
             Результат хендлера или None если заблокирован
         """
+        # Логируем все сообщения для отладки
+        if isinstance(event, Message) and event.text:
+            handler_name = getattr(handler, '__name__', str(handler))
+            # Получаем имя функции-обработчика, если это функция
+            if hasattr(handler, '__name__'):
+                handler_name = handler.__name__
+            elif hasattr(handler, 'callback') and hasattr(handler.callback, '__name__'):
+                handler_name = handler.callback.__name__
+            logger.info(f"🔵 [MIDDLEWARE] Сообщение: text='{event.text}', from_user={event.from_user.id}, handler={handler_name}")
+            import sys
+            print(f"🔵 [MIDDLEWARE] Сообщение: text='{event.text}', from_user={event.from_user.id}, handler={handler_name}", file=sys.stderr, flush=True)
+            
+            # Если это сообщение "📋 Новые заказы", логируем дополнительно
+            if event.text == "📋 Новые заказы":
+                logger.info(f"🔵🔵🔵 [MIDDLEWARE] НАЙДЕНО СООБЩЕНИЕ '📋 Новые заказы'! handler={handler_name}")
+                print(f"🔵🔵🔵 [MIDDLEWARE] НАЙДЕНО СООБЩЕНИЕ '📋 Новые заказы'! handler={handler_name}", file=sys.stderr, flush=True)
         # Получаем диспетчер через event
         dispatcher = None
         try:

@@ -2,70 +2,62 @@
   width: 100%;
   max-width: none;
   margin: 0;
+  padding: 0;
+  margin-top: 0;
+  position: relative;
 }
 
-.page-header {
+.bookings-page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: -20px -20px 30px -20px;
-  padding: 30px 20px 30px 40px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%) !important;
+  margin: 0 0 20px 0;
+  padding: 0;
+  background: transparent;
   position: relative;
-  left: -20px;
-  right: -20px;
-  width: calc(100% + 40px);
+  width: 100%;
   max-width: none;
   box-sizing: border-box;
 }
 
-.page-header::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.page-header h1 {
-  font-size: 32px;
+.bookings-page-header h1 {
+  font-size: 28px;
   font-weight: 600;
-  color: #fff;
+  color: #2c3e50;
   margin: 0;
-  position: relative;
-  z-index: 1;
 }
 
-.page-header .btn-primary {
-  position: relative;
-  z-index: 1;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(10px);
-  padding: 6px 10px;
-  font-size: 12px;
-  min-width: auto;
-  width: auto;
+.bookings-page-header .btn-primary {
+  background: #4a9eff;
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.3s;
 }
 
-.page-header .btn-primary:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.4);
+.bookings-page-header .btn-primary:hover {
+  background: #2d7dd2;
 }
+
 
 .bookings-filters-panel {
   background: white;
   border-radius: 12px;
   padding: 20px;
+  margin-top: 0;
   margin-bottom: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  position: relative;
+  z-index: 0;
 }
 
 .filters-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 15px;
   margin-bottom: 15px;
 }
@@ -143,6 +135,24 @@
   justify-content: flex-end;
   padding-top: 15px;
   border-top: 1px solid #e9ecef;
+  align-items: center;
+}
+
+.filters-actions .btn-primary {
+  background: #4a9eff;
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.3s;
+  margin-right: auto;
+}
+
+.filters-actions .btn-primary:hover {
+  background: #2d7dd2;
 }
 
 .btn-filter {

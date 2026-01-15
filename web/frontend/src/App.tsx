@@ -17,6 +17,7 @@ import Clients from './pages/Clients'
 import Broadcasts from './pages/Broadcasts'
 import Register from './pages/Register'
 import Billing from './pages/Billing'
+import WorkOrders from './pages/WorkOrders'
 import PaymentSuccess from './pages/PaymentSuccess'
 import PaymentError from './pages/PaymentError'
 import SuperAdminLogin from './pages/SuperAdminLogin'
@@ -31,13 +32,16 @@ import SuperAdminLayout from './components/SuperAdminLayout'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import SubscriptionBarrier from './components/SubscriptionBarrier'
 import './App.css'
+import './styles/common.css'
 
 function ProtectedRoute({
   children,
-  requireSubscription = false
+  requireSubscription = false,
+  showMenuToggle = true
 }: {
   children: React.ReactNode
   requireSubscription?: boolean
+  showMenuToggle?: boolean
 }) {
   // Не проверяем авторизацию для страниц супер-админа
   const currentPath = window.location.pathname
@@ -67,7 +71,7 @@ function ProtectedRoute({
     return <SubscriptionBarrier />
   }
   
-  return <Layout>{children}</Layout>
+  return <Layout showMenuToggle={showMenuToggle}>{children}</Layout>
 }
 
 function SuperAdminProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -125,7 +129,7 @@ function AppRoutes() {
       <Route
         path="/"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Dashboard />
           </ProtectedRoute>
         }
@@ -133,7 +137,7 @@ function AppRoutes() {
       <Route
         path="/bookings"
         element={
-          <ProtectedRoute requireSubscription>
+          <ProtectedRoute requireSubscription showMenuToggle={false}>
             <Bookings />
           </ProtectedRoute>
         }
@@ -141,7 +145,7 @@ function AppRoutes() {
       <Route
         path="/calendar"
         element={
-          <ProtectedRoute requireSubscription>
+          <ProtectedRoute requireSubscription showMenuToggle={false}>
             <Calendar />
           </ProtectedRoute>
         }
@@ -149,7 +153,7 @@ function AppRoutes() {
       <Route
         path="/users"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Users />
           </ProtectedRoute>
         }
@@ -157,7 +161,7 @@ function AppRoutes() {
       <Route
         path="/services"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Services />
           </ProtectedRoute>
         }
@@ -165,7 +169,7 @@ function AppRoutes() {
       <Route
         path="/masters"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Masters />
           </ProtectedRoute>
         }
@@ -173,7 +177,7 @@ function AppRoutes() {
       <Route
         path="/posts"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Posts />
           </ProtectedRoute>
         }
@@ -181,7 +185,7 @@ function AppRoutes() {
       <Route
         path="/statistics"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Statistics />
           </ProtectedRoute>
         }
@@ -189,7 +193,7 @@ function AppRoutes() {
       <Route
         path="/settings"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Settings />
           </ProtectedRoute>
         }
@@ -197,7 +201,7 @@ function AppRoutes() {
       <Route
         path="/blocks"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Blocks />
           </ProtectedRoute>
         }
@@ -205,7 +209,7 @@ function AppRoutes() {
       <Route
         path="/promocodes"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Promocodes />
           </ProtectedRoute>
         }
@@ -213,7 +217,7 @@ function AppRoutes() {
       <Route
         path="/promotions"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Promotions />
           </ProtectedRoute>
         }
@@ -221,7 +225,7 @@ function AppRoutes() {
       <Route
         path="/clients"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Clients />
           </ProtectedRoute>
         }
@@ -229,7 +233,7 @@ function AppRoutes() {
       <Route
         path="/broadcasts"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Broadcasts />
           </ProtectedRoute>
         }
@@ -237,8 +241,16 @@ function AppRoutes() {
       <Route
         path="/billing"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute showMenuToggle={false}>
             <Billing />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/work-orders"
+        element={
+          <ProtectedRoute showMenuToggle={false}>
+            <WorkOrders />
           </ProtectedRoute>
         }
       />

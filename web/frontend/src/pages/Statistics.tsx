@@ -324,10 +324,8 @@ function Statistics() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1>Статистика</h1>
-        </div>
+      <div className="page-header-simple">
+        <h1>Статистика</h1>
       </div>
 
       <div className="statistics-filters">

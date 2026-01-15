@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import apiClient from '../api/client'
 import { mastersApi, Master } from '../api/masters'
 import { bookingsApi, Booking, BookingCreateRequest } from '../api/bookings'
@@ -9,6 +10,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import './Dashboard.css'
 
 function Dashboard() {
+  const navigate = useNavigate()
   const [bookings, setBookings] = useState<Booking[]>([])
   const [todayBookings, setTodayBookings] = useState<Booking[]>([])
   const [mastersToday, setMastersToday] = useState<Array<{
@@ -31,6 +33,8 @@ function Dashboard() {
   const [activePostsCount, setActivePostsCount] = useState(0)
   const [todayBookingsCount, setTodayBookingsCount] = useState(0)
   const [tomorrowBookingsCount, setTomorrowBookingsCount] = useState(0)
+  const [todayBookingsTotal, setTodayBookingsTotal] = useState(0)
+  const [tomorrowBookingsTotal, setTomorrowBookingsTotal] = useState(0)
   const [todayBookingsList, setTodayBookingsList] = useState<Booking[]>([])
   const [tomorrowBookingsList, setTomorrowBookingsList] = useState<Booking[]>([])
   const [availableSlots, setAvailableSlots] = useState<{
@@ -72,13 +76,15 @@ function Dashboard() {
 
   const loadBookings = async () => {
     try {
+      setLoading(true)
       const data = await bookingsApi.getBookings(1, 20)
-      setBookings(data.items)
+      setBookings(data.items || [])
     } catch (error: any) {
       console.error('Ошибка загрузки записей:', error)
       if (error.response?.status === 401) {
-        window.location.href = '/login'
+        navigate('/login')
       }
+      setBookings([])
     } finally {
       setLoading(false)
     }
@@ -90,88 +96,107 @@ function Dashboard() {
       const today = new Date().toISOString().split('T')[0]
       
       // Загружаем записи на сегодня
-      const todayData = await bookingsApi.getBookings(1, 1000, {
-        start_date: today,
-        end_date: today
-      })
-      const todayBookingsList = todayData.items
-      setTodayBookings(todayBookingsList)
-      setTodayBookingsList(todayBookingsList) // Сохраняем для расчета доступных записей
-
-      // Подсчитываем статистику на сегодня
-      const stats = {
-        total: todayBookingsList.length,
-        new: todayBookingsList.filter(b => b.status === 'new').length,
-        confirmed: todayBookingsList.filter(b => b.status === 'confirmed').length,
-        completed: todayBookingsList.filter(b => b.status === 'completed').length,
-        revenue: todayBookingsList
-          .filter(b => b.status === 'completed' && b.is_paid && b.amount)
-          .reduce((sum, b) => sum + (b.amount || 0), 0)
+      try {
+        const todayData = await bookingsApi.getBookings(1, 1000, {
+          start_date: today,
+          end_date: today
+        })
+        const todayBookingsList = todayData.items || []
+        setTodayBookings(todayBookingsList)
+        setTodayBookingsList(todayBookingsList) // Сохраняем для расчета доступных записей
+        
+        // Общее количество всех записей на сегодня (устанавливаем сразу после загрузки)
+        setTodayBookingsTotal(todayBookingsList.length)
+        console.log('📊 Загружено записей на сегодня:', todayBookingsList.length)
+        
+        // Подсчитываем статистику на сегодня
+        const stats = {
+          total: todayBookingsList.length,
+          new: todayBookingsList.filter(b => b.status === 'new').length,
+          confirmed: todayBookingsList.filter(b => b.status === 'confirmed').length,
+          completed: todayBookingsList.filter(b => b.status === 'completed').length,
+          revenue: todayBookingsList
+            .filter(b => b.status === 'completed' && b.is_paid && b.amount)
+            .reduce((sum, b) => sum + (b.amount || 0), 0)
+        }
+        setTodayStats(stats)
+        
+        // Подсчитываем количество записей на сегодня (только new и confirmed)
+        const todayBookingsActive = todayBookingsList.filter(
+          b => b.status === 'new' || b.status === 'confirmed'
+        ).length
+        setTodayBookingsCount(todayBookingsActive)
+      } catch (error) {
+        console.error('Ошибка загрузки записей на сегодня:', error)
+        // Не сбрасываем значения, если они уже были установлены ранее
       }
-      setTodayStats(stats)
 
       // Загружаем мастеров с их нарядами на сегодня
-      const mastersData = await mastersApi.getMasters(1, 100)
-      
-      const mastersWithBookings = await Promise.all(
-        mastersData.items.map(async (master) => {
-          try {
-            const schedule = await mastersApi.getMasterSchedule(master.id, today)
-            const bookings = schedule.bookings || []
-            
-            // Находим ближайшую запись
-            const now = new Date()
-            const nextBooking = bookings
-              .filter(b => {
-                const bookingTime = new Date(`${b.date}T${b.time}`)
-                return bookingTime > now
-              })
-              .sort((a, b) => {
-                const timeA = new Date(`${a.date}T${a.time}`)
-                const timeB = new Date(`${b.date}T${b.time}`)
-                return timeA.getTime() - timeB.getTime()
-              })[0] || null
-            
-            return {
-              master,
-              bookingsCount: bookings.length,
-              nextBooking
+      try {
+        const mastersData = await mastersApi.getMasters(1, 100)
+        const today = new Date().toISOString().split('T')[0]
+        
+        const mastersWithBookings = await Promise.all(
+          mastersData.items.map(async (master) => {
+            try {
+              const schedule = await mastersApi.getMasterSchedule(master.id, today)
+              const bookings = schedule.bookings || []
+              
+              // Находим ближайшую запись
+              const now = new Date()
+              const nextBooking = bookings
+                .filter(b => {
+                  const bookingTime = new Date(`${b.date}T${b.time}`)
+                  return bookingTime > now
+                })
+                .sort((a, b) => {
+                  const timeA = new Date(`${a.date}T${a.time}`)
+                  const timeB = new Date(`${b.date}T${b.time}`)
+                  return timeA.getTime() - timeB.getTime()
+                })[0] || null
+              
+              return {
+                master,
+                bookingsCount: bookings.length,
+                nextBooking
+              }
+            } catch (error) {
+              return {
+                master,
+                bookingsCount: 0,
+                nextBooking: null
+              }
             }
-          } catch (error) {
-            return {
-              master,
-              bookingsCount: 0,
-              nextBooking: null
-            }
-          }
-        })
-      )
-      
-      setMastersToday(mastersWithBookings)
+          })
+        )
+        
+        setMastersToday(mastersWithBookings)
+      } catch (error) {
+        console.error('Ошибка загрузки мастеров:', error)
+      }
 
       // Загружаем данные о рабочих местах и их загрузке
-      const postsDataList = await postsApi.getPosts(1, 100, undefined, true)
-      const activePosts = postsDataList.items.filter(post => post.is_active)
-      setActivePostsCount(activePosts.length)
+      try {
+        const postsDataList = await postsApi.getPosts(1, 100, undefined, true)
+        const activePosts = postsDataList.items.filter(post => post.is_active)
+        setActivePostsCount(activePosts.length)
+        
+        const todayBookingsList = todayBookings || []
+        const postsWithBookings = postsDataList.items.map(post => {
+          const postBookings = todayBookingsList.filter(b => b.post_id === post.id)
+          return {
+            name: post.name || `Рабочее место №${post.number}`,
+            count: postBookings.length,
+            postId: post.id
+          }
+        }).sort((a, b) => b.count - a.count) // Сортируем по убыванию загрузки
+        
+        setPostsData(postsWithBookings)
+      } catch (error) {
+        console.error('Ошибка загрузки рабочих мест:', error)
+      }
       
-      const postsWithBookings = postsDataList.items.map(post => {
-        const postBookings = todayBookingsList.filter(b => b.post_id === post.id)
-        return {
-          name: post.name || `Рабочее место №${post.number}`,
-          count: postBookings.length,
-          postId: post.id
-        }
-      }).sort((a, b) => b.count - a.count) // Сортируем по убыванию загрузки
-      
-      setPostsData(postsWithBookings)
-      
-      // Подсчитываем количество записей на сегодня (только new и confirmed)
-      const todayBookingsActive = todayBookingsList.filter(
-        b => b.status === 'new' || b.status === 'confirmed'
-      ).length
-      setTodayBookingsCount(todayBookingsActive)
-      
-      // Загружаем записи на завтра
+      // Загружаем записи на завтра (отдельный try-catch, чтобы не влиять на данные на сегодня)
       const tomorrow = new Date()
       tomorrow.setDate(tomorrow.getDate() + 1)
       const tomorrowStr = tomorrow.toISOString().split('T')[0]
@@ -181,18 +206,29 @@ function Dashboard() {
           start_date: tomorrowStr,
           end_date: tomorrowStr
         })
-        const tomorrowBookingsActive = tomorrowData.items.filter(
+        const tomorrowBookingsList = tomorrowData.items || []
+        const tomorrowBookingsActive = tomorrowBookingsList.filter(
           b => b.status === 'new' || b.status === 'confirmed'
         ).length
         setTomorrowBookingsCount(tomorrowBookingsActive)
-        setTomorrowBookingsList(tomorrowData.items) // Сохраняем для расчета доступных записей
+        // Общее количество всех записей на завтра
+        setTomorrowBookingsTotal(tomorrowBookingsList.length)
+        setTomorrowBookingsList(tomorrowBookingsList) // Сохраняем для расчета доступных записей
+        console.log('📊 Загружено записей на завтра:', tomorrowBookingsList.length)
       } catch (error) {
         console.error('Ошибка загрузки записей на завтра:', error)
-        setTomorrowBookingsCount(0)
-        setTomorrowBookingsList([])
+        // Не сбрасываем значения, если они уже были установлены ранее
+        // Только если это первая загрузка и значения еще не установлены
+        if (tomorrowBookingsTotal === 0) {
+          setTomorrowBookingsCount(0)
+          setTomorrowBookingsTotal(0)
+          setTomorrowBookingsList([])
+        }
       }
     } catch (error: any) {
-      console.error('Ошибка загрузки данных на сегодня:', error)
+      console.error('Критическая ошибка загрузки данных:', error)
+      // Сбрасываем значения только при критической ошибке
+      // Но не сбрасываем, если данные уже были загружены ранее
     } finally {
       setLoadingMasters(false)
     }
@@ -358,19 +394,34 @@ function Dashboard() {
   tomorrowDate.setDate(tomorrowDate.getDate() + 1)
   const tomorrowDateStr = tomorrowDate.toISOString().split('T')[0]
   
-  const todayAvailableBookings = calculateAvailableBookings(
-    availableSlots.today,
-    todayBookingsList,
-    activePostsCount,
-    todayDate
-  )
+  // Рассчитываем доступные записи только если есть слоты и рабочие места
+  const todayAvailableBookings = (availableSlots.today.length > 0 && activePostsCount > 0)
+    ? calculateAvailableBookings(
+        availableSlots.today,
+        todayBookingsList,
+        activePostsCount,
+        todayDate
+      )
+    : 0
   
-  const tomorrowAvailableBookings = calculateAvailableBookings(
-    availableSlots.tomorrow,
-    tomorrowBookingsList,
-    activePostsCount,
-    tomorrowDateStr
-  )
+  const tomorrowAvailableBookings = (availableSlots.tomorrow.length > 0 && activePostsCount > 0)
+    ? calculateAvailableBookings(
+        availableSlots.tomorrow,
+        tomorrowBookingsList,
+        activePostsCount,
+        tomorrowDateStr
+      )
+    : 0
+  
+  // Для отображения используем общее количество записей, если расчетное количество = 0
+  // но есть записи (это означает, что все слоты заняты или нет свободных слотов)
+  const displayTodayAvailable = todayAvailableBookings > 0 
+    ? todayAvailableBookings 
+    : (todayBookingsTotal > 0 ? todayBookingsTotal : 0)
+  
+  const displayTomorrowAvailable = tomorrowAvailableBookings > 0
+    ? tomorrowAvailableBookings
+    : (tomorrowBookingsTotal > 0 ? tomorrowBookingsTotal : 0)
 
   const totalBookings = bookings.length
   const newBookings = bookings.filter(b => b.status === 'new').length
@@ -392,7 +443,7 @@ function Dashboard() {
 
   return (
     <div className="dashboard">
-      <div className="dashboard-header">
+      <div className="page-header-simple">
         <div>
           <h1>Дашборд</h1>
           <p className="dashboard-subtitle">Обзор системы</p>
@@ -413,9 +464,7 @@ function Dashboard() {
           <div className="stat-content">
             <h3>Новых</h3>
             <p className="stat-value">
-              <a href="/bookings?status=new&sort=date&sortDir=desc" className="stat-link">
-                {newBookings}
-              </a>
+              {newBookings}
             </p>
           </div>
         </div>
@@ -438,27 +487,63 @@ function Dashboard() {
       </div>
 
       <div className="stats-grid">
-        <div className="stat-card stat-primary">
-          <div className="stat-icon">📅</div>
-          <div className="stat-content">
-            <h3>Записей сегодня</h3>
-            <p className="stat-value">{todayStats.total}</p>
+        <div 
+          className="stat-card stat-primary stat-card-clickable stat-card-with-link" 
+          onClick={() => {
+            const today = new Date().toISOString().split('T')[0]
+            navigate(`/bookings?start_date=${today}&end_date=${today}`)
+          }}
+          style={{ cursor: 'pointer' }}
+          title="Перейти к записям сегодня"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', width: '100%' }}>
+            <div className="stat-icon">📅</div>
+            <div className="stat-content">
+              <h3>Записей сегодня</h3>
+              <p className="stat-value">{todayStats.total}</p>
+            </div>
+          </div>
+          <div style={{ marginTop: '8px', fontSize: '12px', color: '#4a9eff', fontWeight: 500, textAlign: 'right', paddingTop: '8px', borderTop: '1px solid #e9ecef' }}>
+            Перейти к записям →
           </div>
         </div>
         
-        <div className="stat-card stat-warning">
-          <div className="stat-icon">🆕</div>
-          <div className="stat-content">
-            <h3>Новых сегодня</h3>
-            <p className="stat-value">{todayStats.new}</p>
+        <div 
+          className="stat-card stat-warning stat-card-clickable stat-card-with-link" 
+          onClick={() => navigate('/bookings?status=new&sort=date&sortDir=desc')}
+          style={{ cursor: 'pointer' }}
+          title="Перейти к новым записям"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', width: '100%' }}>
+            <div className="stat-icon">🆕</div>
+            <div className="stat-content">
+              <h3>Новых сегодня</h3>
+              <p className="stat-value">{todayStats.new}</p>
+            </div>
+          </div>
+          <div style={{ marginTop: '8px', fontSize: '12px', color: '#4a9eff', fontWeight: 500, textAlign: 'right', paddingTop: '8px', borderTop: '1px solid #e9ecef' }}>
+            Перейти к записям →
           </div>
         </div>
         
-        <div className="stat-card stat-success">
-          <div className="stat-icon">✅</div>
-          <div className="stat-content">
-            <h3>Подтвержденных сегодня</h3>
-            <p className="stat-value">{todayStats.confirmed}</p>
+        <div 
+          className="stat-card stat-success stat-card-clickable stat-card-with-link" 
+          onClick={() => {
+            const today = new Date().toISOString().split('T')[0]
+            navigate(`/bookings?status=confirmed&start_date=${today}&end_date=${today}&sort=date&sortDir=desc`)
+          }}
+          style={{ cursor: 'pointer' }}
+          title="Перейти к подтвержденным записям сегодня"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', width: '100%' }}>
+            <div className="stat-icon">✅</div>
+            <div className="stat-content">
+              <h3>Подтвержденных сегодня</h3>
+              <p className="stat-value">{todayStats.confirmed}</p>
+            </div>
+          </div>
+          <div style={{ marginTop: '8px', fontSize: '12px', color: '#4a9eff', fontWeight: 500, textAlign: 'right', paddingTop: '8px', borderTop: '1px solid #e9ecef' }}>
+            Перейти к записям →
           </div>
         </div>
         
@@ -523,10 +608,10 @@ function Dashboard() {
                   📊 Сегодня
                 </div>
                 <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '8px' }}>
-                  {todayAvailableBookings}
+                  {displayTodayAvailable}
                 </div>
                 <div style={{ fontSize: '12px', opacity: 0.8 }}>
-                  доступных записей
+                  {todayAvailableBookings > 0 ? 'доступных записей' : 'всего записей'}
                 </div>
                 <div style={{ 
                   marginTop: '12px', 
@@ -535,9 +620,10 @@ function Dashboard() {
                   fontSize: '11px',
                   opacity: 0.9
                 }}>
+                  • Всего записей: <strong>{todayBookingsTotal}</strong><br/>
+                  • Доступных (new/confirmed): {todayBookingsCount}<br/>
                   • Слотов: {availableSlots.today.length}<br/>
-                  • Рабочих мест: {activePostsCount}<br/>
-                  • Создано: {todayBookingsCount}
+                  • Рабочих мест: {activePostsCount}
                 </div>
               </div>
               
@@ -551,10 +637,10 @@ function Dashboard() {
                   📊 Завтра
                 </div>
                 <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '8px' }}>
-                  {tomorrowAvailableBookings}
+                  {displayTomorrowAvailable}
                 </div>
                 <div style={{ fontSize: '12px', opacity: 0.8 }}>
-                  доступных записей
+                  {tomorrowAvailableBookings > 0 ? 'доступных записей' : 'всего записей'}
                 </div>
                 <div style={{ 
                   marginTop: '12px', 
@@ -563,9 +649,10 @@ function Dashboard() {
                   fontSize: '11px',
                   opacity: 0.9
                 }}>
+                  • Всего записей: <strong>{tomorrowBookingsTotal}</strong><br/>
+                  • Доступных (new/confirmed): {tomorrowBookingsCount}<br/>
                   • Слотов: {availableSlots.tomorrow.length}<br/>
-                  • Рабочих мест: {activePostsCount}<br/>
-                  • Создано: {tomorrowBookingsCount}
+                  • Рабочих мест: {activePostsCount}
                 </div>
               </div>
             </div>
@@ -612,7 +699,6 @@ function Dashboard() {
         <div className="dashboard-section">
           <div className="section-header">
             <h2>Мастера с нарядами на сегодня</h2>
-            <a href="/masters" className="view-all-link">Все мастера →</a>
           </div>
           
           {mastersToday.length === 0 ? (
@@ -620,50 +706,54 @@ function Dashboard() {
               <p>Мастеров не найдено</p>
             </div>
           ) : (
-            <div className="masters-grid">
-              {mastersToday.map(({ master, bookingsCount, nextBooking }) => {
-                const today = new Date().toISOString().split('T')[0]
-                return (
-                <div 
-                  key={master.id} 
-                  className="master-card"
-                  onClick={() => {
-                    // Открываем страницу мастеров и можно будет добавить модальное окно с лист-нарядом
-                    window.location.href = `/masters`
-                  }}
-                  title="Нажмите для просмотра лист-наряда"
-                >
-                  <div className="master-card-header">
-                    <h3>{master.full_name}</h3>
-                    <span className={`master-badge ${bookingsCount === 0 ? 'empty' : bookingsCount > 5 ? 'busy' : 'normal'}`}>
-                      {bookingsCount} {bookingsCount === 1 ? 'запись' : bookingsCount < 5 ? 'записи' : 'записей'}
-                    </span>
+            <>
+              <div className="masters-grid">
+                {mastersToday.map(({ master, bookingsCount, nextBooking }) => {
+                  const today = new Date().toISOString().split('T')[0]
+                  return (
+                  <div 
+                    key={master.id} 
+                    className="master-card"
+                    onClick={() => {
+                      navigate('/masters')
+                    }}
+                    title="Нажмите для просмотра лист-наряда"
+                  >
+                    <div className="master-card-header">
+                      <h3>{master.full_name}</h3>
+                      <span className={`master-badge ${bookingsCount === 0 ? 'empty' : bookingsCount > 5 ? 'busy' : 'normal'}`}>
+                        {bookingsCount} {bookingsCount === 1 ? 'запись' : bookingsCount < 5 ? 'записи' : 'записей'}
+                      </span>
+                    </div>
+                    {nextBooking ? (
+                      <div className="master-card-next">
+                        <div className="next-booking-time">
+                          ⏰ {nextBooking.time.substring(0, 5)}
+                        </div>
+                        <div className="next-booking-client">
+                          {nextBooking.client_name || 'Клиент'}
+                        </div>
+                        <div className="next-booking-service">
+                          {nextBooking.service_name || 'Услуга'}
+                        </div>
+                      </div>
+                    ) : bookingsCount > 0 ? (
+                      <div className="master-card-next">
+                        <div className="next-booking-time">✅ Все записи завершены</div>
+                      </div>
+                    ) : (
+                      <div className="master-card-next">
+                        <div className="next-booking-time">📭 Нет записей</div>
+                      </div>
+                    )}
                   </div>
-                  {nextBooking ? (
-                    <div className="master-card-next">
-                      <div className="next-booking-time">
-                        ⏰ {nextBooking.time.substring(0, 5)}
-                      </div>
-                      <div className="next-booking-client">
-                        {nextBooking.client_name || 'Клиент'}
-                      </div>
-                      <div className="next-booking-service">
-                        {nextBooking.service_name || 'Услуга'}
-                      </div>
-                    </div>
-                  ) : bookingsCount > 0 ? (
-                    <div className="master-card-next">
-                      <div className="next-booking-time">✅ Все записи завершены</div>
-                    </div>
-                  ) : (
-                    <div className="master-card-next">
-                      <div className="next-booking-time">📭 Нет записей</div>
-                    </div>
-                  )}
-                </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+              <div style={{ marginTop: '20px', textAlign: 'right' }}>
+                <Link to="/masters" className="view-all-link">Все мастера →</Link>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -672,7 +762,6 @@ function Dashboard() {
         <div className="dashboard-section">
           <div className="section-header">
             <h2>Загрузка рабочих мест на сегодня</h2>
-            <a href="/posts" className="view-all-link">Все рабочие места →</a>
           </div>
           
           <div className="chart-container-compact">
@@ -706,6 +795,9 @@ function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <div style={{ marginTop: '20px', textAlign: 'right' }}>
+            <Link to="/posts" className="view-all-link">Все рабочие места →</Link>
+          </div>
         </div>
       )}
 
@@ -713,7 +805,6 @@ function Dashboard() {
         <div className="dashboard-section">
           <div className="section-header">
             <h2>Ближайшие записи на сегодня</h2>
-            <a href={`/bookings?start_date=${new Date().toISOString().split('T')[0]}&end_date=${new Date().toISOString().split('T')[0]}`} className="view-all-link">Все записи сегодня →</a>
           </div>
           
           <div className="table-container">
@@ -730,7 +821,12 @@ function Dashboard() {
               </thead>
               <tbody>
                 {upcomingTodayBookings.map((booking) => (
-                  <tr key={booking.id}>
+                  <tr 
+                    key={booking.id}
+                    onClick={() => navigate(`/bookings?booking_id=${booking.id}`)}
+                    style={{ cursor: 'pointer' }}
+                    title="Нажмите для просмотра деталей записи"
+                  >
                     <td>{booking.time.substring(0, 5)}</td>
                     <td>{booking.client_name || '-'}</td>
                     <td>{booking.service_name || '-'}</td>
@@ -746,13 +842,20 @@ function Dashboard() {
               </tbody>
             </table>
           </div>
+          <div style={{ marginTop: '20px', textAlign: 'right' }}>
+            <Link 
+              to={`/bookings?start_date=${new Date().toISOString().split('T')[0]}&end_date=${new Date().toISOString().split('T')[0]}`} 
+              className="view-all-link"
+            >
+              Все записи сегодня →
+            </Link>
+          </div>
         </div>
       )}
 
       <div className="dashboard-section">
         <div className="section-header">
           <h2>Последние записи</h2>
-          <a href="/bookings" className="view-all-link">Посмотреть все →</a>
         </div>
         
         {loading ? (
@@ -762,32 +865,42 @@ function Dashboard() {
             <p>Записей пока нет</p>
           </div>
         ) : (
-          <div className="table-container">
-            <table className="bookings-table">
-              <thead>
-                <tr>
-                  <th>Номер</th>
-                  <th>Дата</th>
-                  <th>Время</th>
-                  <th>Статус</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bookings.slice(0, 10).map((booking) => (
-                  <tr key={booking.id}>
-                    <td>{booking.booking_number}</td>
-                    <td>{booking.date}</td>
-                    <td>{booking.time}</td>
-                    <td>
-                      <span className={`status status-${booking.status}`}>
-                        {booking.status}
-                      </span>
-                    </td>
+          <>
+            <div className="table-container">
+              <table className="bookings-table">
+                <thead>
+                  <tr>
+                    <th>Номер</th>
+                    <th>Дата</th>
+                    <th>Время</th>
+                    <th>Статус</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {bookings.slice(0, 10).map((booking) => (
+                    <tr 
+                      key={booking.id}
+                      onClick={() => navigate(`/bookings?booking_id=${booking.id}`)}
+                      style={{ cursor: 'pointer' }}
+                      title="Нажмите для просмотра деталей записи"
+                    >
+                      <td>{booking.booking_number}</td>
+                      <td>{booking.date}</td>
+                      <td>{booking.time}</td>
+                      <td>
+                        <span className={`status status-${booking.status}`}>
+                          {booking.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ marginTop: '20px', textAlign: 'right' }}>
+              <Link to="/bookings" className="view-all-link">Посмотреть все →</Link>
+            </div>
+          </>
         )}
       </div>
 
@@ -855,14 +968,15 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
     }
   }, [formData.service_id, services])
 
-  // Загрузка занятых рабочих мест при изменении даты, времени и длительности
+  // Загрузка занятых рабочих мест при изменении даты, времени, длительности и мастера
   useEffect(() => {
     if (formData.date && formData.time && formData.duration) {
       loadOccupiedPosts()
     } else {
+      // Если нет времени, очищаем список занятых постов, чтобы все посты были доступны
       setOccupiedPostIds(new Set())
     }
-  }, [formData.date, formData.time, formData.duration])
+  }, [formData.date, formData.time, formData.duration, formData.master_id])
 
   const loadData = async () => {
     try {
@@ -974,34 +1088,34 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+      <div className="modal-content modal-compact" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header modal-header-compact">
           <h2>Создать новую запись</h2>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         {dataLoading ? (
-          <div className="modal-body">
+          <div className="modal-body modal-body-compact">
             <div className="loading">Загрузка данных...</div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="modal-body">
-            <div className="form-group">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <label>Клиент *</label>
+          <form onSubmit={handleSubmit} className="modal-body modal-body-compact">
+            <div className="form-group form-group-compact">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label className="form-label-compact">Клиент *</label>
                 <button
                   type="button"
                   onClick={() => setShowCreateClientModal(true)}
                   className="btn-sm btn-primary"
-                  style={{ padding: '4px 12px', fontSize: '12px' }}
+                  style={{ padding: '3px 10px', fontSize: '11px' }}
                 >
-                  + Новый клиент
+                  + Новый
                 </button>
               </div>
               <select
                 value={formData.client_id || ''}
                 onChange={(e) => setFormData({ ...formData, client_id: parseInt(e.target.value) })}
                 required
-                className="form-input"
+                className="form-input form-input-compact"
                 disabled={dataLoading || clients.length === 0}
               >
                 <option value="">Выберите клиента</option>
@@ -1013,127 +1127,154 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
               </select>
             </div>
 
-            <div className="form-group">
-              <label>Услуга</label>
-              <select
-                value={formData.service_id || ''}
-                onChange={(e) => setFormData({ ...formData, service_id: e.target.value ? parseInt(e.target.value) : undefined })}
-                className="form-input"
-                disabled={dataLoading}
-              >
-                <option value="">Выберите услугу</option>
-                {services.map(service => (
-                  <option key={service.id} value={service.id}>
-                    {service.name} ({service.duration} мин)
-                  </option>
-                ))}
-              </select>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="form-group form-group-compact">
+                <label className="form-label-compact">Услуга</label>
+                <select
+                  value={formData.service_id || ''}
+                  onChange={(e) => setFormData({ ...formData, service_id: e.target.value ? parseInt(e.target.value) : undefined })}
+                  className="form-input form-input-compact"
+                  disabled={dataLoading}
+                >
+                  <option value="">Выберите услугу</option>
+                  {services.map(service => (
+                    <option key={service.id} value={service.id}>
+                      {service.name} ({service.duration} мин)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group form-group-compact">
+                <label className="form-label-compact">Мастер</label>
+                <select
+                  value={formData.master_id || ''}
+                  onChange={(e) => {
+                    const newMasterId = e.target.value ? parseInt(e.target.value) : undefined
+                    // Сбрасываем пост при изменении мастера
+                    setFormData({ ...formData, master_id: newMasterId, post_id: undefined })
+                  }}
+                  className="form-input form-input-compact"
+                  disabled={dataLoading}
+                >
+                  <option value="">Выберите мастера</option>
+                  {masters.map(master => (
+                    <option key={master.id} value={master.id}>
+                      {master.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div className="form-group">
-              <label>Мастер</label>
-              <select
-                value={formData.master_id || ''}
-                onChange={(e) => setFormData({ ...formData, master_id: e.target.value ? parseInt(e.target.value) : undefined })}
-                className="form-input"
-                disabled={dataLoading}
-              >
-                <option value="">Выберите мастера</option>
-                {masters.map(master => (
-                  <option key={master.id} value={master.id}>
-                    {master.full_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Рабочее место</label>
+            <div className="form-group form-group-compact">
+              <label className="form-label-compact">Рабочее место</label>
               <select
                 value={formData.post_id || ''}
                 onChange={(e) => setFormData({ ...formData, post_id: e.target.value ? parseInt(e.target.value) : undefined })}
-                className="form-input"
-                disabled={dataLoading}
+                className="form-input form-input-compact"
+                disabled={dataLoading || posts.length === 0}
               >
                 <option value="">Выберите рабочее место</option>
-                {posts
-                  .filter(post => !occupiedPostIds.has(post.id) || post.id === formData.post_id)
-                  .map(post => {
-                    const isOccupied = occupiedPostIds.has(post.id) && post.id !== formData.post_id
-                    return (
-                      <option 
-                        key={post.id} 
-                        value={post.id}
-                        disabled={isOccupied}
-                        style={isOccupied ? { color: '#999', fontStyle: 'italic' } : {}}
-                      >
-                        {post.name || `Рабочее место №${post.number}`} {isOccupied ? ' (Занято на это время)' : ''}
-                      </option>
-                    )
-                  })}
+                {posts.length === 0 && !dataLoading ? (
+                  <option disabled>Нет доступных рабочих мест</option>
+                ) : (
+                  posts
+                    .filter(post => {
+                      // Показываем пост, если:
+                      // 1. Он не занят, ИЛИ
+                      // 2. Он уже выбран (чтобы не потерять выбор), ИЛИ
+                      // 3. Время еще не выбрано (чтобы можно было выбрать пост до выбора времени)
+                      return !occupiedPostIds.has(post.id) || 
+                             post.id === formData.post_id || 
+                             !formData.time
+                    })
+                    .map(post => {
+                      const isOccupied = occupiedPostIds.has(post.id) && 
+                                       post.id !== formData.post_id && 
+                                       formData.time // Показываем как занятый только если время выбрано
+                      return (
+                        <option 
+                          key={post.id} 
+                          value={post.id}
+                          disabled={isOccupied}
+                          style={isOccupied ? { color: '#999', fontStyle: 'italic' } : {}}
+                        >
+                          {post.name || `Рабочее место №${post.number}`} {isOccupied ? ' (Занято)' : ''}
+                        </option>
+                      )
+                    })
+                )}
               </select>
+              {posts.length === 0 && !dataLoading && (
+                <small style={{ color: '#999', fontSize: '11px', display: 'block', marginTop: '3px' }}>
+                  Нет доступных рабочих мест
+                </small>
+              )}
               {occupiedPostIds.size > 0 && formData.time && (
-                <small style={{ color: '#666', fontSize: '12px', display: 'block', marginTop: '4px' }}>
-                  ⚠️ {occupiedPostIds.size} {occupiedPostIds.size === 1 ? 'рабочее место занято' : 'рабочих мест занято'} на выбранное время
+                <small style={{ color: '#666', fontSize: '11px', display: 'block', marginTop: '3px' }}>
+                  ⚠️ {occupiedPostIds.size} {occupiedPostIds.size === 1 ? 'место занято' : 'мест занято'}
                 </small>
               )}
             </div>
 
-            <div className="form-group">
-              <label>Дата *</label>
-              <input
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                required
-                className="form-input"
-                disabled={dataLoading}
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+              <div className="form-group form-group-compact">
+                <label className="form-label-compact">Дата *</label>
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  required
+                  className="form-input form-input-compact"
+                  disabled={dataLoading}
+                />
+              </div>
+
+              <div className="form-group form-group-compact">
+                <label className="form-label-compact">Время *</label>
+                <select
+                  value={formData.time}
+                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                  required
+                  className="form-input form-input-compact"
+                  disabled={dataLoading}
+                >
+                  <option value="">Выберите</option>
+                  {availableSlots.map(slot => (
+                    <option key={slot} value={slot}>
+                      {slot}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group form-group-compact">
+                <label className="form-label-compact">Длительность</label>
+                <input
+                  type="number"
+                  value={formData.duration || 30}
+                  onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 30 })}
+                  min="15"
+                  step="15"
+                  className="form-input form-input-compact"
+                  disabled={dataLoading}
+                />
+              </div>
             </div>
 
-            <div className="form-group">
-              <label>Время *</label>
-              <select
-                value={formData.time}
-                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                required
-                className="form-input"
-                disabled={dataLoading}
-              >
-                <option value="">Выберите время</option>
-                {availableSlots.map(slot => (
-                  <option key={slot} value={slot}>
-                    {slot}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Длительность (минут)</label>
-              <input
-                type="number"
-                value={formData.duration || 30}
-                onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 30 })}
-                min="15"
-                step="15"
-                className="form-input"
-                disabled={dataLoading}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Комментарий</label>
+            <div className="form-group form-group-compact">
+              <label className="form-label-compact">Комментарий</label>
               <textarea
                 value={formData.comment || ''}
                 onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
-                className="form-input"
-                rows={3}
+                className="form-input form-input-compact"
+                rows={2}
                 disabled={dataLoading}
               />
             </div>
 
-            <div className="modal-footer">
+            <div className="modal-footer modal-footer-compact">
               <button type="button" className="btn btn-secondary" onClick={onClose} disabled={loading}>
                 Отмена
               </button>
@@ -1164,9 +1305,6 @@ function CreateClientQuickModal({ onClose, onClientCreated }: CreateClientQuickM
   const [formData, setFormData] = useState<ClientCreateRequest>({
     full_name: '',
     phone: '',
-    car_brand: null,
-    car_model: null,
-    car_number: null,
   })
   const [loading, setLoading] = useState(false)
 
@@ -1179,7 +1317,12 @@ function CreateClientQuickModal({ onClose, onClientCreated }: CreateClientQuickM
 
     try {
       setLoading(true)
-      const newClient = await clientsApi.createClient(formData)
+      // Отправляем только необходимые поля
+      const clientData = {
+        full_name: formData.full_name,
+        phone: formData.phone,
+      }
+      const newClient = await clientsApi.createClient(clientData)
       onClientCreated(newClient)
     } catch (error: any) {
       console.error('Ошибка создания клиента:', error)
@@ -1191,60 +1334,33 @@ function CreateClientQuickModal({ onClose, onClientCreated }: CreateClientQuickM
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+      <div className="modal-content modal-compact" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header modal-header-compact">
           <h2>Новый клиент</h2>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
-        <form onSubmit={handleSubmit} className="modal-body">
-          <div className="form-group">
-            <label>ФИО *</label>
+        <form onSubmit={handleSubmit} className="modal-body modal-body-compact">
+          <div className="form-group form-group-compact">
+            <label className="form-label-compact">ФИО *</label>
             <input
               type="text"
               value={formData.full_name}
               onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
               required
-              className="form-input"
+              className="form-input form-input-compact"
             />
           </div>
-          <div className="form-group">
-            <label>Телефон *</label>
+          <div className="form-group form-group-compact">
+            <label className="form-label-compact">Телефон *</label>
             <input
               type="tel"
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               required
-              className="form-input"
+              className="form-input form-input-compact"
             />
           </div>
-          <div className="form-group">
-            <label>Марка авто</label>
-            <input
-              type="text"
-              value={formData.car_brand || ''}
-              onChange={(e) => setFormData({ ...formData, car_brand: e.target.value || null })}
-              className="form-input"
-            />
-          </div>
-          <div className="form-group">
-            <label>Модель авто</label>
-            <input
-              type="text"
-              value={formData.car_model || ''}
-              onChange={(e) => setFormData({ ...formData, car_model: e.target.value || null })}
-              className="form-input"
-            />
-          </div>
-          <div className="form-group">
-            <label>Госномер</label>
-            <input
-              type="text"
-              value={formData.car_number || ''}
-              onChange={(e) => setFormData({ ...formData, car_number: e.target.value || null })}
-              className="form-input"
-            />
-          </div>
-          <div className="modal-footer">
+          <div className="modal-footer modal-footer-compact">
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={loading}>
               Отмена
             </button>

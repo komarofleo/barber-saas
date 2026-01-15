@@ -106,10 +106,8 @@ function Broadcasts() {
           onClose={() => setShowSuccessNotification(false)}
         />
       )}
-      <div className="page-header">
-        <div>
-          <h1>Рассылки</h1>
-        </div>
+      <div className="page-header-simple">
+        <h1>Рассылки</h1>
         <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
           + Создать рассылку
         </button>

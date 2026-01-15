@@ -23,7 +23,7 @@ async def tenant_service():
 class TestTenantServiceCreation:
     """Тесты для создания tenant схем."""
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_create_tenant_schema(self, tenant_service):
         """Тест создания tenant схемы."""
         # Создаем схему
@@ -38,7 +38,7 @@ class TestTenantServiceCreation:
         # Удаляем схему после теста
         await tenant_service.drop_tenant_schema(999)
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_create_existing_tenant_schema(self, tenant_service):
         """Тест создания существующей tenant схемы."""
         # Сначала создаем схему
@@ -56,7 +56,7 @@ class TestTenantServiceCreation:
 class TestTenantServiceDeletion:
     """Тесты для удаления tenant схем."""
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_drop_tenant_schema(self, tenant_service):
         """Тест удаления tenant схемы."""
         # Сначала создаем схему
@@ -71,7 +71,7 @@ class TestTenantServiceDeletion:
         exists = await tenant_service.tenancy_schema_exists(997)
         assert exists is False, "Схема не должна существовать"
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_drop_nonexistent_tenant_schema(self, tenant_service):
         """Тест удаления несуществующей tenant схемы."""
         # Пытаемся удалить несуществующую схему
@@ -83,7 +83,7 @@ class TestTenantServiceDeletion:
 class TestTenantServiceClone:
     """Тесты для клонирования таблиц."""
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_clone_table_to_tenant(self, tenant_service):
         """Тест клонирования таблицы в tenant схему."""
         # Сначала создаем схему
@@ -97,7 +97,7 @@ class TestTenantServiceClone:
         # Удаляем схему после теста
         await tenant_service.drop_tenant_schema(996)
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_clone_nonexistent_table(self, tenant_service):
         """Тест клонирования несуществующей таблицы."""
         # Создаем схему
@@ -116,7 +116,7 @@ class TestTenantServiceClone:
 class TestTenantServiceSession:
     """Тесты для работы с tenant сессиями."""
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_get_tenant_session(self, tenant_service):
         """Тест получения tenant сессии."""
         # Сначала создаем схему
@@ -143,7 +143,7 @@ class TestTenantServiceSession:
 class TestTenantServiceInitialize:
     """Тесты для инициализации tenant схемы."""
     
-    @pytest_asyncio.mark.asyncio
+    @pytest.mark.asyncio
     async def test_initialize_tenant_for_company(self, tenant_service):
         """Тест инициализации tenant схемы для компании."""
         # Инициализируем tenant схему

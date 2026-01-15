@@ -8,6 +8,7 @@ def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="📋 Новые заказы")],
             [KeyboardButton(text="✅ Все заказы")],
+            [KeyboardButton(text="➕ Создать заказ")],
             [KeyboardButton(text="📊 Статистика")],
             [KeyboardButton(text="🚪 Выход из админ-панели")],
         ],
@@ -55,6 +56,41 @@ def get_confirm_keyboard(booking_id: int) -> InlineKeyboardMarkup:
         ]
     )
     return keyboard
+
+
+def get_booking_actions_keyboard(booking_id: int, status: str) -> InlineKeyboardMarkup:
+    """Клавиатура действий с заказом"""
+    buttons = []
+    
+    # Кнопки изменения статуса
+    if status == "new":
+        buttons.append([
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"status_{booking_id}_confirmed"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"status_{booking_id}_cancelled"),
+        ])
+    elif status == "confirmed":
+        buttons.append([
+            InlineKeyboardButton(text="✅ Завершить", callback_data=f"status_{booking_id}_completed"),
+            InlineKeyboardButton(text="❌ Отменить", callback_data=f"status_{booking_id}_cancelled"),
+        ])
+    elif status == "completed":
+        buttons.append([
+            InlineKeyboardButton(text="↩️ Вернуть", callback_data=f"status_{booking_id}_confirmed"),
+        ])
+    
+    # Кнопки редактирования
+    buttons.append([
+        InlineKeyboardButton(text="📅 Изменить дату/время", callback_data=f"edit_datetime_{booking_id}"),
+        InlineKeyboardButton(text="💰 Изменить оплату", callback_data=f"edit_payment_{booking_id}"),
+    ])
+    buttons.append([
+        InlineKeyboardButton(text="👨‍🔧 Изменить мастера", callback_data=f"edit_master_{booking_id}"),
+        InlineKeyboardButton(text="🏢 Изменить пост", callback_data=f"edit_post_{booking_id}"),
+    ])
+    
+    buttons.append([InlineKeyboardButton(text="🔙 Назад к списку", callback_data="back_to_bookings")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def get_masters_keyboard(masters, booking_id: int) -> InlineKeyboardMarkup:

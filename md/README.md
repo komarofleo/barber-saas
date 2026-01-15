@@ -43,19 +43,19 @@ Barber SaaS - облачная платформа для управления с
 | Этап | Файл | Дней | Статус |
 |-------|--------|-------|--------|
 | 0 | [`00_PROJECT_OVERVIEW.md`](./00_PROJECT_OVERVIEW.md) | - | ✅ |
-| 1 | [`01_DATABASE_MIGRATION.md`](./01_DATABASE_MIGRATION.md) | 2-3 | ⏳ |
-| 2 | [`02_BACKEND_MODELS.md`](./02_BACKEND_MODELS.md) | 2-3 | ⏳ |
-| 3 | [`03_BACKEND_MULTI_TENANT.md`](./03_BACKEND_MULTI_TENANT.md) | 3-4 | ⏳ |
-| 4 | [`04_BACKEND_PUBLIC_API.md`](./04_BACKEND_PUBLIC_API.md) | 2 | ⏳ |
-| 5 | [`05_BACKEND_SUPER_ADMIN.md`](./05_BACKEND_SUPER_ADMIN.md) | 2 | ⏳ |
-| 6 | [`06_CELERY_TASKS.md`](./06_CELERY_TASKS.md) | 2 | ⏳ |
-| 7 | [`07_BOT_MULTI_TENANT.md`](./07_BOT_MULTI_TENANT.md) | 3-4 | ⏳ |
-| 8 | [`08_FRONTEND_REGISTRATION.md`](./08_FRONTEND_REGISTRATION.md) | 2-3 | ⏳ |
-| 9 | [`09_FRONTEND_SUPER_ADMIN.md`](./09_FRONTEND_SUPER_ADMIN.md) | 3-4 | ⏳ |
-| 10 | [`10_FRONTEND_UPDATE.md`](./10_FRONTEND_UPDATE.md) | 2-3 | ⏳ |
+| 1 | [`01_DATABASE_MIGRATION.md`](./01_DATABASE_MIGRATION.md) | 2-3 | ✅ |
+| 2 | [`02_BACKEND_MODELS.md`](./02_BACKEND_MODELS.md) | 2-3 | ✅ |
+| 3 | [`03_BACKEND_MULTI_TENANT.md`](./03_BACKEND_MULTI_TENANT.md) | 3-4 | 🔄 |
+| 4 | [`04_BACKEND_PUBLIC_API.md`](./04_BACKEND_PUBLIC_API.md) | 2 | ✅ |
+| 5 | [`05_BACKEND_SUPER_ADMIN.md`](./05_BACKEND_SUPER_ADMIN.md) | 2 | ✅ |
+| 6 | [`06_CELERY_TASKS.md`](./06_CELERY_TASKS.md) | 2 | ✅⚠️ |
+| 7 | [`07_BOT_MULTI_TENANT.md`](./07_BOT_MULTI_TENANT.md) | 3-4 | ✅ |
+| 8 | [`08_FRONTEND_REGISTRATION.md`](./08_FRONTEND_REGISTRATION.md) | 2-3 | ✅ |
+| 9 | [`09_FRONTEND_SUPER_ADMIN.md`](./09_FRONTEND_SUPER_ADMIN.md) | 3-4 | ✅ |
+| 10 | [`10_FRONTEND_UPDATE.md`](./10_FRONTEND_UPDATE.md) | 2-3 | ✅ |
 | 11 | [`11_TESTING.md`](./11_TESTING.md) | 3-4 | ⏳ |
 | 12 | [`12_DEPLOYMENT.md`](./12_DEPLOYMENT.md) | 1-2 | ⏳ |
-| 13 | [`13_DOCUMENTATION.md`](./13_DOCUMENTATION.md) | 1 | ⏳ |
+| 13 | [`13_DOCUMENTATION.md`](./13_DOCUMENTATION.md) | 1 | 🔄 |
 
 **Общий срок:** 28-39 дней (4-6 недель)
 
@@ -70,9 +70,11 @@ Barber SaaS - облачная платформа для управления с
    - Изучение требований
    - Знакомство с технологиями
 
-2. **Начните с этапа 1**
+2. **Начните с `tasks.md`**
+   - Это единый TODO по текущим проблемам/приоритетам.
+
+3. **Исторически: этап 1**
    - [`01_DATABASE_MIGRATION.md`](./01_DATABASE_MIGRATION.md)
-   - Перенос текущего клиента
    - Создание схем
 
 3. **Следуйте порядку этапов**

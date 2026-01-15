@@ -1559,7 +1559,10 @@ async def update_booking_status(
         logger.error(f"❌ [CRUD] Запись {booking_id} не найдена")
         return None
 
-    logger.info(f"🔵 [CRUD] Обновляем статус записи {booking_id}: {booking.status} -> {status}")
+    # Сохраняем старый статус ДО обновления
+    old_status = booking.status
+    
+    logger.info(f"🔵 [CRUD] Обновляем статус записи {booking_id}: {old_status} -> {status}")
     
     # Обновляем через SQL запрос (search_path уже установлен)
     update_fields = ["status = :status"]
@@ -1603,6 +1606,39 @@ async def update_booking_status(
         booking.status = status
         booking.master_id = master_id
         booking.post_id = post_id
+    
+    # Планируем напоминания при подтверждении записи (только если статус изменился с другого на confirmed)
+    if status == "confirmed" and old_status != "confirmed" and company_id and booking:
+        try:
+            # Импортируем функцию планирования из веб-бэкенда
+            import sys
+            import os
+            from pathlib import Path
+            
+            # Получаем путь к корню проекта
+            current_file = Path(__file__)
+            project_root = current_file.parent.parent.parent
+            backend_path = project_root / "web" / "backend"
+            
+            if backend_path.exists() and str(backend_path) not in sys.path:
+                sys.path.insert(0, str(backend_path))
+            
+            try:
+                from app.tasks.notifications import schedule_booking_reminders
+                schedule_booking_reminders(
+                    company_id=company_id,
+                    booking_id=booking_id,
+                    booking_date=booking.date,
+                    booking_time=booking.time
+                )
+                logger.info(f"📅 [CRUD] Напоминания запланированы для записи {booking_id}")
+            except ImportError as e:
+                logger.warning(f"⚠️ [CRUD] Не удалось импортировать schedule_booking_reminders: {e}")
+            except Exception as e:
+                logger.error(f"❌ [CRUD] Ошибка планирования напоминаний для записи {booking_id}: {e}", exc_info=True)
+                
+        except Exception as e:
+            logger.error(f"❌ [CRUD] Ошибка планирования напоминаний для записи {booking_id}: {e}", exc_info=True)
     
     return booking
 

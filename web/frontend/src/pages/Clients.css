@@ -4,39 +4,7 @@
   margin: 0;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: -20px -20px 30px -20px;
-  padding: 30px 20px 30px 40px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%) !important;
-  position: relative;
-  left: -20px;
-  right: -20px;
-  width: calc(100% + 40px);
-  max-width: none;
-  box-sizing: border-box;
-}
-
-.page-header::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.page-header h1 {
-  font-size: 32px;
-  font-weight: 600;
-  color: #fff;
-  margin: 0;
-  position: relative;
-  z-index: 1;
-}
+/* Стили для .page-header удалены - используется общий .page-header-simple из common.css */
 
 .clients-filters {
   background: white;
@@ -44,16 +12,21 @@
   padding: 20px;
   margin-bottom: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
 }
 
 .search-form {
   display: flex;
   gap: 10px;
   align-items: center;
+  width: auto;
+  max-width: 500px;
 }
 
 .search-input {
-  flex: 1;
+  width: 300px;
   padding: 10px 15px;
   border: 1px solid #e9ecef;
   border-radius: 6px;

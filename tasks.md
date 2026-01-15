@@ -39,16 +39,23 @@
 
 ### 4) Multi‑tenant backend: привести CRUD к единому стандарту
 - [ ] **Унифицировать способ определения tenant**:
-  - [ ] `company_id` берём из JWT / query / middleware (один источник).
-  - [ ] Не плодить “SET search_path” вручную в каждом endpoint, если уже есть `TenantMiddleware` (`web/backend/app/middleware/tenant.py`).
+  - [x] `company_id` берём из JWT / query / middleware (единый порядок) — `web/backend/app/deps/tenant.py`.
+  - [x] Tenant‑сессия через dependency `get_tenant_db` (единый вход).
+  - [x] `TenantService.get_tenant_session()` сбрасывает `search_path` в `public` после запроса (защита от утечки схемы через пул).
+  - [x] Убрать “ручной” `SET search_path` из tenant endpoints (стандартизировано через `get_tenant_db`).
 - [ ] **Аудит CRUD модулей** (по факту поведения, не по документу):
-  - [ ] bookings
-  - [ ] users
-  - [ ] clients
-  - [ ] services
-  - [ ] masters
-  - [ ] posts/рабочие места
-  - [ ] blocks/promocodes/promotions/broadcasts/settings
+  - [x] bookings (`web/backend/app/api/bookings.py`)
+  - [x] users (`web/backend/app/api/users_tenant.py`)
+  - [x] clients (`web/backend/app/api/clients_tenant.py`)
+  - [x] services (`web/backend/app/api/services_tenant.py`)
+  - [x] masters (`web/backend/app/api/masters_tenant.py`)
+  - [x] posts/рабочие места (`web/backend/app/api/posts_tenant.py`)
+  - [x] blocks (`web/backend/app/api/blocks.py`)
+  - [x] promocodes (`web/backend/app/api/promocodes.py`)
+  - [x] promotions (`web/backend/app/api/promotions.py`)
+  - [x] broadcasts (`web/backend/app/api/broadcasts.py`)
+  - [x] settings (`web/backend/app/api/settings.py`)
+  - [x] export (`web/backend/app/api/export.py`)
   - **Критерий готовности**: нет 500/UndefinedColumn, все списки/создания работают в tenant без ручных фиксов.
 
 ### 5) Celery: привести задачи к рабочему состоянию (или официально отказаться)
@@ -91,7 +98,7 @@
 
 ## 📚 Этап 13: Документация (синхронизация со “фактом кода”)
 - [x] Привести `md/*.md` статусы в соответствие реальному состоянию (где “⏳”, но уже сделано). *(выполнено: 2026-01-14)*
-- [ ] Удалить/пометить как устаревшие “autoservice_*” документы или переименовать под салон красоты.
+- [x] Пометить как устаревшие “autoservice_*” документы и дать ссылки на актуальные материалы. *(выполнено: 2026-01-14)*
 - [ ] Обновить `README.md` (как запускать, что где, как тестировать).
 
 ---

@@ -1,0 +1,36 @@
+/* Общий стиль для простого заголовка страницы (без синего фона) */
+.page-header-simple {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0 0 20px 0;
+  padding: 0;
+  background: transparent;
+  position: relative;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.page-header-simple h1 {
+  font-size: 28px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.page-header-simple .btn-primary {
+  background: #4a9eff;
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.page-header-simple .btn-primary:hover {
+  background: #2d7dd2;
+}

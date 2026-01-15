@@ -67,10 +67,8 @@ function Settings() {
   if (loading) {
     return (
       <div className="page-container">
-        <div className="page-header">
-          <div>
-            <h1>Настройки</h1>
-          </div>
+        <div className="page-header-simple">
+          <h1>Настройки</h1>
         </div>
         <div className="loading">Загрузка настроек...</div>
       </div>
@@ -79,10 +77,8 @@ function Settings() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1>Настройки</h1>
-        </div>
+      <div className="page-header-simple">
+        <h1>Настройки</h1>
       </div>
 
       {error && (

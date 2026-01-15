@@ -70,5 +70,10 @@ export const mastersApi = {
     const response = await apiClient.get(`/api/masters/${masterId}/schedule?date=${date}`)
     return response.data
   },
+
+  getAllWorkOrders: async (date: string): Promise<{ date: string; masters: Array<{ master_id: number; master_name: string; bookings: Booking[] }> }> => {
+    const response = await apiClient.get(`/api/masters/work-orders/all?date=${date}`)
+    return response.data
+  },
 }
 

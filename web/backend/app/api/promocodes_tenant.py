@@ -8,31 +8,30 @@ API для работы с промокодами (МУЛЬТИ-ТЕНАНТНА
 """
 from datetime import datetime, date
 from typing import Optional, Annotated
-from fastapi import APIRouter, Depends, Query, HTTPException, Body
+from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, text
 from sqlalchemy.orm import selectinload
 
-from app.database import get_db
 from app.api.auth import get_current_user
+from app.deps.tenant import get_tenant_db
 from app.schemas.promocode import (
     PromocodeResponse, PromocodeListResponse,
     PromocodeCreateRequest, PromocodeUpdateRequest
 )
 from shared.database.models import User, Promocode, Client
-from app.services.tenant_service import get_tenant_service
 
 router = APIRouter(prefix="/api/promocodes", tags=["promocodes"])
 
 
 @router.get("", response_model=PromocodeListResponse)
 async def get_promocodes(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -43,21 +42,11 @@ async def get_promocodes(
         page_size: количество элементов на странице
         search: строка для поиска (по коду, названию)
         is_active: фильтр по активности
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать промокоды")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     query = select(Promocode)
     
@@ -131,9 +120,9 @@ async def get_promocodes(
 
 @router.get("/{promocode_id}", response_model=PromocodeResponse)
 async def get_promocode(
+    request: Request,
     promocode_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -141,21 +130,11 @@ async def get_promocode(
     
     Аргументы:
         promocode_id: ID промокода
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать промокоды")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     query = select(Promocode).where(Promocode.id == promocode_id)
     result = await tenant_session.execute(query)
@@ -200,9 +179,9 @@ async def get_promocode(
 
 @router.post("", response_model=PromocodeResponse, status_code=201)
 async def create_promocode(
+    request: Request,
     promocode_data: PromocodeCreateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -210,21 +189,11 @@ async def create_promocode(
     
     Аргументы:
         promocode_data: данные промокода
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать промокоды")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     # Проверяем, существует ли промокод с таким кодом
     existing_promocode = await tenant_session.execute(
@@ -303,10 +272,10 @@ async def create_promocode(
 
 @router.patch("/{promocode_id}", response_model=PromocodeResponse)
 async def update_promocode(
+    request: Request,
     promocode_id: int,
     promocode_data: PromocodeUpdateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -315,21 +284,11 @@ async def update_promocode(
     Аргументы:
         promocode_id: ID промокода
         promocode_data: данные для обновления
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять промокоды")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     # Проверяем существование промокода
     query = select(Promocode).where(Promocode.id == promocode_id)
@@ -449,9 +408,9 @@ async def update_promocode(
 
 @router.delete("/{promocode_id}", status_code=204)
 async def delete_promocode(
+    request: Request,
     promocode_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -459,21 +418,11 @@ async def delete_promocode(
     
     Аргументы:
         promocode_id: ID промокода
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут удалять промокоды")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     # Проверяем существование промокода
     query = select(Promocode).where(Promocode.id == promocode_id)

@@ -90,10 +90,8 @@ function Services() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1>Услуги</h1>
-        </div>
+      <div className="page-header-simple">
+        <h1>Услуги</h1>
       </div>
 
       <div className="services-controls-bar">
@@ -117,12 +115,6 @@ function Services() {
             Неактивные
           </button>
         </div>
-        <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-          + Добавить услугу
-        </button>
-      </div>
-
-      <div className="services-filters">
         <form onSubmit={handleSearch} className="search-form">
           <input
             type="text"
@@ -133,6 +125,9 @@ function Services() {
           />
           <button type="submit" className="btn-search">🔍 Поиск</button>
         </form>
+        <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+          + Добавить услугу
+        </button>
       </div>
 
       {loading ? (

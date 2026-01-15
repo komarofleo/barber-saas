@@ -10,6 +10,7 @@ from .crud import (
     create_booking,
     get_bookings_by_client,
     get_bookings_by_status,
+    get_all_bookings,
     get_booking_by_id,
     update_booking_status,
     get_master_bookings_by_date,
@@ -27,6 +28,7 @@ __all__ = [
     "create_booking",
     "get_bookings_by_client",
     "get_bookings_by_status",
+    "get_all_bookings",
     "get_booking_by_id",
     "update_booking_status",
 ]

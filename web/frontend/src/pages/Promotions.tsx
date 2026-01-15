@@ -84,10 +84,8 @@ function Promotions() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1>Акции</h1>
-        </div>
+      <div className="page-header-simple">
+        <h1>Акции</h1>
       </div>
 
       <div className="promotions-controls-bar">

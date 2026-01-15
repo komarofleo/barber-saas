@@ -8,31 +8,30 @@ API для работы с акциями (МУЛЬТИ-ТЕНАНТНАЯ ВЕ�
 """
 from datetime import datetime, date
 from typing import Optional, Annotated
-from fastapi import APIRouter, Depends, Query, HTTPException, Body
+from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, text
 from sqlalchemy.orm import selectinload
 
-from app.database import get_db
 from app.api.auth import get_current_user
+from app.deps.tenant import get_tenant_db
 from app.schemas.promotion import (
     PromotionResponse, PromotionListResponse,
     PromotionCreateRequest, PromotionUpdateRequest
 )
 from shared.database.models import User, Promotion
-from app.services.tenant_service import get_tenant_service
 
 router = APIRouter(prefix="/api/promotions", tags=["promotions"])
 
 
 @router.get("", response_model=PromotionListResponse)
 async def get_promotions(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -43,21 +42,11 @@ async def get_promotions(
         page_size: количество элементов на странице
         search: строка для поиска (по названию)
         is_active: фильтр по активности
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать акции")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     query = select(Promotion)
     
@@ -117,9 +106,9 @@ async def get_promotions(
 
 @router.get("/{promotion_id}", response_model=PromotionResponse)
 async def get_promotion(
+    request: Request,
     promotion_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -127,21 +116,11 @@ async def get_promotion(
     
     Аргументы:
         promotion_id: ID акции
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать акции")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     query = select(Promotion).where(Promotion.id == promotion_id)
     result = await tenant_session.execute(query)
@@ -177,9 +156,9 @@ async def get_promotion(
 
 @router.post("", response_model=PromotionResponse, status_code=201)
 async def create_promotion(
+    request: Request,
     promotion_data: PromotionCreateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -187,21 +166,11 @@ async def create_promotion(
     
     Аргументы:
         promotion_data: данные акции
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать акции")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     # Валидация дат: start_date должен быть не больше end_date
     if promotion_data.start_date and promotion_data.end_date:
@@ -259,10 +228,10 @@ async def create_promotion(
 
 @router.patch("/{promotion_id}", response_model=PromotionResponse)
 async def update_promotion(
+    request: Request,
     promotion_id: int,
     promotion_data: PromotionUpdateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -271,21 +240,11 @@ async def update_promotion(
     Аргументы:
         promotion_id: ID акции
         promotion_data: данные для обновления
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять акции")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     # Проверяем существование акции
     query = select(Promotion).where(Promotion.id == promotion_id)
@@ -372,9 +331,9 @@ async def update_promotion(
 
 @router.delete("/{promotion_id}", status_code=204)
 async def delete_promotion(
+    request: Request,
     promotion_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -382,21 +341,11 @@ async def delete_promotion(
     
     Аргументы:
         promotion_id: ID акции
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут удалять акции")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     # Проверяем существование акции
     query = select(Promotion).where(Promotion.id == promotion_id)

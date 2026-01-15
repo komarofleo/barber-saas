@@ -8,31 +8,30 @@ API для работы с блокировками (МУЛЬТИ-ТЕНАНТН
 """
 from datetime import datetime, time
 from typing import Optional, Annotated
-from fastapi import APIRouter, Depends, Query, HTTPException, Body
+from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, text
 from sqlalchemy.orm import selectinload
 
-from app.database import get_db
 from app.api.auth import get_current_user
+from app.deps.tenant import get_tenant_db
 from app.schemas.block import (
     BlockResponse, BlockListResponse,
     BlockCreateRequest, BlockUpdateRequest
 )
 from shared.database.models import User, Block, Post
-from app.services.tenant_service import get_tenant_service
 
 router = APIRouter(prefix="/api/blocks", tags=["blocks"])
 
 
 @router.get("", response_model=BlockListResponse)
 async def get_blocks(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
     post_id: Optional[int] = None,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -43,21 +42,11 @@ async def get_blocks(
         page_size: количество элементов на странице
         search: строка для поиска (по названию)
         post_id: фильтр по посту
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать блокировки")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     query = select(Block).options(
         selectinload(Block.post)
@@ -119,9 +108,9 @@ async def get_blocks(
 
 @router.get("/{block_id}", response_model=BlockResponse)
 async def get_block(
+    request: Request,
     block_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -129,21 +118,11 @@ async def get_block(
     
     Аргументы:
         block_id: ID блокировки
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать блокировки")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     query = select(Block).options(
         selectinload(Block.post)
@@ -154,8 +133,6 @@ async def get_block(
     
     if not block:
         raise HTTPException(status_code=404, detail="Блокировка не найдена")
-    
-    print(f"🔍 Запрос блокировки: block_id={block_id}, company_id={company_id}")
     
     # Формируем ответ
     block_dict = {
@@ -181,9 +158,9 @@ async def get_block(
 
 @router.post("", response_model=BlockResponse, status_code=201)
 async def create_block(
+    request: Request,
     block_data: BlockCreateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -191,21 +168,11 @@ async def create_block(
     
     Аргументы:
         block_data: данные блокировки
-        company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать блокировки")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     # Проверяем существование поста
     post = await tenant_session.execute(
@@ -287,10 +254,10 @@ async def create_block(
 
 @router.patch("/{block_id}", response_model=BlockResponse)
 async def update_block(
+    request: Request,
     block_id: int,
     block_data: BlockUpdateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -304,16 +271,7 @@ async def update_block(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять блокировки")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     # Проверяем существование блокировки
     query = select(Block).options(
@@ -446,9 +404,9 @@ async def update_block(
 
 @router.delete("/{block_id}", status_code=204)
 async def delete_block(
+    request: Request,
     block_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -461,16 +419,7 @@ async def delete_block(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут удалять блокировки")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
+    company_id = getattr(request.state, "company_id", None)
     
     # Проверяем существование блокировки
     query = select(Block).where(Block.id == block_id)

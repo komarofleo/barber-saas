@@ -10,42 +10,18 @@ from datetime import datetime
 from typing import Optional, Annotated
 from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, text
+from sqlalchemy import select, and_, or_, func, delete
 from sqlalchemy.orm import selectinload
-from jose import jwt
-from app.config import settings
 
-from app.database import get_db
 from app.api.auth import get_current_user
+from app.deps.tenant import get_tenant_db
 from app.schemas.post import (
     PostResponse, PostListResponse,
     PostCreateRequest, PostUpdateRequest
 )
 from shared.database.models import User, Post, Booking
-from app.services.tenant_service import get_tenant_service
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
-
-
-async def get_company_id_from_token(request: Request) -> Optional[int]:
-    """Получить company_id из JWT токена"""
-    try:
-        # Извлекаем токен напрямую из заголовков
-        authorization = request.headers.get("Authorization")
-        if not authorization or not authorization.startswith("Bearer "):
-            return None
-        
-        token = authorization.replace("Bearer ", "")
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        company_id = payload.get("company_id")
-        if company_id:
-            return int(company_id)
-        return None
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Не удалось получить company_id из токена: {e}")
-        return None
 
 
 @router.get("", response_model=PostListResponse)
@@ -55,8 +31,7 @@ async def get_posts(
     page_size: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -71,19 +46,6 @@ async def get_posts(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать посты")
-    
-    # Получаем company_id из токена, если не передан в query параметрах
-    if not company_id:
-        company_id = await get_company_id_from_token(request)
-    
-    if not company_id:
-        raise HTTPException(status_code=400, detail="company_id не найден. Необходимо указать company_id в query параметрах или войти как пользователь компании.")
-    
-    schema_name = f"tenant_{company_id}"
-    
-    # Устанавливаем search_path для tenant схемы
-    await db.execute(text(f'SET search_path TO "{schema_name}", public'))
-    tenant_session = db
     
     query = select(Post)
     
@@ -112,7 +74,10 @@ async def get_posts(
     result = await tenant_session.execute(query)
     posts = result.scalars().all()
     
-    print(f"📊 Запрос постов: total={total}, page={page}, page_size={page_size}, company_id={company_id}")
+    company_id = getattr(request.state, "company_id", None)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"📊 Запрос постов: total={total}, page={page}, page_size={page_size}, company_id={company_id}")
     
     # Формируем ответы с дополнительными данными
     items = []
@@ -147,8 +112,8 @@ async def get_posts(
 @router.get("/{post_id}", response_model=PostResponse)
 async def get_post(
     post_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -160,13 +125,7 @@ async def get_post(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать посты")
-    
-    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
-    tenant_session = db
-    if company_id:
-        # Устанавливаем search_path для tenant схемы
-        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
-    
+
     query = select(Post).where(Post.id == post_id)
     result = await tenant_session.execute(query)
     post = result.scalar_one_or_none()
@@ -174,7 +133,10 @@ async def get_post(
     if not post:
         raise HTTPException(status_code=404, detail="Пост не найден")
     
-    print(f"🔍 Запрос поста: post_id={post_id}, company_id={company_id}")
+    company_id = getattr(request.state, "company_id", None)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔍 Запрос поста: post_id={post_id}, company_id={company_id}")
     
     # Считаем количество записей для поста
     booking_count = await tenant_session.scalar(
@@ -191,7 +153,6 @@ async def get_post(
         "booking_count": booking_count or 0,
         "created_at": post.created_at,
         "updated_at": post.updated_at,
-        "company_id": company_id,
     }
     
     return PostResponse.model_validate(post_dict)
@@ -200,8 +161,8 @@ async def get_post(
 @router.post("", response_model=PostResponse, status_code=201)
 async def create_post(
     post_data: PostCreateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -213,17 +174,10 @@ async def create_post(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать посты")
-    
-    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
-    tenant_session = db
-    if company_id:
-        # Устанавливаем search_path для tenant схемы
-        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
-    
     # Проверяем, существует ли пост с таким номером
-    existing_post = await tenant_session.execute(
+    existing_post = await tenant_session.scalar(
         select(Post).where(Post.number == post_data.number)
-    ).scalar_one_or_none()
+    )
     
     if existing_post:
         raise HTTPException(
@@ -236,7 +190,7 @@ async def create_post(
         number=post_data.number,
         name=post_data.name,
         description=post_data.description,
-        is_active=True,
+        is_active=post_data.is_active if post_data.is_active is not None else True,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
     )
@@ -245,7 +199,10 @@ async def create_post(
     await tenant_session.commit()
     await tenant_session.refresh(post)
     
-    print(f"✅ Создан пост: number={post.number}, name={post.name}")
+    company_id = getattr(request.state, "company_id", None)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"✅ Создан пост: number={post.number}, name={post.name}, company_id={company_id}")
     
     # Отправляем уведомление
     # TODO: Создать Celery задачу для уведомления о новом посте
@@ -260,7 +217,6 @@ async def create_post(
         "booking_count": 0,
         "created_at": post.created_at,
         "updated_at": post.updated_at,
-        "company_id": company_id,
     }
     
     return PostResponse.model_validate(post_dict)
@@ -270,8 +226,8 @@ async def create_post(
 async def update_post(
     post_id: int,
     post_data: PostUpdateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -284,13 +240,7 @@ async def update_post(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять посты")
-    
-    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
-    tenant_session = db
-    if company_id:
-        # Устанавливаем search_path для tenant схемы
-        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
-    
+
     # Проверяем существование поста
     query = select(Post).where(Post.id == post_id)
     result = await tenant_session.execute(query)
@@ -305,13 +255,14 @@ async def update_post(
     )
     
     # Обновляем поля
-    update_data = {}
     if post_data.number is not None:
         # Проверяем, что номер не занят
         if post_data.number != post.number:
-            existing_post = await tenant_session.execute(
+            # Сначала выполняем запрос, затем вызываем scalar_one_or_none()
+            existing_result = await tenant_session.execute(
                 select(Post).where(Post.number == post_data.number)
-            ).scalar_one_or_none()
+            )
+            existing_post = existing_result.scalar_one_or_none()
             if existing_post:
                 raise HTTPException(
                     status_code=400,
@@ -341,16 +292,11 @@ async def update_post(
         post.is_active = post_data.is_active
     
     post.updated_at = datetime.utcnow()
-    update_data["updated_at"] = post.updated_at
-    
-    # Выполняем обновление
-    await tenant_session.execute(
-        select(Post).where(Post.id == post_id).values(**update_data)
-    )
     await tenant_session.commit()
     await tenant_session.refresh(post)
     
-    print(f"✅ Обновлен пост: post_id={post_id}, number={post.number}")
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"✅ Обновлен пост: post_id={post_id}, number={post.number}, company_id={company_id}")
     
     # Формируем ответ
     post_dict = {
@@ -362,7 +308,6 @@ async def update_post(
         "booking_count": booking_count or 0,
         "created_at": post.created_at,
         "updated_at": post.updated_at,
-        "company_id": company_id,
     }
     
     return PostResponse.model_validate(post_dict)
@@ -371,8 +316,8 @@ async def update_post(
 @router.delete("/{post_id}", status_code=204)
 async def delete_post(
     post_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -384,13 +329,6 @@ async def delete_post(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут удалять посты")
-    
-    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
-    tenant_session = db
-    if company_id:
-        # Устанавливаем search_path для tenant схемы
-        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
-    
     # Проверяем существование поста
     query = select(Post).where(Post.id == post_id)
     result = await tenant_session.execute(query)
@@ -416,7 +354,8 @@ async def delete_post(
     )
     await tenant_session.commit()
     
-    print(f"✅ Удален пост: post_id={post_id}, number={post.number}")
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"✅ Удален пост: post_id={post_id}, number={post.number}, company_id={company_id}")
     
     return None
 

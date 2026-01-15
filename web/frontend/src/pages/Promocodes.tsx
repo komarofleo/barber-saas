@@ -84,10 +84,8 @@ function Promocodes() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1>Промокоды</h1>
-        </div>
+      <div className="page-header-simple">
+        <h1>Промокоды</h1>
       </div>
 
       <div className="promocodes-controls-bar">

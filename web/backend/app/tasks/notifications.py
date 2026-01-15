@@ -47,167 +47,268 @@ def get_bot():
 
 
 async def send_reminder_day_before():
-    """Отправить напоминания за день до записи"""
+    """Отправить напоминания за день до записи (мульти-тенантная версия)"""
     today = date.today()
     tomorrow = today + timedelta(days=1)
     
     async with async_session_maker() as session:
-        # Находим подтвержденные записи на завтра
-        result = await session.execute(
-            select(Booking)
-            .where(
-                and_(
-                    Booking.date == tomorrow,
-                    Booking.status == "confirmed"
-                )
-            )
-            .options(
-                selectinload(Booking.client).selectinload(Client.user),
-                selectinload(Booking.service),
-                selectinload(Booking.master),
-                selectinload(Booking.post),
-            )
+        # Получаем все активные компании
+        await session.execute(text('SET search_path TO public'))
+        companies_result = await session.execute(
+            text('SELECT id, name, telegram_bot_token FROM public.companies WHERE is_active = true')
         )
-        bookings = result.scalars().all()
+        companies = companies_result.fetchall()
         
-        for booking in bookings:
-            if not booking.client or not booking.client.user or not booking.client.user.telegram_id:
+        total_reminders = 0
+        
+        for company_row in companies:
+            company_id = company_row[0]
+            company_name = company_row[1]
+            bot_token = company_row[2]
+            
+            if not bot_token:
                 continue
             
             try:
-                # Формируем сообщение
-                date_str = booking.date.strftime("%d.%m.%Y")
-                time_str = booking.time.strftime("%H:%M")
-                service_name = booking.service.name if booking.service else "Услуга"
-                master_name = booking.master.full_name if booking.master else "Не назначен"
-                post_number = f"Пост №{booking.post.number}" if booking.post else "Не назначен"
+                # Переключаемся на tenant схему компании
+                schema_name = f"tenant_{company_id}"
+                await session.execute(text(f'SET search_path TO "{schema_name}", public'))
                 
-                text = "🔔 Напоминание о записи\n\n"
-                text += f"Завтра {date_str} в {time_str}\n"
-                text += f"Услуга: {service_name}\n"
-                text += f"Мастер: {master_name}\n"
-                text += f"{post_number}\n\n"
-                text += "Ждем вас в автосервисе!"
-                
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="✅ Подтвердить явку", callback_data=f"confirm_attendance_{booking.id}")],
-                    [InlineKeyboardButton(text="❌ Отменить запись", callback_data=f"cancel_booking_{booking.id}")],
-                ])
-                
-                bot = get_bot()
-                await bot.send_message(
-                    chat_id=booking.client.user.telegram_id,
-                    text=text,
-                    reply_markup=keyboard
+                # Находим подтвержденные записи на завтра в этой компании
+                bookings_result = await session.execute(
+                    text(f"""
+                        SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id, 
+                               b.master_id, b.post_id, b.status,
+                               c.user_id,
+                               u.telegram_id,
+                               s.name as service_name,
+                               m.full_name as master_name,
+                               p.number as post_number
+                        FROM "{schema_name}".bookings b
+                        LEFT JOIN "{schema_name}".clients c ON b.client_id = c.id
+                        LEFT JOIN "{schema_name}".users u ON c.user_id = u.id
+                        LEFT JOIN "{schema_name}".services s ON b.service_id = s.id
+                        LEFT JOIN "{schema_name}".masters m ON b.master_id = m.id
+                        LEFT JOIN "{schema_name}".posts p ON b.post_id = p.id
+                        WHERE b.date = :tomorrow
+                          AND b.status = 'confirmed'
+                          AND u.telegram_id IS NOT NULL
+                    """),
+                    {"tomorrow": tomorrow}
                 )
+                bookings = bookings_result.fetchall()
                 
-                # Сохраняем в историю уведомлений
-                notification = Notification(
-                    user_id=booking.client.user.id,
-                    booking_id=booking.id,
-                    notification_type="reminder_day",
-                    message=text,
-                    is_sent=True,
-                    sent_at=datetime.utcnow()
-                )
-                session.add(notification)
+                if not bookings:
+                    continue
+                
+                # Создаем бот для этой компании
+                bot = Bot(token=bot_token)
+                
+                for booking_row in bookings:
+                    booking_id = booking_row[0]
+                    booking_number = booking_row[1]
+                    booking_date = booking_row[2]
+                    booking_time = booking_row[3]  # Исправлено: time это индекс 3, не 4
+                    telegram_id = booking_row[10]
+                    service_name = booking_row[11] or "Услуга"
+                    master_name = booking_row[12] or "Не назначен"
+                    post_number = f"Пост №{booking_row[13]}" if booking_row[13] else "Не назначен"
+                    
+                    try:
+                        # Формируем сообщение
+                        date_str = booking_date.strftime("%d.%m.%Y")
+                        time_str = booking_time.strftime("%H:%M")
+                        
+                        text = "🔔 Напоминание о записи\n\n"
+                        text += f"Завтра {date_str} в {time_str}\n"
+                        text += f"Услуга: {service_name}\n"
+                        text += f"Мастер: {master_name}\n"
+                        text += f"{post_number}\n\n"
+                        text += "Ждем вас в салоне красоты!"
+                        
+                        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="✅ Подтверждаю", callback_data=f"confirm_attendance_{booking_id}")],
+                            [InlineKeyboardButton(text="❌ Отказ", callback_data=f"cancel_booking_{booking_id}")],
+                        ])
+                        
+                        await bot.send_message(
+                            chat_id=telegram_id,
+                            text=text,
+                            reply_markup=keyboard
+                        )
+                        
+                        total_reminders += 1
+                        print(f"✅ Напоминание за день отправлено: компания {company_name}, запись {booking_id}")
+                        
+                    except Exception as e:
+                        print(f"❌ Ошибка отправки напоминания за день для записи {booking_id} (компания {company_id}): {e}")
+                
+                await bot.session.close()
                 
             except Exception as e:
-                print(f"Ошибка отправки напоминания за день для записи {booking.id}: {e}")
-                # Сохраняем ошибку
-                notification = Notification(
-                    user_id=booking.client.user.id,
-                    booking_id=booking.id,
-                    notification_type="reminder_day",
-                    message=text,
-                    is_sent=False,
-                    error_message=str(e)
-                )
-                session.add(notification)
+                print(f"❌ Ошибка обработки компании {company_id}: {e}")
+                continue
         
-        await session.commit()
+        print(f"📊 Всего отправлено напоминаний за день: {total_reminders}")
 
 
-async def send_reminder_hour_before():
-    """Отправить напоминания за час до записи"""
+async def send_reminder_3_hours_before():
+    """Отправить напоминания за 3 часа до записи (мульти-тенантная версия)
+    
+    Запускается каждые 5-10 минут, проверяет записи, которые начинаются ровно через 3 часа.
+    Проверяет таблицу notifications, чтобы не отправлять повторные напоминания.
+    """
     now = datetime.now()
-    target_time_start = (now + timedelta(hours=1, minutes=-10)).time()
-    target_time_end = (now + timedelta(hours=1, minutes=10)).time()
+    # Проверяем записи, которые начинаются ровно через 3 часа (±3 минуты для точности)
+    target_time_start = (now + timedelta(hours=3, minutes=-3)).time()
+    target_time_end = (now + timedelta(hours=3, minutes=3)).time()
     today = date.today()
     
     async with async_session_maker() as session:
-        # Находим подтвержденные записи на сегодня в нужном временном диапазоне
-        result = await session.execute(
-            select(Booking)
-            .where(
-                and_(
-                    Booking.date == today,
-                    Booking.status == "confirmed",
-                    Booking.time >= target_time_start,
-                    Booking.time <= target_time_end
-                )
-            )
-            .options(
-                selectinload(Booking.client).selectinload(Client.user),
-                selectinload(Booking.service),
-                selectinload(Booking.post),
-            )
+        # Получаем все активные компании
+        await session.execute(text('SET search_path TO public'))
+        companies_result = await session.execute(
+            text('SELECT id, name, telegram_bot_token FROM public.companies WHERE is_active = true')
         )
-        bookings = result.scalars().all()
+        companies = companies_result.fetchall()
         
-        for booking in bookings:
-            if not booking.client or not booking.client.user or not booking.client.user.telegram_id:
+        total_reminders = 0
+        
+        for company_row in companies:
+            company_id = company_row[0]
+            company_name = company_row[1]
+            bot_token = company_row[2]
+            
+            if not bot_token:
                 continue
             
             try:
-                time_str = booking.time.strftime("%H:%M")
-                service_name = booking.service.name if booking.service else "Услуга"
-                post_number = f"Пост №{booking.post.number}" if booking.post else "Не назначен"
+                # Переключаемся на tenant схему компании
+                schema_name = f"tenant_{company_id}"
+                await session.execute(text(f'SET search_path TO "{schema_name}", public'))
                 
-                text = "🔔 Напоминание\n\n"
-                text += f"Через час ваша запись!\n"
-                text += f"Время: {time_str}\n"
-                text += f"Услуга: {service_name}\n"
-                text += f"{post_number}\n\n"
-                text += "Адрес: пр.Октября\n"
-                text += "До встречи! 👋"
-                
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm_attendance_{booking.id}")],
-                    [InlineKeyboardButton(text="❌ Отменить", callback_data=f"cancel_booking_{booking.id}")],
-                ])
-                
-                bot = get_bot()
-                await bot.send_message(
-                    chat_id=booking.client.user.telegram_id,
-                    text=text,
-                    reply_markup=keyboard
+                # Находим подтвержденные записи на сегодня в нужном временном диапазоне
+                # Исключаем записи, для которых уже было отправлено напоминание за 3 часа
+                bookings_result = await session.execute(
+                    text(f"""
+                        SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id, 
+                               b.post_id, b.status,
+                               c.user_id,
+                               u.telegram_id,
+                               s.name as service_name,
+                               p.number as post_number
+                        FROM "{schema_name}".bookings b
+                        LEFT JOIN "{schema_name}".clients c ON b.client_id = c.id
+                        LEFT JOIN "{schema_name}".users u ON c.user_id = u.id
+                        LEFT JOIN "{schema_name}".services s ON b.service_id = s.id
+                        LEFT JOIN "{schema_name}".posts p ON b.post_id = p.id
+                        WHERE b.date = :today
+                          AND b.status = 'confirmed'
+                          AND b.time >= :target_time_start
+                          AND b.time <= :target_time_end
+                          AND u.telegram_id IS NOT NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM "{schema_name}".notifications n
+                              WHERE n.booking_id = b.id
+                                AND n.notification_type = 'reminder_3_hours'
+                                AND n.is_sent = true
+                          )
+                    """),
+                    {
+                        "today": today,
+                        "target_time_start": target_time_start,
+                        "target_time_end": target_time_end
+                    }
                 )
+                bookings = bookings_result.fetchall()
                 
-                # Сохраняем в историю
-                notification = Notification(
-                    user_id=booking.client.user.id,
-                    booking_id=booking.id,
-                    notification_type="reminder_hour",
-                    message=text,
-                    is_sent=True,
-                    sent_at=datetime.utcnow()
-                )
-                session.add(notification)
+                if not bookings:
+                    continue
+                
+                # Создаем бот для этой компании
+                bot = Bot(token=bot_token)
+                
+                for booking_row in bookings:
+                    booking_id = booking_row[0]
+                    booking_number = booking_row[1]
+                    booking_date = booking_row[2]
+                    booking_time = booking_row[3]
+                    user_id = booking_row[8]
+                    telegram_id = booking_row[9]
+                    service_name = booking_row[10] or "Услуга"
+                    post_number = f"Пост №{booking_row[11]}" if booking_row[11] else "Не назначен"
+                    
+                    try:
+                        # Формируем сообщение
+                        time_str = booking_time.strftime("%H:%M")
+                        
+                        text = "🔔 Напоминание о записи\n\n"
+                        text += f"Через 3 часа ваша запись!\n"
+                        text += f"⏰ Время: {time_str}\n"
+                        text += f"🛠️ Услуга: {service_name}\n"
+                        text += f"🏢 {post_number}\n\n"
+                        text += "Пожалуйста, подтвердите явку или отмените запись:"
+                        
+                        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="✅ Подтверждаю", callback_data=f"confirm_attendance_{booking_id}")],
+                            [InlineKeyboardButton(text="❌ Отказ", callback_data=f"cancel_booking_{booking_id}")],
+                        ])
+                        
+                        await bot.send_message(
+                            chat_id=telegram_id,
+                            text=text,
+                            reply_markup=keyboard
+                        )
+                        
+                        # Сохраняем в историю уведомлений, чтобы не отправлять повторно
+                        await session.execute(
+                            text(f"""
+                                INSERT INTO "{schema_name}".notifications 
+                                (user_id, booking_id, notification_type, message, is_sent, sent_at, created_at)
+                                VALUES (:user_id, :booking_id, 'reminder_3_hours', :message, true, :sent_at, :created_at)
+                            """),
+                            {
+                                "user_id": user_id,
+                                "booking_id": booking_id,
+                                "message": text,
+                                "sent_at": datetime.utcnow(),
+                                "created_at": datetime.utcnow()
+                            }
+                        )
+                        await session.commit()
+                        
+                        total_reminders += 1
+                        print(f"✅ Напоминание за 3 часа отправлено: компания {company_name}, запись {booking_id}")
+                        
+                    except Exception as e:
+                        print(f"❌ Ошибка отправки напоминания за 3 часа для записи {booking_id} (компания {company_id}): {e}")
+                        # Сохраняем ошибку в историю
+                        try:
+                            await session.execute(
+                                text(f"""
+                                    INSERT INTO "{schema_name}".notifications 
+                                    (user_id, booking_id, notification_type, message, is_sent, error_message, created_at)
+                                    VALUES (:user_id, :booking_id, 'reminder_3_hours', :message, false, :error_message, :created_at)
+                                """),
+                                {
+                                    "user_id": user_id,
+                                    "booking_id": booking_id,
+                                    "message": text,
+                                    "error_message": str(e),
+                                    "created_at": datetime.utcnow()
+                                }
+                            )
+                            await session.commit()
+                        except:
+                            pass
+                
+                await bot.session.close()
                 
             except Exception as e:
-                print(f"Ошибка отправки напоминания за час для записи {booking.id}: {e}")
-                notification = Notification(
-                    user_id=booking.client.user.id,
-                    booking_id=booking.id,
-                    notification_type="reminder_hour",
-                    message=text,
-                    is_sent=False,
-                    error_message=str(e)
-                )
-                session.add(notification)
+                print(f"❌ Ошибка обработки компании {company_id}: {e}")
+                continue
         
-        await session.commit()
+        print(f"📊 Всего отправлено напоминаний за 3 часа: {total_reminders}")
 
 
 async def send_status_change_notification(booking_id: int, new_status: str):
@@ -334,10 +435,306 @@ async def send_status_change_notification(booking_id: int, new_status: str):
             await session.commit()
 
 
-# Celery задачи (синхронные обертки для асинхронных функций)
+# Функции для отправки одного напоминания (для отложенных задач)
+async def send_single_reminder_day_before(company_id: int, booking_id: int):
+    """Отправить напоминание за день до записи для одной записи"""
+    async with async_session_maker() as session:
+        try:
+            # Получаем компанию и bot token
+            await session.execute(text('SET search_path TO public'))
+            company_result = await session.execute(
+                text('SELECT id, name, telegram_bot_token FROM public.companies WHERE id = :company_id'),
+                {"company_id": company_id}
+            )
+            company_row = company_result.fetchone()
+            
+            if not company_row or not company_row[2]:
+                print(f"❌ Компания {company_id} не найдена или нет bot token")
+                return
+            
+            bot_token = company_row[2]
+            company_name = company_row[1]
+            
+            # Переключаемся на tenant схему
+            schema_name = f"tenant_{company_id}"
+            await session.execute(text(f'SET search_path TO "{schema_name}", public'))
+            
+            # Получаем данные записи
+            booking_result = await session.execute(
+                text(f"""
+                    SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id, 
+                           b.master_id, b.post_id, b.status,
+                           c.user_id,
+                           u.telegram_id,
+                           s.name as service_name,
+                           m.full_name as master_name,
+                           p.number as post_number
+                    FROM "{schema_name}".bookings b
+                    LEFT JOIN "{schema_name}".clients c ON b.client_id = c.id
+                    LEFT JOIN "{schema_name}".users u ON c.user_id = u.id
+                    LEFT JOIN "{schema_name}".services s ON b.service_id = s.id
+                    LEFT JOIN "{schema_name}".masters m ON b.master_id = m.id
+                    LEFT JOIN "{schema_name}".posts p ON b.post_id = p.id
+                    WHERE b.id = :booking_id
+                      AND b.status = 'confirmed'
+                      AND u.telegram_id IS NOT NULL
+                """),
+                {"booking_id": booking_id}
+            )
+            booking_row = booking_result.fetchone()
+            
+            if not booking_row:
+                print(f"❌ Запись {booking_id} не найдена, уже отменена или напоминание уже отправлено")
+                return
+            
+            booking_id_db = booking_row[0]
+            booking_number = booking_row[1]
+            booking_date = booking_row[2]
+            booking_time = booking_row[3]
+            user_id = booking_row[9]
+            telegram_id = booking_row[10]
+            service_name = booking_row[11] or "Услуга"
+            master_name = booking_row[12] or "Не назначен"
+            post_number = f"Пост №{booking_row[13]}" if booking_row[13] else "Не назначен"
+            
+            # Формируем сообщение
+            date_str = booking_date.strftime("%d.%m.%Y")
+            time_str = booking_time.strftime("%H:%M")
+            
+            message_text = "🔔 Напоминание о записи\n\n"
+            message_text += f"Завтра {date_str} в {time_str}\n"
+            message_text += f"Услуга: {service_name}\n"
+            message_text += f"Мастер: {master_name}\n"
+            message_text += f"{post_number}\n\n"
+            message_text += "Ждем вас в салоне красоты!"
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Подтверждаю", callback_data=f"confirm_attendance_{booking_id_db}")],
+                [InlineKeyboardButton(text="❌ Отказ", callback_data=f"cancel_booking_{booking_id_db}")],
+            ])
+            
+            # Отправляем сообщение
+            bot = Bot(token=bot_token)
+            await bot.send_message(
+                chat_id=telegram_id,
+                text=message_text,
+                reply_markup=keyboard
+            )
+            await bot.session.close()
+            
+            # Сохраняем в историю
+            await session.execute(
+                text(f"""
+                    INSERT INTO "{schema_name}".notifications 
+                    (user_id, booking_id, notification_type, message, is_sent, sent_at, created_at)
+                    VALUES (:user_id, :booking_id, 'reminder_day', :message, true, :sent_at, :created_at)
+                """),
+                {
+                    "user_id": user_id,
+                    "booking_id": booking_id_db,
+                    "message": message_text,
+                    "sent_at": datetime.utcnow(),
+                    "created_at": datetime.utcnow()
+                }
+            )
+            await session.commit()
+            
+            print(f"✅ Напоминание за день отправлено: компания {company_name}, запись {booking_id_db}")
+            
+        except Exception as e:
+            print(f"❌ Ошибка отправки напоминания за день для записи {booking_id} (компания {company_id}): {e}")
+
+
+async def send_single_reminder_3_hours_before(company_id: int, booking_id: int):
+    """Отправить напоминание за 3 часа до записи для одной записи"""
+    async with async_session_maker() as session:
+        try:
+            # Получаем компанию и bot token
+            await session.execute(text('SET search_path TO public'))
+            company_result = await session.execute(
+                text('SELECT id, name, telegram_bot_token FROM public.companies WHERE id = :company_id'),
+                {"company_id": company_id}
+            )
+            company_row = company_result.fetchone()
+            
+            if not company_row or not company_row[2]:
+                print(f"❌ Компания {company_id} не найдена или нет bot token")
+                return
+            
+            bot_token = company_row[2]
+            company_name = company_row[1]
+            
+            # Переключаемся на tenant схему
+            schema_name = f"tenant_{company_id}"
+            await session.execute(text(f'SET search_path TO "{schema_name}", public'))
+            
+            # Получаем данные записи
+            booking_result = await session.execute(
+                text(f"""
+                    SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id, 
+                           b.post_id, b.status,
+                           c.user_id,
+                           u.telegram_id,
+                           s.name as service_name,
+                           p.number as post_number
+                    FROM "{schema_name}".bookings b
+                    LEFT JOIN "{schema_name}".clients c ON b.client_id = c.id
+                    LEFT JOIN "{schema_name}".users u ON c.user_id = u.id
+                    LEFT JOIN "{schema_name}".services s ON b.service_id = s.id
+                    LEFT JOIN "{schema_name}".posts p ON b.post_id = p.id
+                    WHERE b.id = :booking_id
+                      AND b.status = 'confirmed'
+                      AND u.telegram_id IS NOT NULL
+                """),
+                {"booking_id": booking_id}
+            )
+            booking_row = booking_result.fetchone()
+            
+            if not booking_row:
+                print(f"❌ Запись {booking_id} не найдена, уже отменена или напоминание уже отправлено")
+                return
+            
+            booking_id_db = booking_row[0]
+            booking_number = booking_row[1]
+            booking_date = booking_row[2]
+            booking_time = booking_row[3]
+            user_id = booking_row[8]
+            telegram_id = booking_row[9]
+            service_name = booking_row[10] or "Услуга"
+            post_number = f"Пост №{booking_row[11]}" if booking_row[11] else "Не назначен"
+            
+            # Формируем сообщение
+            time_str = booking_time.strftime("%H:%M")
+            
+            message_text = "🔔 Напоминание о записи\n\n"
+            message_text += f"Через 3 часа ваша запись!\n"
+            message_text += f"⏰ Время: {time_str}\n"
+            message_text += f"🛠️ Услуга: {service_name}\n"
+            message_text += f"🏢 {post_number}\n\n"
+            message_text += "Пожалуйста, подтвердите явку или отмените запись:"
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Подтверждаю", callback_data=f"confirm_attendance_{booking_id_db}")],
+                [InlineKeyboardButton(text="❌ Отказ", callback_data=f"cancel_booking_{booking_id_db}")],
+            ])
+            
+            # Отправляем сообщение
+            bot = Bot(token=bot_token)
+            await bot.send_message(
+                chat_id=telegram_id,
+                text=message_text,
+                reply_markup=keyboard
+            )
+            await bot.session.close()
+            
+            # Сохраняем в историю (если таблица существует)
+            try:
+                await session.execute(
+                    text(f"""
+                        INSERT INTO "{schema_name}".notifications 
+                        (user_id, booking_id, notification_type, message, is_sent, sent_at, created_at)
+                        VALUES (:user_id, :booking_id, 'reminder_3_hours', :message, true, :sent_at, :created_at)
+                    """),
+                    {
+                        "user_id": user_id,
+                        "booking_id": booking_id_db,
+                        "message": message_text,
+                        "sent_at": datetime.utcnow(),
+                        "created_at": datetime.utcnow()
+                    }
+                )
+                await session.commit()
+            except Exception as e:
+                # Если таблица не существует - просто пропускаем сохранение
+                print(f"⚠️ Не удалось сохранить в notifications (таблица может не существовать): {e}")
+                pass
+            
+            print(f"✅ Напоминание за 3 часа отправлено: компания {company_name}, запись {booking_id_db}")
+            
+        except Exception as e:
+            print(f"❌ Ошибка отправки напоминания за 3 часа для записи {booking_id} (компания {company_id}): {e}")
+
+
+# Celery задачи для отложенных напоминаний (одна запись)
+@shared_task
+def send_single_reminder_day_before_task(company_id: int, booking_id: int):
+    """Celery задача для отправки напоминания за день для одной записи"""
+    try:
+        asyncio.run(send_single_reminder_day_before(company_id, booking_id))
+    except Exception as e:
+        print(f"Ошибка в задаче send_single_reminder_day_before_task: {e}")
+        raise
+
+
+@shared_task
+def send_single_reminder_3_hours_before_task(company_id: int, booking_id: int):
+    """Celery задача для отправки напоминания за 3 часа для одной записи"""
+    try:
+        asyncio.run(send_single_reminder_3_hours_before(company_id, booking_id))
+    except Exception as e:
+        print(f"Ошибка в задаче send_single_reminder_3_hours_before_task: {e}")
+        raise
+
+
+def schedule_booking_reminders(company_id: int, booking_id: int, booking_date: date, booking_time: time_type):
+    """
+    Запланировать напоминания для записи при её подтверждении.
+    
+    Создает две отложенные Celery задачи:
+    1. Напоминание за день - отправляется в 18:00 за день до записи
+    2. Напоминание за 3 часа - отправляется за 3 часа до начала записи
+    
+    Args:
+        company_id: ID компании
+        booking_id: ID записи
+        booking_date: Дата записи
+        booking_time: Время начала записи
+    """
+    try:
+        from datetime import datetime, time
+        
+        # Вычисляем время для напоминания за день (18:00 за день до записи)
+        reminder_day_date = booking_date - timedelta(days=1)
+        reminder_day_datetime = datetime.combine(reminder_day_date, time(18, 0))  # 18:00
+        
+        # Вычисляем время для напоминания за 3 часа (за 3 часа до начала записи)
+        booking_datetime = datetime.combine(booking_date, booking_time)
+        reminder_3h_datetime = booking_datetime - timedelta(hours=3)
+        
+        now = datetime.now()
+        
+        # Планируем напоминание за день, только если оно в будущем
+        if reminder_day_datetime > now:
+            eta_day = reminder_day_datetime
+            send_single_reminder_day_before_task.apply_async(
+                args=[company_id, booking_id],
+                eta=eta_day
+            )
+            print(f"📅 Запланировано напоминание за день: запись {booking_id}, время отправки: {eta_day}")
+        else:
+            print(f"⚠️ Напоминание за день пропущено (уже прошло): запись {booking_id}, было бы: {reminder_day_datetime}")
+        
+        # Планируем напоминание за 3 часа, только если оно в будущем
+        if reminder_3h_datetime > now:
+            eta_3h = reminder_3h_datetime
+            send_single_reminder_3_hours_before_task.apply_async(
+                args=[company_id, booking_id],
+                eta=eta_3h
+            )
+            print(f"⏰ Запланировано напоминание за 3 часа: запись {booking_id}, время отправки: {eta_3h}")
+        else:
+            print(f"⚠️ Напоминание за 3 часа пропущено (уже прошло): запись {booking_id}, было бы: {reminder_3h_datetime}")
+            
+    except Exception as e:
+        print(f"❌ Ошибка планирования напоминаний для записи {booking_id}: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+# Старые массовые задачи (оставляем для обратной совместимости, но не используем в расписании)
 @shared_task
 def send_reminder_day_before_task():
-    """Celery задача для отправки напоминаний за день"""
+    """Celery задача для отправки напоминаний за день (массовая, устаревшая)"""
     try:
         asyncio.run(send_reminder_day_before())
     except Exception as e:
@@ -346,12 +743,12 @@ def send_reminder_day_before_task():
 
 
 @shared_task
-def send_reminder_hour_before_task():
-    """Celery задача для отправки напоминаний за час"""
+def send_reminder_3_hours_before_task():
+    """Celery задача для отправки напоминаний за 3 часа (массовая, устаревшая)"""
     try:
-        asyncio.run(send_reminder_hour_before())
+        asyncio.run(send_reminder_3_hours_before())
     except Exception as e:
-        print(f"Ошибка в задаче send_reminder_hour_before_task: {e}")
+        print(f"Ошибка в задаче send_reminder_3_hours_before_task: {e}")
         raise
 
 

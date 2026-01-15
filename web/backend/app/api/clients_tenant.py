@@ -7,48 +7,21 @@ API для работы с клиентами (МУЛЬТИ-ТЕНАНТНАЯ �
 - Изоляция данных между компаниями
 """
 from datetime import datetime
-from typing import Optional, Annotated
+from typing import Optional
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, text, delete
-from sqlalchemy.orm import selectinload
-from jose import jwt
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy import text
 
-from app.database import get_db
 from app.api.auth import get_current_user
+from app.deps.tenant import get_tenant_db
 from app.schemas.client import (
     ClientResponse, ClientListResponse,
     ClientCreateRequest, ClientUpdateRequest
 )
-from shared.database.models import User, Client, Booking
-from app.services.tenant_service import get_tenant_service
-from app.config import settings
+from shared.database.models import User
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
-security = HTTPBearer()
-
-
-async def get_company_id_from_token(request: Request) -> Optional[int]:
-    """Получить company_id из JWT токена"""
-    try:
-        # Извлекаем токен напрямую из заголовков
-        authorization = request.headers.get("Authorization")
-        if not authorization or not authorization.startswith("Bearer "):
-            return None
-        
-        token = authorization.replace("Bearer ", "")
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        company_id = payload.get("company_id")
-        if company_id:
-            return int(company_id)
-        return None
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Не удалось получить company_id из токена: {e}")
-        return None
 
 
 @router.get("", response_model=ClientListResponse)
@@ -57,8 +30,7 @@ async def get_clients(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -73,57 +45,21 @@ async def get_clients(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать клиентов")
     
-    # Получаем company_id из токена, если не передан в query параметрах
-    if not company_id:
-        company_id = await get_company_id_from_token(request)
-    
     import logging
     logger = logging.getLogger(__name__)
+    company_id = getattr(request.state, "company_id", None)
     logger.info(f"Получение клиентов: company_id={company_id}, page={page}, page_size={page_size}, user_id={current_user.id}")
-    
-    if not company_id:
-        logger.error("company_id не найден в токене и не передан в query параметрах")
-        raise HTTPException(status_code=400, detail="company_id не найден. Необходимо указать company_id в query параметрах или войти как пользователь компании.")
-    
-    # Устанавливаем search_path для tenant схемы
-    schema_name = f"tenant_{company_id}"
-    
-    # Проверяем существование схемы ПЕРЕД установкой search_path
-    try:
-        schema_check = await db.execute(
-            text(f'SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = :schema_name)'),
-            {"schema_name": schema_name}
-        )
-        schema_exists = schema_check.scalar()
-        if not schema_exists:
-            logger.error(f"Схема {schema_name} не существует")
-            raise HTTPException(status_code=404, detail=f"Схема для компании {company_id} не найдена")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при проверке схемы {schema_name}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка при проверке схемы: {str(e)}")
-    
-    # Устанавливаем search_path для tenant схемы
-    try:
-        await db.execute(text(f'SET search_path TO "{schema_name}", public'))
-        logger.info(f"✅ Установлен search_path для {schema_name}")
-    except Exception as e:
-        logger.error(f"Ошибка при установке search_path для {schema_name}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка при установке search_path: {str(e)}")
-    
-    tenant_session = db
     
     # Фильтры - используем text() для работы с полями, которых может не быть в модели
     search_filter = ""
     search_params = {}
     if search:
         search_term = f"%{search}%"
-        search_filter = f"""
+        search_filter = """
             WHERE c.full_name ILIKE :search
                OR c.phone ILIKE :search
                OR EXISTS (
-                   SELECT 1 FROM "{schema_name}".users u 
+                   SELECT 1 FROM users u 
                    WHERE u.id = c.user_id 
                    AND (u.phone ILIKE :search OR u.full_name ILIKE :search OR CAST(u.telegram_id AS TEXT) ILIKE :search)
                )
@@ -131,7 +67,7 @@ async def get_clients(
         search_params["search"] = search_term
     
     # Подсчет общего количества
-    count_query_str = f'SELECT COUNT(*) FROM "{schema_name}".clients c {search_filter}'
+    count_query_str = f"SELECT COUNT(*) FROM clients c {search_filter}"
     count_query = text(count_query_str)
     count_params = search_params.copy()
     count_result = await tenant_session.execute(count_query, count_params)
@@ -150,7 +86,7 @@ async def get_clients(
     try:
         # Формируем SQL запрос с пагинацией и фильтрацией
         offset = (page - 1) * page_size
-        clients_query_str = f"""
+        clients_query_str = """
             SELECT c.id, 
                    c.user_id, 
                    c.full_name, 
@@ -162,8 +98,8 @@ async def get_clients(
                    0 as total_amount, 
                    c.created_at, 
                    COALESCE(c.updated_at, c.created_at) as updated_at
-            FROM "{schema_name}".clients c
-            {search_filter}
+            FROM clients c
+            """ + search_filter + """
             ORDER BY c.full_name
             LIMIT :limit OFFSET :offset
         """
@@ -197,14 +133,14 @@ async def get_clients(
         logger.error(f"❌ Ошибка при выполнении SQL запроса клиентов: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка при получении клиентов: {str(e)}")
     
-    print(f"📊 Запрос клиентов: total={total}, page={page}, page_size={page_size}, company_id={company_id}")
+    logger.info(f"📊 Запрос клиентов: total={total}, page={page}, page_size={page_size}, company_id={company_id}")
     
     # Формируем ответы с дополнительными данными
     items = []
     for client in clients:
         try:
             # Считаем количество записей для клиента через прямой SQL
-            booking_count_query = text(f'SELECT COUNT(*) FROM "{schema_name}".bookings WHERE client_id = :client_id')
+            booking_count_query = text('SELECT COUNT(*) FROM bookings WHERE client_id = :client_id')
             booking_count_result = await tenant_session.execute(booking_count_query, {"client_id": client.id})
             booking_count = booking_count_result.scalar() or 0
         except Exception as e:
@@ -256,7 +192,7 @@ async def get_clients(
         if client_user_id and client_user_id > 0:
             try:
                 user_result = await tenant_session.execute(
-                    text(f'SELECT telegram_id, full_name, role, is_admin FROM "{schema_name}".users WHERE id = :user_id'),
+                    text("SELECT telegram_id, full_name, role FROM users WHERE id = :user_id"),
                     {"user_id": client.user_id}
                 )
                 user_row = user_result.fetchone()
@@ -266,7 +202,7 @@ async def get_clients(
                     name_parts = user_full_name.split(maxsplit=1) if user_full_name else ['', '']
                     client_dict["user_first_name"] = name_parts[0] if len(name_parts) > 0 else None
                     client_dict["user_last_name"] = name_parts[1] if len(name_parts) > 1 else None
-                    client_dict["user_is_admin"] = (user_row[3] if user_row[3] is not None else False) or (user_row[2] == 'admin' if user_row[2] else False)
+                    client_dict["user_is_admin"] = (user_row[2] == "admin") if user_row[2] else False
             except Exception as e:
                 logger.warning(f"Ошибка при получении данных пользователя для клиента {client.id}: {e}")
         
@@ -288,10 +224,9 @@ async def get_clients(
 
 @router.get("/{client_id}", response_model=ClientResponse)
 async def get_client(
-    request: Request,
     client_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -303,73 +238,76 @@ async def get_client(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать клиентов")
-    
-    # Получаем company_id из токена, если не передан
-    if not company_id:
-        company_id = await get_company_id_from_token(request)
-    
-    if not company_id:
-        raise HTTPException(status_code=400, detail="company_id не найден")
-    
-    schema_name = f"tenant_{company_id}"
-    
-    # Устанавливаем search_path для tenant схемы
-    await db.execute(text(f'SET search_path TO "{schema_name}", public'))
-    tenant_session = db
-    
-    query = select(Client).where(Client.id == client_id)
-    
-    result = await tenant_session.execute(query)
-    client = result.scalar_one_or_none()
-    
-    if not client:
+
+    client_result = await tenant_session.execute(
+        text(
+            """
+            SELECT id, user_id, full_name, phone, created_at, COALESCE(updated_at, created_at) AS updated_at
+            FROM clients
+            WHERE id = :client_id
+            """
+        ),
+        {"client_id": client_id},
+    )
+    row = client_result.fetchone()
+    if not row:
         raise HTTPException(status_code=404, detail="Клиент не найден")
-    
-    print(f"🔍 Запрос клиента: client_id={client_id}, company_id={company_id}")
-    
-    # Считаем количество записей для клиента
+
+    client_id_db, user_id, full_name, phone, created_at, updated_at = row
+
     booking_count_result = await tenant_session.execute(
-        text(f'SELECT COUNT(*) FROM "{schema_name}".bookings WHERE client_id = :client_id'),
-        {"client_id": client.id}
+        text("SELECT COUNT(*) FROM bookings WHERE client_id = :client_id"),
+        {"client_id": client_id_db},
     )
     booking_count = booking_count_result.scalar() or 0
-    
-    # Формируем ответ
-    client_dict = {
-        "id": client.id,
-        "full_name": client.full_name,
-        "phone": client.phone,
-        "email": getattr(client, 'email', None),  # Может отсутствовать в tenant схеме
-        "car_brand": getattr(client, 'car_brand', None),  # Может отсутствовать в tenant схеме
-        "car_model": getattr(client, 'car_model', None),  # Может отсутствовать в tenant схеме
-        "car_number": getattr(client, 'car_number', None),  # Может отсутствовать в tenant схеме
-        "telegram_id": None,
-        "first_name": None,
-        "last_name": None,
-        "booking_count": booking_count or 0,
-        "created_at": client.created_at,
-        "updated_at": client.updated_at,
-        "company_id": company_id,
-    }
-    
-    # Добавляем данные пользователя, если есть
-    if client.user:
-        client_dict["telegram_id"] = getattr(client.user, 'telegram_id', None)
-        # Получаем full_name из user и разбиваем на first_name и last_name
-        user_full_name = getattr(client.user, 'full_name', None) or ''
-        name_parts = user_full_name.split(maxsplit=1) if user_full_name else ['', '']
-        client_dict["first_name"] = name_parts[0] if len(name_parts) > 0 else None
-        client_dict["last_name"] = name_parts[1] if len(name_parts) > 1 else None
-    
-    return ClientResponse.model_validate(client_dict)
+
+    user_telegram_id = None
+    user_first_name = None
+    user_last_name = None
+    user_is_admin = None
+    if user_id:
+        user_result = await tenant_session.execute(
+            text("SELECT telegram_id, full_name, role FROM users WHERE id = :user_id"),
+            {"user_id": user_id},
+        )
+        user_row = user_result.fetchone()
+        if user_row:
+            user_telegram_id = user_row[0]
+            user_full_name = user_row[1] or ""
+            parts = user_full_name.split(maxsplit=1) if user_full_name else ["", ""]
+            user_first_name = parts[0] if len(parts) > 0 else None
+            user_last_name = parts[1] if len(parts) > 1 else None
+            user_is_admin = (user_row[2] == "admin") if user_row[2] else False
+
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"🔍 Запрос клиента: client_id={client_id}, company_id={company_id}")
+
+    return ClientResponse.model_validate(
+        {
+            "id": client_id_db,
+            "user_id": int(user_id or 0),
+            "full_name": full_name,
+            "phone": phone,
+            "car_brand": None,
+            "car_model": None,
+            "car_year": None,
+            "car_number": None,
+            "total_visits": int(booking_count or 0),
+            "total_amount": None,
+            "created_at": created_at,
+            "user_telegram_id": user_telegram_id,
+            "user_first_name": user_first_name,
+            "user_last_name": user_last_name,
+            "user_is_admin": user_is_admin,
+        }
+    )
 
 
 @router.post("", response_model=ClientResponse, status_code=201)
 async def create_client(
     request: Request,
     client_data: ClientCreateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -381,63 +319,47 @@ async def create_client(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать клиентов")
-    
-    # Получаем company_id из токена, если не передан в query параметрах
-    if not company_id:
-        company_id = await get_company_id_from_token(request)
-    
+
     import logging
     logger = logging.getLogger(__name__)
+    company_id = getattr(request.state, "company_id", None)
     logger.info(f"Создание клиента: company_id={company_id}, user_id={current_user.id}, client_name={client_data.full_name}")
-    
-    if not company_id:
-        logger.error("company_id не найден в токене и не передан в query параметрах")
-        raise HTTPException(status_code=400, detail="company_id не найден. Необходимо указать company_id в query параметрах или войти как пользователь компании.")
-    
-    # Устанавливаем search_path для tenant схемы
-    schema_name = f"tenant_{company_id}"
-    await db.execute(text(f'SET search_path TO "{schema_name}", public'))
-    # Устанавливаем search_path для текущей транзакции
-    await db.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
-    tenant_session = db
-    
-    # Создаем нового клиента
-    client = Client(
-        full_name=client_data.full_name,
-        phone=client_data.phone,
-        car_brand=client_data.car_brand,
-        car_model=client_data.car_model,
-        car_number=client_data.car_number,
-        user_id=None,  # Будет заполнен позже при регистрации через бота
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+
+    now = datetime.utcnow()
+    insert_result = await tenant_session.execute(
+        text(
+            """
+            INSERT INTO clients (full_name, phone, created_at, updated_at)
+            VALUES (:full_name, :phone, :created_at, :updated_at)
+            RETURNING id
+            """
+        ),
+        {"full_name": client_data.full_name, "phone": client_data.phone, "created_at": now, "updated_at": now},
     )
-    
-    tenant_session.add(client)
     await tenant_session.commit()
-    await tenant_session.refresh(client)
-    
-    print(f"✅ Создан клиент: name={client_data.full_name}, phone={client_data.phone}, company_id={company_id}")
-    
-    # Формируем ответ
-    client_dict = {
-        "id": client.id,
-        "user_id": client.user_id or 0,  # Если user_id None, используем 0
-        "full_name": client.full_name,
-        "phone": client.phone,
-        "car_brand": getattr(client, 'car_brand', None),  # Может отсутствовать в tenant схеме
-        "car_model": getattr(client, 'car_model', None),  # Может отсутствовать в tenant схеме
-        "car_number": getattr(client, 'car_number', None),  # Может отсутствовать в tenant схеме
-        "total_visits": 0,
-        "total_amount": None,
-        "created_at": client.created_at,
-        "user_telegram_id": None,
-        "user_first_name": None,
-        "user_last_name": None,
-        "user_is_admin": None,
-    }
-    
-    return ClientResponse.model_validate(client_dict)
+    new_id = insert_result.scalar_one()
+
+    logger.info(f"✅ Создан клиент: id={new_id}, company_id={company_id}")
+
+    return ClientResponse.model_validate(
+        {
+            "id": new_id,
+            "user_id": 0,
+            "full_name": client_data.full_name,
+            "phone": client_data.phone,
+            "car_brand": None,
+            "car_model": None,
+            "car_year": None,
+            "car_number": None,
+            "total_visits": 0,
+            "total_amount": None,
+            "created_at": now,
+            "user_telegram_id": None,
+            "user_first_name": None,
+            "user_last_name": None,
+            "user_is_admin": None,
+        }
+    )
 
 
 @router.patch("/{client_id}", response_model=ClientResponse)
@@ -445,8 +367,7 @@ async def update_client(
     request: Request,
     client_id: int,
     client_data: ClientUpdateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -459,92 +380,77 @@ async def update_client(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять клиентов")
-    
-    # Получаем company_id из токена, если не передан
-    if not company_id:
-        company_id = await get_company_id_from_token(request)
-    
-    if not company_id:
-        raise HTTPException(status_code=400, detail="company_id не найден")
-    
-    schema_name = f"tenant_{company_id}"
-    
-    # Устанавливаем search_path для tenant схемы
-    await db.execute(text(f'SET search_path TO "{schema_name}", public'))
-    tenant_session = db
-    
-    # Проверяем существование клиента
-    query = select(Client).where(Client.id == client_id)
-    result = await tenant_session.execute(query)
-    client = result.scalar_one_or_none()
-    
-    if not client:
+
+    exists = await tenant_session.execute(text("SELECT 1 FROM clients WHERE id = :id"), {"id": client_id})
+    if not exists.fetchone():
         raise HTTPException(status_code=404, detail="Клиент не найден")
-    
-    # Обновляем поля
+
+    update_fields: dict[str, object] = {}
     if client_data.full_name is not None:
-        client.full_name = client_data.full_name
+        update_fields["full_name"] = client_data.full_name
     if client_data.phone is not None:
-        client.phone = client_data.phone
-    if hasattr(client_data, 'email') and client_data.email is not None:
-        setattr(client, 'email', client_data.email)
-    if client_data.car_brand is not None:
-        setattr(client, 'car_brand', client_data.car_brand)
-    if client_data.car_model is not None:
-        setattr(client, 'car_model', client_data.car_model)
-    if client_data.car_number is not None:
-        setattr(client, 'car_number', client_data.car_number)
-    
-    client.updated_at = datetime.utcnow()
-    
+        update_fields["phone"] = client_data.phone
+    update_fields["updated_at"] = datetime.utcnow()
+
+    set_parts = ", ".join([f"{k} = :{k}" for k in update_fields.keys()])
+    await tenant_session.execute(
+        text(f"UPDATE clients SET {set_parts} WHERE id = :id"),
+        {"id": client_id, **update_fields},
+    )
     await tenant_session.commit()
-    await tenant_session.refresh(client)
-    
-    print(f"✅ Обновлен клиент: client_id={client_id}, name={client_data.full_name if client_data.full_name else client.full_name}")
-    
-    # Считаем количество записей
+
+    # Актуальные данные
+    client_result = await tenant_session.execute(
+        text(
+            """
+            SELECT id, user_id, full_name, phone, created_at, COALESCE(updated_at, created_at) AS updated_at
+            FROM clients
+            WHERE id = :client_id
+            """
+        ),
+        {"client_id": client_id},
+    )
+    row = client_result.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Клиент не найден")
+
+    client_id_db, user_id, full_name, phone, created_at, updated_at = row
+
     booking_count_result = await tenant_session.execute(
-        text(f'SELECT COUNT(*) FROM "{schema_name}".bookings WHERE client_id = :client_id'),
-        {"client_id": client.id}
+        text("SELECT COUNT(*) FROM bookings WHERE client_id = :client_id"),
+        {"client_id": client_id_db},
     )
     booking_count = booking_count_result.scalar() or 0
-    
-    # Формируем ответ
-    client_dict = {
-        "id": client.id,
-        "full_name": client.full_name,
-        "phone": client.phone,
-        "email": getattr(client, 'email', None),  # Может отсутствовать в tenant схеме
-        "car_brand": getattr(client, 'car_brand', None),  # Может отсутствовать в tenant схеме
-        "car_model": getattr(client, 'car_model', None),  # Может отсутствовать в tenant схеме
-        "car_number": getattr(client, 'car_number', None),  # Может отсутствовать в tenant схеме
-        "telegram_id": None,
-        "first_name": None,
-        "last_name": None,
-        "booking_count": booking_count or 0,
-        "created_at": client.created_at,
-        "updated_at": client.updated_at,
-        "company_id": company_id,
-    }
-    
-    # Добавляем данные пользователя, если есть
-    if client.user:
-        client_dict["telegram_id"] = getattr(client.user, 'telegram_id', None)
-        # Получаем full_name из user и разбиваем на first_name и last_name
-        user_full_name = getattr(client.user, 'full_name', None) or ''
-        name_parts = user_full_name.split(maxsplit=1) if user_full_name else ['', '']
-        client_dict["first_name"] = name_parts[0] if len(name_parts) > 0 else None
-        client_dict["last_name"] = name_parts[1] if len(name_parts) > 1 else None
-    
-    return ClientResponse.model_validate(client_dict)
+
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"✅ Обновлен клиент: client_id={client_id}, company_id={company_id}")
+
+    return ClientResponse.model_validate(
+        {
+            "id": client_id_db,
+            "user_id": int(user_id or 0),
+            "full_name": full_name,
+            "phone": phone,
+            "car_brand": None,
+            "car_model": None,
+            "car_year": None,
+            "car_number": None,
+            "total_visits": int(booking_count or 0),
+            "total_amount": None,
+            "created_at": created_at,
+            "user_telegram_id": None,
+            "user_first_name": None,
+            "user_last_name": None,
+            "user_is_admin": None,
+        }
+    )
 
 
 @router.delete("/{client_id}", status_code=204)
 async def delete_client(
     request: Request,
     client_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -556,48 +462,33 @@ async def delete_client(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут удалять клиентов")
-    
-    # Получаем company_id из токена, если не передан
-    if not company_id:
-        company_id = await get_company_id_from_token(request)
-    
-    if not company_id:
-        raise HTTPException(status_code=400, detail="company_id не найден")
-    
-    schema_name = f"tenant_{company_id}"
-    
-    # Устанавливаем search_path для tenant схемы
-    await db.execute(text(f'SET search_path TO "{schema_name}", public'))
-    tenant_session = db
-    
-    # Проверяем существование клиента
-    query = select(Client).where(Client.id == client_id)
-    result = await tenant_session.execute(query)
-    client = result.scalar_one_or_none()
-    
-    if not client:
+
+    exists = await tenant_session.execute(
+        text("SELECT full_name FROM clients WHERE id = :id"),
+        {"id": client_id},
+    )
+    row = exists.fetchone()
+    if not row:
         raise HTTPException(status_code=404, detail="Клиент не найден")
-    
-    # Проверяем, используется ли клиент в записях
+    client_name = row[0]
+
     booking_count_result = await tenant_session.execute(
-        text(f'SELECT COUNT(*) FROM "{schema_name}".bookings WHERE client_id = :client_id'),
-        {"client_id": client.id}
+        text("SELECT COUNT(*) FROM bookings WHERE client_id = :client_id"),
+        {"client_id": client_id},
     )
     booking_count = booking_count_result.scalar() or 0
-    
+
     if booking_count and booking_count > 0:
         raise HTTPException(
             status_code=400,
-            detail=f"Невозможно удалить клиента '{client.full_name}', так как с ним связаны {booking_count} записей"
+            detail=f"Невозможно удалить клиента '{client_name}', так как с ним связаны {booking_count} записей",
         )
-    
-    # Удаляем клиента
-    await tenant_session.execute(
-        delete(Client).where(Client.id == client_id)
-    )
+
+    await tenant_session.execute(text("DELETE FROM clients WHERE id = :id"), {"id": client_id})
     await tenant_session.commit()
-    
-    print(f"✅ Удален клиент: client_id={client_id}, name={client.full_name}")
-    
+
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"✅ Удален клиент: client_id={client_id}, company_id={company_id}")
+
     return None
 

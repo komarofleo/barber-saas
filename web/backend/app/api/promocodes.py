@@ -5,7 +5,7 @@ from typing import Optional
 from datetime import date, datetime
 from decimal import Decimal
 
-from ..database import get_db
+from app.deps.tenant import get_tenant_db
 from .auth import get_current_user
 from shared.database.models import User, Promocode, Service, Booking
 from ..schemas.promocode import (
@@ -20,7 +20,7 @@ async def get_promocodes(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     is_active: Optional[bool] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Получить список промокодов"""
@@ -67,14 +67,14 @@ async def get_promocodes(
             if service:
                 promo_dict["service_name"] = service.name
         
-        items.append(PromocodeResponse.model_validate(promo_dict))
+        items.append(PromocodeResponse.model_validate(promocode_dict))
     
     return PromocodeListResponse(items=items, total=total)
 
 @router.post("", response_model=PromocodeResponse, status_code=201)
 async def create_promocode(
     promo_data: PromocodeCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Создать промокод"""
@@ -133,7 +133,7 @@ async def validate_promocode(
     code: str,
     service_id: Optional[int] = Query(None),
     amount: Optional[Decimal] = Query(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_tenant_db)
 ):
     """Валидировать промокод"""
     result = await db.execute(select(Promocode).where(Promocode.code == code.upper()))
@@ -202,7 +202,7 @@ async def validate_promocode(
 async def update_promocode(
     promocode_id: int,
     promo_data: PromocodeUpdateRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Обновить промокод"""
@@ -250,7 +250,7 @@ async def update_promocode(
 @router.delete("/{promocode_id}", status_code=204)
 async def delete_promocode(
     promocode_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Удалить промокод"""
@@ -271,7 +271,7 @@ async def delete_promocode(
 @router.get("/{promocode_id}/statistics")
 async def get_promocode_statistics(
     promocode_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Статистика промокода"""
@@ -290,7 +290,7 @@ async def get_promocode_statistics(
     )
     bookings = bookings_result.scalars().all()
     
-    total_uses = len(bookings)
+    total_uses = len(bookings_result)
     total_discount = sum(b.discount_amount or Decimal("0.00") for b in bookings)
     total_revenue = sum(b.amount or Decimal("0.00") for b in bookings if b.status == "completed")
     

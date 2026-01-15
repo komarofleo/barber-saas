@@ -81,6 +81,7 @@ async def cmd_start(message: Message, state: FSMContext):
                 await state.set_state(RegistrationStates.waiting_full_name)
                 await message.answer(
                     "👋 Добро пожаловать в салон красоты!\n\n"
+                    "Здесь вы можете за 1 минуту записаться на наши услуги!\n\n"
                     "Для начала работы необходимо пройти регистрацию.\n"
                     "Введите ваше ФИО:",
                     reply_markup=get_cancel_keyboard()
@@ -91,6 +92,7 @@ async def cmd_start(message: Message, state: FSMContext):
                 logger.info(f"✅ Клиент найден: {client.full_name}, отправляем главное меню")
                 await message.answer(
                     f"👋 Здравствуйте, {client.full_name}!\n\n"
+                    "Здесь вы можете за 1 минуту записаться на наши услуги!\n\n"
                     "Выберите действие:",
                     reply_markup=get_client_main_keyboard()
                 )

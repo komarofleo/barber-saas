@@ -21,6 +21,7 @@ function Sidebar() {
     { path: '/', icon: '📊', label: 'Дашборд' },
     { path: '/bookings', icon: '📋', label: 'Записи', requiresSubscription: true },
     { path: '/calendar', icon: '📅', label: 'Календарь', requiresSubscription: true },
+    { path: '/work-orders', icon: '📋', label: 'Лист-наряды', adminOnly: true },
     { path: '/clients', icon: '👤', label: 'Клиенты' },
     { path: '/users', icon: '👥', label: 'Пользователи', adminOnly: true },
     { path: '/services', icon: '🔧', label: 'Услуги' },
@@ -137,7 +138,11 @@ function Sidebar() {
       <nav className="sidebar-nav">
         <ul className="nav-list">
           {menuItems
-            .filter((item) => !item.adminOnly || user?.is_admin)
+            .filter((item) => {
+              if (item.adminOnly && !user?.is_admin) return false
+              if (item.masterOnly && !user?.is_master) return false
+              return true
+            })
             .map((item) => {
               // Блокируем пункты меню, которые требуют активной подписки
               const isBlocked =
@@ -182,27 +187,6 @@ function Sidebar() {
             >
               <span className="nav-icon">💳</span>
               <span className="nav-label">Биллинг</span>
-            </Link>
-          </li>
-          
-          {/* Регистрация нового клиента */}
-          <li>
-            <Link
-              to="/register"
-              className={`nav-link ${
-                location.pathname === '/register' ? 'active' : ''
-              }`}
-            >
-              <span className="nav-icon">➕</span>
-              <span className="nav-label">Регистрация</span>
-            </Link>
-          </li>
-          
-          {/* Панель супер-админа (всегда видна) */}
-          <li>
-            <Link to="/super-admin/login" className="nav-link">
-              <span className="nav-icon">👑</span>
-              <span className="nav-label">Панель супер-админа</span>
             </Link>
           </li>
         </ul>

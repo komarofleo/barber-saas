@@ -4,7 +4,7 @@ from sqlalchemy import select, and_
 from typing import Optional
 from datetime import date
 
-from ..database import get_db
+from app.deps.tenant import get_tenant_db
 from .auth import get_current_user
 from shared.database.models import User, Promotion, Service
 from ..schemas.promotion import (
@@ -19,7 +19,7 @@ async def get_promotions(
     page_size: int = Query(20, ge=1, le=100),
     is_active: Optional[bool] = Query(None),
     service_id: Optional[int] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Получить список акций"""
@@ -65,14 +65,14 @@ async def get_promotions(
             if service:
                 promo_dict["service_name"] = service.name
         
-        items.append(PromotionResponse.model_validate(promo_dict))
+        items.append(PromotionResponse.model_validate(promotion_dict))
     
     return PromotionListResponse(items=items, total=total)
 
 @router.get("/active", response_model=PromotionListResponse)
 async def get_active_promotions(
     service_id: Optional[int] = Query(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_tenant_db)
 ):
     """Получить активные акции (публичный endpoint)"""
     today = date.today()
@@ -116,14 +116,14 @@ async def get_active_promotions(
             if service:
                 promo_dict["service_name"] = service.name
         
-        items.append(PromotionResponse.model_validate(promo_dict))
+        items.append(PromotionResponse.model_validate(promotion_dict))
     
     return PromotionListResponse(items=items, total=len(items))
 
 @router.post("", response_model=PromotionResponse, status_code=201)
 async def create_promotion(
     promo_data: PromotionCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Создать акцию"""
@@ -171,7 +171,7 @@ async def create_promotion(
 async def update_promotion(
     promotion_id: int,
     promo_data: PromotionUpdateRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Обновить акцию"""
@@ -216,7 +216,7 @@ async def update_promotion(
 @router.delete("/{promotion_id}", status_code=204)
 async def delete_promotion(
     promotion_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Удалить акцию"""

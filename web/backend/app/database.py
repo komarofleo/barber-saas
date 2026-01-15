@@ -31,6 +31,11 @@ async def get_db():
         yield session
 
 
+def get_async_session_maker():
+    """Получить async_session_maker для использования в Celery задачах"""
+    return async_session_maker
+
+
 
 
 

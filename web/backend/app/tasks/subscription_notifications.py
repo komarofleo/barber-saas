@@ -20,7 +20,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_async_session_maker
 from app.models.public_models import Company, Subscription, Plan
-from web.backend.app.api.bot_manager import get_bot_manager
+from aiogram import Bot
 
 logger = logging.getLogger(__name__)
 
@@ -145,8 +145,8 @@ def format_reminder_text(company_name: str, days_left: int, end_date: date) -> s
 
 # ==================== Celery задачи ====================
 
-@shared_task(name="tasks.send_reminder_7_days_before", bind=True)
-async def send_reminder_7_days_before():
+@shared_task(name="app.tasks.subscription_notifications.send_reminder_7_days_before", bind=True)
+def send_reminder_7_days_before():
     """
     Отправить напоминание за 7 дней до окончания подписки.
     
@@ -155,8 +155,19 @@ async def send_reminder_7_days_before():
     2. Для каждой компании проверить подписку
     3. Если до окончания ≤ 7 дней → отправить напоминание
     """
+    import asyncio
     logger.info("Запуск задачи: send_reminder_7_days_before")
     
+    try:
+        # Запускаем async функцию
+        return asyncio.run(_send_reminder_7_days_before_async())
+    except Exception as e:
+        logger.error(f"Ошибка в задаче send_reminder_7_days_before: {e}", exc_info=True)
+        raise
+
+
+async def _send_reminder_7_days_before_async():
+    """Асинхронная часть задачи send_reminder_7_days_before"""
     try:
         # Получаем активные компании
         companies = await get_active_companies()
@@ -179,61 +190,33 @@ async def send_reminder_7_days_before():
                     
                     # Отправляем напоминание, если осталось 7 дней или меньше
                     if days_left <= 7 and days_left > 0:
-                        # Получаем bot manager для получения токена бота
-                        bot_manager = get_bot_manager()
-                        bot_status = await bot_manager.get_bot_status(company.id)
-                        
-                        if bot_status.get("status") == "running" and company.admin_telegram_id:
+                        if company.admin_telegram_id and company.telegram_bot_token:
                             try:
-                                # Получаем токен бота компании
-                                result = await session.execute(
-                                    select(Company).where(Company.id == company.id)
-                                )
-                                company_obj = result.scalar_one_or_none()
+                                # Создаем бота с токеном компании
+                                bot = Bot(token=company.telegram_bot_token)
                                 
-                                if company_obj and company_obj.telegram_bot_token:
-                                    from aiogram import Bot
-                                    
-                                    bot = Bot(token=company_obj.telegram_bot_token)
-                                    
-                                    # Формируем текст напоминания
-                                    reminder_text = format_reminder_text(
-                                        company.name,
-                                        days_left,
-                                        subscription.end_date
-                                    )
-                                    
-                                    # Отправляем напоминание через Telegram Bot API
-                                    from web.backend.app.api.bot_manager import bot_manager
-                                    
-                                    # Получаем токен супер-админа
-                                    super_admin_token = None
-                                    
-                                    # Создаем запрос через HTTP к боту компании
-                                    import httpx
-                                    
-                                    response = await httpx.post(
-                                        f"http://localhost:8000/api/bot-manager/send-notification",
-                                        headers={
-                                            "Authorization": f"Bearer {super_admin_token}",
-                                            "Content-Type": "application/json"
-                                        },
-                                        json={
-                                            "company_id": company.id,
-                                            "message": reminder_text,
-                                            "target_chat_id": company.admin_telegram_id
-                                        }
-                                    )
-                                    
-                                    if response.status_code == 200:
-                                        logger.info(f"Напоминание отправлено компании {company.name} (за 7 дней)")
-                                        reminders_sent += 1
-                                    else:
-                                        logger.error(f"Ошибка отправки напоминания компании {company.name}: {response.status_code}")
+                                # Формируем текст напоминания
+                                reminder_text = format_reminder_text(
+                                    company.name,
+                                    days_left,
+                                    subscription.end_date
+                                )
+                                
+                                # Отправляем напоминание напрямую через Telegram Bot API
+                                await bot.send_message(
+                                    chat_id=company.admin_telegram_id,
+                                    text=reminder_text
+                                )
+                                
+                                logger.info(f"✅ Напоминание отправлено компании {company.name} (за 7 дней)")
+                                reminders_sent += 1
+                                
+                                # Закрываем сессию бота
+                                await bot.session.close()
                             except Exception as e:
-                                logger.error(f"Ошибка отправки напоминания компании {company.name}: {e}")
+                                logger.error(f"❌ Ошибка отправки напоминания компании {company.name}: {e}", exc_info=True)
                         else:
-                            logger.warning(f"Бот компании {company.name} не запущен или нет admin_telegram_id")
+                            logger.warning(f"⚠️ У компании {company.name} нет admin_telegram_id или telegram_bot_token")
                     else:
                         logger.info(f"У компании {company.name} подписка истекла или нет даты окончания")
         
@@ -241,11 +224,11 @@ async def send_reminder_7_days_before():
         return f"Отправлено {reminders_sent} напоминаний"
     
     except Exception as e:
-        logger.error(f"Ошибка в задаче send_reminder_7_days_before: {e}", exc_info=True)
+        logger.error(f"Ошибка в _send_reminder_7_days_before_async: {e}", exc_info=True)
         raise
 
 
-@shared_task(name="tasks.send_reminder_3_days_before", bind=True)
+@shared_task(name="app.tasks.subscription_notifications.send_reminder_3_days_before", bind=True)
 async def send_reminder_3_days_before():
     """
     Отправить напоминание за 3 дня до окончания подписки.
@@ -279,55 +262,29 @@ async def send_reminder_3_days_before():
                     
                     # Отправляем напоминание, если осталось 3 дня или меньше
                     if days_left <= 3 and days_left > 0:
-                        # Получаем bot manager
-                        bot_manager = get_bot_manager()
-                        bot_status = await bot_manager.get_bot_status(company.id)
-                        
-                        if bot_status.get("status") == "running" and company.admin_telegram_id:
+                        if company.admin_telegram_id and company.telegram_bot_token:
                             try:
-                                from aiogram import Bot
+                                bot = Bot(token=company.telegram_bot_token)
                                 
-                                # Получаем токен бота
-                                result = await session.execute(
-                                    select(Company).where(Company.id == company.id)
+                                reminder_text = format_reminder_text(
+                                    company.name,
+                                    days_left,
+                                    subscription.end_date
                                 )
-                                company_obj = result.scalar_one_or_none()
                                 
-                                if company_obj and company_obj.telegram_bot_token:
-                                    bot = Bot(token=company_obj.telegram_bot_token)
-                                    
-                                    # Формируем текст напоминания
-                                    reminder_text = format_reminder_text(
-                                        company.name,
-                                        days_left,
-                                        subscription.end_date
-                                    )
-                                    
-                                    # Отправляем через HTTP
-                                    import httpx
-                                    
-                                    response = await httpx.post(
-                                        f"http://localhost:8000/api/bot-manager/send-notification",
-                                        headers={
-                                            "Authorization": f"Bearer {None}",
-                                            "Content-Type": "application/json"
-                                        },
-                                        json={
-                                            "company_id": company.id,
-                                            "message": reminder_text,
-                                            "target_chat_id": company.admin_telegram_id
-                                        }
-                                    )
-                                    
-                                    if response.status_code == 200:
-                                        logger.info(f"Напоминание отправлено компании {company.name} (за 3 дня)")
-                                        reminders_sent += 1
-                                    else:
-                                        logger.error(f"Ошибка отправки напоминания компании {company.name}: {response.status_code}")
+                                await bot.send_message(
+                                    chat_id=company.admin_telegram_id,
+                                    text=reminder_text
+                                )
+                                
+                                logger.info(f"✅ Напоминание отправлено компании {company.name} (за 3 дня)")
+                                reminders_sent += 1
+                                
+                                await bot.session.close()
                             except Exception as e:
-                                logger.error(f"Ошибка отправки напоминания компании {company.name}: {e}")
+                                logger.error(f"❌ Ошибка отправки напоминания компании {company.name}: {e}", exc_info=True)
                         else:
-                            logger.warning(f"Бот компании {company.name} не запущен или нет admin_telegram_id")
+                            logger.warning(f"⚠️ У компании {company.name} нет admin_telegram_id или telegram_bot_token")
                     else:
                         logger.info(f"У компании {company.name} подписка истекла или нет даты окончания")
         
@@ -335,12 +292,12 @@ async def send_reminder_3_days_before():
         return f"Отправлено {reminders_sent} напоминаний"
     
     except Exception as e:
-        logger.error(f"Ошибка в задаче send_reminder_3_days_before: {e}", exc_info=True)
+        logger.error(f"Ошибка в _send_reminder_3_days_before_async: {e}", exc_info=True)
         raise
 
 
-@shared_task(name="tasks.send_reminder_1_day_before", bind=True)
-async def send_reminder_1_day_before():
+@shared_task(name="app.tasks.subscription_notifications.send_reminder_1_day_before", bind=True)
+def send_reminder_1_day_before():
     """
     Отправить напоминание за 1 день до окончания подписки.
     
@@ -349,8 +306,18 @@ async def send_reminder_1_day_before():
     2. Для каждой компании проверить подписку
     3. Если до окончания ≤ 1 день → отправить напоминание
     """
+    import asyncio
     logger.info("Запуск задачи: send_reminder_1_day_before")
     
+    try:
+        return asyncio.run(_send_reminder_1_day_before_async())
+    except Exception as e:
+        logger.error(f"Ошибка в задаче send_reminder_1_day_before: {e}", exc_info=True)
+        raise
+
+
+async def _send_reminder_1_day_before_async():
+    """Асинхронная часть задачи send_reminder_1_day_before"""
     try:
         # Получаем активные компании
         companies = await get_active_companies()
@@ -373,25 +340,11 @@ async def send_reminder_1_day_before():
                     
                     # Отправляем напоминание, если остался 1 день или сегодня
                     if days_left <= 1:
-                        # Получаем bot manager
-                        bot_manager = get_bot_manager()
-                        bot_status = await bot_manager.get_bot_status(company.id)
-                        
-                        if bot_status.get("status") == "running" and company.admin_telegram_id:
+                        if company.admin_telegram_id and company.telegram_bot_token:
                             try:
-                                from aiogram import Bot
+                                bot = Bot(token=company.telegram_bot_token)
                                 
-                                # Получаем токен бота
-                                result = await session.execute(
-                                    select(Company).where(Company.id == company.id)
-                                )
-                                company_obj = result.scalar_one_or_none()
-                                
-                                if company_obj and company_obj.telegram_bot_token:
-                                    bot = Bot(token=company_obj.telegram_bot_token)
-                                    
-                                    # Формируем текст напоминания
-                                    reminder_text = f"""🚨 **Последний день!**
+                                reminder_text = f"""🚨 Последний день!
 
 💼 Компания: {company.name}
 
@@ -402,32 +355,20 @@ async def send_reminder_1_day_before():
 ⚠️ Срочно продлите подписку!
 
 🔗 Для оплаты перейдите в админ-панель."""
-                                    
-                                    # Отправляем через HTTP
-                                    import httpx
-                                    
-                                    response = await httpx.post(
-                                        f"http://localhost:8000/api/bot-manager/send-notification",
-                                        headers={
-                                            "Authorization": f"Bearer {None}",
-                                            "Content-Type": "application/json"
-                                        },
-                                        json={
-                                            "company_id": company.id,
-                                            "message": reminder_text,
-                                            "target_chat_id": company.admin_telegram_id
-                                        }
-                                    )
-                                    
-                                    if response.status_code == 200:
-                                        logger.info(f"Напоминание отправлено компании {company.name} (за 1 день)")
-                                        reminders_sent += 1
-                                    else:
-                                        logger.error(f"Ошибка отправки напоминания компании {company.name}: {response.status_code}")
+                                
+                                await bot.send_message(
+                                    chat_id=company.admin_telegram_id,
+                                    text=reminder_text
+                                )
+                                
+                                logger.info(f"✅ Напоминание отправлено компании {company.name} (за 1 день)")
+                                reminders_sent += 1
+                                
+                                await bot.session.close()
                             except Exception as e:
-                                logger.error(f"Ошибка отправки напоминания компании {company.name}: {e}")
+                                logger.error(f"❌ Ошибка отправки напоминания компании {company.name}: {e}", exc_info=True)
                         else:
-                            logger.warning(f"Бот компании {company.name} не запущен или нет admin_telegram_id")
+                            logger.warning(f"⚠️ У компании {company.name} нет admin_telegram_id или telegram_bot_token")
                     else:
                         logger.info(f"У компании {company.name} подписка истекла или нет даты окончания")
         
@@ -435,11 +376,11 @@ async def send_reminder_1_day_before():
         return f"Отправлено {reminders_sent} напоминаний"
     
     except Exception as e:
-        logger.error(f"Ошибка в задаче send_reminder_1_day_before: {e}", exc_info=True)
+        logger.error(f"Ошибка в _send_reminder_1_day_before_async: {e}", exc_info=True)
         raise
 
 
-@shared_task(name="tasks.send_reminder_expiration", bind=True)
+@shared_task(name="app.tasks.subscription_notifications.send_reminder_expiration", bind=True)
 async def send_reminder_expiration():
     """
     Отправить напоминание об окончании подписки.
@@ -473,25 +414,11 @@ async def send_reminder_expiration():
                     
                     # Отправляем напоминание, если подписка истекла сегодня
                     if days_left <= 0:
-                        # Получаем bot manager
-                        bot_manager = get_bot_manager()
-                        bot_status = await bot_manager.get_bot_status(company.id)
-                        
-                        if bot_status.get("status") == "running" and company.admin_telegram_id:
+                        if company.admin_telegram_id and company.telegram_bot_token:
                             try:
-                                from aiogram import Bot
+                                bot = Bot(token=company.telegram_bot_token)
                                 
-                                # Получаем токен бота
-                                result = await session.execute(
-                                    select(Company).where(Company.id == company.id)
-                                )
-                                company_obj = result.scalar_one_or_none()
-                                
-                                if company_obj and company_obj.telegram_bot_token:
-                                    bot = Bot(token=company_obj.telegram_bot_token)
-                                    
-                                    # Формируем текст напоминания
-                                    reminder_text = f"""🚫 **Подписка истекла!**
+                                reminder_text = f"""🚫 Подписка истекла!
 
 💼 Компания: {company.name}
 
@@ -501,34 +428,21 @@ async def send_reminder_expiration():
 
 ⚠️ Сервис создания записей заблокирован!
 
-🔗 Для продления подписки перейдите в админ-панель:
-https://barber-saas.com/admin/billing"""
-                                    
-                                    # Отправляем через HTTP
-                                    import httpx
-                                    
-                                    response = await httpx.post(
-                                        f"http://localhost:8000/api/bot-manager/send-notification",
-                                        headers={
-                                            "Authorization": f"Bearer {None}",
-                                            "Content-Type": "application/json"
-                                        },
-                                        json={
-                                            "company_id": company.id,
-                                            "message": reminder_text,
-                                            "target_chat_id": company.admin_telegram_id
-                                        }
-                                    )
-                                    
-                                    if response.status_code == 200:
-                                        logger.info(f"Напоминание об окончании отправлено компании {company.name}")
-                                        reminders_sent += 1
-                                    else:
-                                        logger.error(f"Ошибка отправки напоминания компании {company.name}: {response.status_code}")
+🔗 Для продления подписки перейдите в админ-панель."""
+                                
+                                await bot.send_message(
+                                    chat_id=company.admin_telegram_id,
+                                    text=reminder_text
+                                )
+                                
+                                logger.info(f"✅ Напоминание об окончании отправлено компании {company.name}")
+                                reminders_sent += 1
+                                
+                                await bot.session.close()
                             except Exception as e:
-                                logger.error(f"Ошибка отправки напоминания компании {company.name}: {e}")
+                                logger.error(f"❌ Ошибка отправки напоминания компании {company.name}: {e}", exc_info=True)
                         else:
-                            logger.warning(f"Бот компании {company.name} не запущен или нет admin_telegram_id")
+                            logger.warning(f"⚠️ У компании {company.name} нет admin_telegram_id или telegram_bot_token")
                     else:
                         logger.info(f"У компании {company.name} подписка неактивна или нет даты окончания")
         
@@ -536,12 +450,12 @@ https://barber-saas.com/admin/billing"""
         return f"Отправлено {reminders_sent} напоминаний"
     
     except Exception as e:
-        logger.error(f"Ошибка в задаче send_reminder_expiration: {e}", exc_info=True)
+        logger.error(f"Ошибка в _send_reminder_expiration_async: {e}", exc_info=True)
         raise
 
 
-@shared_task(name="tasks.send_payment_reminder", bind=True)
-async def send_payment_reminder():
+@shared_task(name="app.tasks.subscription_notifications.send_payment_reminder", bind=True)
+def send_payment_reminder():
     """
     Отправить напоминание о неоплате (каждые 3 дня после окончания).
     
@@ -550,8 +464,18 @@ async def send_payment_reminder():
     2. Проверяем, прошло ли 3 дня с момента окончания
     3. Если прошло → отправить напоминание о неоплате
     """
+    import asyncio
     logger.info("Запуск задачи: send_payment_reminder")
     
+    try:
+        return asyncio.run(_send_payment_reminder_async())
+    except Exception as e:
+        logger.error(f"Ошибка в задаче send_payment_reminder: {e}", exc_info=True)
+        raise
+
+
+async def _send_payment_reminder_async():
+    """Асинхронная часть задачи send_payment_reminder"""
     try:
         # Получаем активные компании
         companies = await get_active_companies()
@@ -575,25 +499,11 @@ async def send_payment_reminder():
                     # Отправляем напоминание, если прошло 3 дня после окончания
                     # и если прошло 6, 9, 12 дней (кратные 3 дня)
                     if days_passed >= 3 and days_passed % 3 == 0:
-                        # Получаем bot manager
-                        bot_manager = get_bot_manager()
-                        bot_status = await bot_manager.get_bot_status(company.id)
-                        
-                        if bot_status.get("status") == "running" and company.admin_telegram_id:
+                        if company.admin_telegram_id and company.telegram_bot_token:
                             try:
-                                from aiogram import Bot
+                                bot = Bot(token=company.telegram_bot_token)
                                 
-                                # Получаем токен бота
-                                result = await session.execute(
-                                    select(Company).where(Company.id == company.id)
-                                )
-                                company_obj = result.scalar_one_or_none()
-                                
-                                if company_obj and company_obj.telegram_bot_token:
-                                    bot = Bot(token=company_obj.telegram_bot_token)
-                                    
-                                    # Формируем текст напоминания
-                                    reminder_text = f"""📢 **Напоминание о неоплате**
+                                reminder_text = f"""📢 Напоминание о неоплате
 
 💼 Компания: {company.name}
 
@@ -603,36 +513,23 @@ async def send_payment_reminder():
 
 ⚠️ Сервис создания записей заблокирован!
 
-🔗 Для продления подписки перейдите в админ-панель:
-https://barber-saas.com/admin/billing
+🔗 Для продления подписки перейдите в админ-панель.
 
 📞 Пожалуйста, продлите подписку как можно скорее!"""
-                                    
-                                    # Отправляем через HTTP
-                                    import httpx
-                                    
-                                    response = await httpx.post(
-                                        f"http://localhost:8000/api/bot-manager/send-notification",
-                                        headers={
-                                            "Authorization": f"Bearer {None}",
-                                            "Content-Type": "application/json"
-                                        },
-                                        json={
-                                            "company_id": company.id,
-                                            "message": reminder_text,
-                                            "target_chat_id": company.admin_telegram_id
-                                        }
-                                    )
-                                    
-                                    if response.status_code == 200:
-                                        logger.info(f"Напоминание о неоплате отправлено компании {company.name}")
-                                        reminders_sent += 1
-                                    else:
-                                        logger.error(f"Ошибка отправки напоминания компании {company.name}: {response.status_code}")
+                                
+                                await bot.send_message(
+                                    chat_id=company.admin_telegram_id,
+                                    text=reminder_text
+                                )
+                                
+                                logger.info(f"✅ Напоминание о неоплате отправлено компании {company.name}")
+                                reminders_sent += 1
+                                
+                                await bot.session.close()
                             except Exception as e:
-                                logger.error(f"Ошибка отправки напоминания компании {company.name}: {e}")
+                                logger.error(f"❌ Ошибка отправки напоминания компании {company.name}: {e}", exc_info=True)
                         else:
-                            logger.warning(f"Бот компании {company.name} не запущен или нет admin_telegram_id")
+                            logger.warning(f"⚠️ У компании {company.name} нет admin_telegram_id или telegram_bot_token")
                     else:
                         logger.info(f"У компании {company.name} подписка неактивна или нет даты окончания")
         
@@ -640,5 +537,5 @@ https://barber-saas.com/admin/billing
         return f"Отправлено {reminders_sent} напоминаний"
     
     except Exception as e:
-        logger.error(f"Ошибка в задаче send_payment_reminder: {e}", exc_info=True)
+        logger.error(f"Ошибка в _send_payment_reminder_async: {e}", exc_info=True)
         raise

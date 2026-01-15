@@ -20,7 +20,7 @@ from app.tasks.subscription_notifications import (
 )
 from app.tasks.notifications import (
     send_reminder_day_before_task,
-    send_reminder_hour_before_task,
+    send_reminder_3_hours_before_task,
     send_work_orders_to_masters_task,
     notify_admin_new_bookings_task
 )
@@ -92,13 +92,13 @@ schedule_reminder_1_day_booking = {
     }
 }
 
-# Напоминания за 1 час до записи
-# Запускается каждый день с 09:00 до 20:00 каждые 10 минут
-schedule_reminder_1_hour_booking = {
-    'task': 'app.tasks.notifications.send_reminder_hour_before_task',
-    'schedule': crontab(minute='*/10', hour='9-20'),  # Каждые 10 минут с 09:00 до 20:00
+# Напоминания за 3 часа до записи
+# Запускается каждый час с 06:00 до 21:00
+schedule_reminder_3_hours_booking = {
+    'task': 'app.tasks.notifications.send_reminder_3_hours_before_task',
+    'schedule': crontab(minute='*/5', hour='6-21'),  # Каждые 5 минут с 06:00 до 21:00
     'options': {
-        'expires': 7200,  # 2 часа (task expires)
+        'expires': 600,  # 10 минут (task expires)
     }
 }
 
@@ -133,8 +133,9 @@ beat_schedule = {
     'subscription-payment-failed': schedule_failed_payment,
     
     # Существующие задачи для записей
-    'booking-reminder-1-day': schedule_reminder_1_day_booking,
-    'booking-reminder-1-hour': schedule_reminder_1_hour_booking,
+    # Напоминания теперь планируются при подтверждении записи (отложенные задачи), а не периодически
+    # 'booking-reminder-1-day': schedule_reminder_1_day_booking,  # Отключено - используем отложенные задачи
+    # 'booking-reminder-3-hours': schedule_reminder_3_hours_booking,  # Отключено - используем отложенные задачи
     'work-orders': schedule_work_orders,
     'admin-new-bookings': schedule_admin_new_bookings,
 }
@@ -182,10 +183,10 @@ beat_schedule = {
    • Описание: Напоминания за 1 день до записи
    • Затратность: ~2-3 минуты
 
-7. send_reminder_hour_before_task
-   • Частота: Каждые 10 минут с 09:00 до 20:00
-   • Описание: Напоминания за 1 час до записи
-   • Затратность: ~5-10 минут в час
+7. send_reminder_3_hours_before_task
+   • Частота: Каждые 5 минут с 06:00 до 21:00
+   • Описание: Напоминания за 3 часа до записи с кнопками подтверждения/отказа (отправляется один раз для каждой записи)
+   • Затратность: ~1-2 минуты каждые 5 минут
 
 8. send_work_orders_to_masters_task
    • Частота: Ежедневно в 08:00

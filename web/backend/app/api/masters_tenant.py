@@ -10,13 +10,11 @@ from datetime import datetime
 from typing import Optional, Annotated
 from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, text
+from sqlalchemy import select, and_, or_, func, text, delete
 from sqlalchemy.orm import selectinload
-from jose import jwt
-from app.config import settings
 
-from app.database import get_db
 from app.api.auth import get_current_user
+from app.deps.tenant import get_tenant_db
 from app.schemas.master import (
     MasterResponse, MasterListResponse,
     MasterCreateRequest, MasterUpdateRequest
@@ -24,33 +22,8 @@ from app.schemas.master import (
 from app.schemas.booking import BookingResponse
 from datetime import date
 from shared.database.models import User, Master, Booking
-from app.services.tenant_service import get_tenant_service
 
 router = APIRouter(prefix="/api/masters", tags=["masters"])
-
-from app.schemas.booking import BookingResponse
-
-
-async def get_company_id_from_token(request: Request) -> Optional[int]:
-    """Получить company_id из JWT токена"""
-    try:
-        # Извлекаем токен напрямую из заголовков
-        authorization = request.headers.get("Authorization")
-        if not authorization or not authorization.startswith("Bearer "):
-            return None
-        
-        token = authorization.replace("Bearer ", "")
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        company_id = payload.get("company_id")
-        if company_id:
-            return int(company_id)
-        return None
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Не удалось получить company_id из токена: {e}")
-        return None
-
 
 @router.get("", response_model=MasterListResponse)
 async def get_masters(
@@ -59,8 +32,7 @@ async def get_masters(
     page_size: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -75,19 +47,6 @@ async def get_masters(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать мастеров")
-    
-    # Получаем company_id из токена, если не передан в query параметрах
-    if not company_id:
-        company_id = await get_company_id_from_token(request)
-    
-    if not company_id:
-        raise HTTPException(status_code=400, detail="company_id не найден. Необходимо указать company_id в query параметрах или войти как пользователь компании.")
-    
-    schema_name = f"tenant_{company_id}"
-    
-    # Устанавливаем search_path для tenant схемы
-    await db.execute(text(f'SET search_path TO "{schema_name}", public'))
-    tenant_session = db
     
     query = select(Master)
     
@@ -107,7 +66,10 @@ async def get_masters(
     result = await tenant_session.execute(query)
     masters = result.scalars().all()
     
-    print(f"📊 Запрос мастеров: total={total}, page={page}, page_size={page_size}, company_id={company_id}")
+    company_id = getattr(request.state, "company_id", None)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"📊 Запрос мастеров: total={total}, page={page}, page_size={page_size}, company_id={company_id}")
     
     # Формируем ответы с дополнительными данными
     items = []
@@ -143,8 +105,8 @@ async def get_masters(
 @router.get("/{master_id}", response_model=MasterResponse)
 async def get_master(
     master_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -156,13 +118,7 @@ async def get_master(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать мастеров")
-    
-    # Используем обычную сессию db, но устанавливаем search_path для tenant схемы
-    tenant_session = db
-    if company_id:
-        # Устанавливаем search_path для tenant схемы
-        await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
-    
+
     query = select(Master).where(Master.id == master_id)
     result = await tenant_session.execute(query)
     master = result.scalar_one_or_none()
@@ -170,7 +126,8 @@ async def get_master(
     if not master:
         raise HTTPException(status_code=404, detail="Мастер не найден")
     
-    print(f"🔍 Запрос мастера: master_id={master_id}, company_id={company_id}")
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"🔍 Запрос мастера: master_id={master_id}, company_id={company_id}")
     
     # Считаем количество записей для мастера
     booking_count = await tenant_session.scalar(
@@ -187,7 +144,6 @@ async def get_master(
         "booking_count": booking_count or 0,
         "created_at": master.created_at,
         "updated_at": master.updated_at,
-        "company_id": company_id,
     }
     
     return MasterResponse.model_validate(master_dict)
@@ -196,8 +152,8 @@ async def get_master(
 @router.post("", response_model=MasterResponse, status_code=201)
 async def create_master(
     master_data: MasterCreateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -209,17 +165,6 @@ async def create_master(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать мастеров")
-    
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
     
     # Проверяем, существует ли мастер с таким именем
     existing_master = await tenant_session.execute(
@@ -246,7 +191,8 @@ async def create_master(
     await tenant_session.commit()
     await tenant_session.refresh(master)
     
-    print(f"✅ Создан мастер: name={master.full_name}, phone={master.phone}")
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"✅ Создан мастер: name={master.full_name}, phone={master.phone}, company_id={company_id}")
     
     # Отправляем уведомление
     # TODO: Создать Celery задачу для уведомления о новом мастере
@@ -261,7 +207,6 @@ async def create_master(
         "booking_count": 0,
         "created_at": master.created_at,
         "updated_at": master.updated_at,
-        "company_id": company_id,
     }
     
     return MasterResponse.model_validate(master_dict)
@@ -271,8 +216,8 @@ async def create_master(
 async def update_master(
     master_id: int,
     master_data: MasterUpdateRequest,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -286,17 +231,6 @@ async def update_master(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять мастеров")
     
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
-    
     # Проверяем существование мастера
     query = select(Master).where(Master.id == master_id)
     result = await tenant_session.execute(query)
@@ -305,28 +239,21 @@ async def update_master(
     if not master:
         raise HTTPException(status_code=404, detail="Мастер не найден")
     
-    # Обновляем поля
-    update_data = {}
     if master_data.full_name is not None:
-        update_data["full_name"] = master_data.full_name
+        master.full_name = master_data.full_name
     if master_data.phone is not None:
-        update_data["phone"] = master_data.phone
+        master.phone = master_data.phone
     if master_data.specialization is not None:
-        update_data["specialization"] = master_data.specialization
+        master.specialization = master_data.specialization
     if master_data.is_active is not None:
-        update_data["is_active"] = master_data.is_active
+        master.is_active = master_data.is_active
     
     master.updated_at = datetime.utcnow()
-    update_data["updated_at"] = master.updated_at
-    
-    # Выполняем обновление
-    await tenant_session.execute(
-        select(Master).where(Master.id == master_id).values(**update_data)
-    )
     await tenant_session.commit()
     await tenant_session.refresh(master)
     
-    print(f"✅ Обновлен мастер: master_id={master_id}, name={master_data.full_name if master_data.full_name else master.full_name}")
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"✅ Обновлен мастер: master_id={master_id}, company_id={company_id}")
     
     # Формируем ответ
     booking_count = await tenant_session.scalar(
@@ -342,7 +269,6 @@ async def update_master(
         "booking_count": booking_count or 0,
         "created_at": master.created_at,
         "updated_at": master.updated_at,
-        "company_id": company_id,
     }
     
     return MasterResponse.model_validate(master_dict)
@@ -351,8 +277,8 @@ async def update_master(
 @router.delete("/{master_id}", status_code=204)
 async def delete_master(
     master_id: int,
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -364,17 +290,6 @@ async def delete_master(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут удалять мастеров")
-    
-    # Получаем tenant сессию для компании (если указана)
-    tenant_session = None
-    if company_id:
-        tenant_service = get_tenant_service()
-        async for session in tenant_service.get_tenant_session(company_id):
-            tenant_session = session
-            break
-    else:
-        # Для публичного API используем обычную сессию
-        tenant_session = db
     
     # Проверяем существование мастера
     query = select(Master).where(Master.id == master_id)
@@ -396,12 +311,11 @@ async def delete_master(
         )
     
     # Удаляем мастера
-    await tenant_session.execute(
-        delete(Master).where(Master.id == master_id)
-    )
+    await tenant_session.execute(delete(Master).where(Master.id == master_id))
     await tenant_session.commit()
     
-    print(f"✅ Удален мастер: master_id={master_id}, name={master.full_name}")
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"✅ Удален мастер: master_id={master_id}, company_id={company_id}")
     
     return None
 
@@ -411,27 +325,10 @@ async def get_master_schedule(
     request: Request,
     master_id: int,
     schedule_date: date = Query(..., alias="date"),
-    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
-    db: AsyncSession = Depends(get_db),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Получить расписание мастера на дату (лист-наряд)"""
-    if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Только администраторы могут просматривать расписание")
-    
-    # Получаем company_id из токена, если не передан в query параметрах
-    if not company_id:
-        company_id = await get_company_id_from_token(request)
-    
-    if not company_id:
-        raise HTTPException(status_code=400, detail="company_id не найден. Необходимо указать company_id в query параметрах или войти как пользователь компании.")
-    
-    schema_name = f"tenant_{company_id}"
-    
-    # Устанавливаем search_path для tenant схемы
-    await db.execute(text(f'SET search_path TO "{schema_name}", public'))
-    tenant_session = db
-    
+    """Получить расписание мастера на дату (список записей на день)"""
     # Проверяем существование мастера
     master_query = select(Master).where(Master.id == master_id)
     master_result = await tenant_session.execute(master_query)
@@ -440,18 +337,24 @@ async def get_master_schedule(
     if not master:
         raise HTTPException(status_code=404, detail="Мастер не найден")
     
+    # Проверяем права доступа: админ может видеть любое расписание, мастер - только свое
+    if not current_user.is_admin:
+        # Если пользователь не админ, проверяем, что он является этим мастером
+        if master.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Вы можете просматривать только свое расписание")
+    
     # Получаем записи мастера на дату через прямой SQL
-    bookings_query = text(f"""
+    bookings_query = text("""
         SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
                b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
                b.payment_method, b.comment, b.admin_comment, b.created_at,
                b.confirmed_at, b.completed_at, b.cancelled_at,
                c.full_name as client_name, c.phone as client_phone,
                s.name as service_name, p.number as post_number
-        FROM "{schema_name}".bookings b
-        LEFT JOIN "{schema_name}".clients c ON b.client_id = c.id
-        LEFT JOIN "{schema_name}".services s ON b.service_id = s.id
-        LEFT JOIN "{schema_name}".posts p ON b.post_id = p.id
+        FROM bookings b
+        LEFT JOIN clients c ON b.client_id = c.id
+        LEFT JOIN services s ON b.service_id = s.id
+        LEFT JOIN posts p ON b.post_id = p.id
         WHERE b.master_id = :master_id
           AND b.date = :schedule_date
           AND b.status IN ('confirmed', 'new')
@@ -505,5 +408,110 @@ async def get_master_schedule(
         "master_name": master.full_name,
         "date": schedule_date.isoformat(),
         "bookings": items
+    }
+
+
+@router.get("/work-orders/all")
+async def get_all_work_orders(
+    request: Request,
+    schedule_date: date = Query(..., alias="date"),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Получить все лист-наряды всех мастеров на дату (только для админов)"""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администраторы могут просматривать все лист-наряды")
+    
+    # Получаем все записи на дату через прямой SQL
+    # Показываем все записи (как в календаре), но группируем по мастерам
+    # Записи без мастера будут в отдельной группе "Без мастера"
+    bookings_query = text("""
+        SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
+               b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+               b.payment_method, b.comment, b.admin_comment, b.created_at,
+               b.confirmed_at, b.completed_at, b.cancelled_at,
+               c.full_name as client_name, c.phone as client_phone,
+               s.name as service_name, p.number as post_number,
+               COALESCE(m.full_name, 'Без мастера') as master_name
+        FROM bookings b
+        LEFT JOIN clients c ON b.client_id = c.id
+        LEFT JOIN services s ON b.service_id = s.id
+        LEFT JOIN posts p ON b.post_id = p.id
+        LEFT JOIN masters m ON b.master_id = m.id
+        WHERE b.date = :schedule_date
+        ORDER BY 
+          CASE WHEN m.full_name IS NULL THEN 1 ELSE 0 END,
+          m.full_name ASC NULLS LAST, 
+          b.time ASC
+    """)
+    
+    bookings_result = await tenant_session.execute(
+        bookings_query,
+        {"schedule_date": schedule_date}
+    )
+    bookings_rows = bookings_result.fetchall()
+    
+    # Формируем ответ, группируя по мастерам
+    masters_dict: dict[int, dict] = {}
+    
+    for row in bookings_rows:
+        # Правильная индексация полей из SELECT запроса:
+        # 0: b.id, 1: booking_number, 2: client_id, 3: service_id, 4: master_id, 5: post_id,
+        # 6: date, 7: time, 8: duration, 9: end_time, 10: status, 11: amount, 12: is_paid,
+        # 13: payment_method, 14: comment, 15: admin_comment, 16: created_at,
+        # 17: confirmed_at, 18: completed_at, 19: cancelled_at,
+        # 20: client_name, 21: client_phone, 22: service_name, 23: post_number, 24: master_name
+        master_id = row[4]  # b.master_id (может быть None)
+        master_name = row[24] if len(row) > 24 else "Без мастера"  # COALESCE(m.full_name, 'Без мастера')
+        
+        # Используем специальный ключ для записей без мастера
+        dict_key = master_id if master_id is not None else -1
+        
+        if dict_key not in masters_dict:
+            masters_dict[dict_key] = {
+                "master_id": master_id,
+                "master_name": str(master_name) if master_name else "Без мастера",
+                "bookings": []
+            }
+        
+        booking_dict = {
+            "id": row[0],
+            "booking_number": row[1],
+            "client_id": row[2],
+            "service_id": row[3],
+            "master_id": row[4],
+            "post_id": row[5],
+            "date": row[6],
+            "time": row[7],
+            "duration": row[8],
+            "end_time": row[9],
+            "status": row[10],
+            "amount": row[11],
+            "is_paid": row[12] or False,
+            "payment_method": row[13],
+            "comment": row[14],
+            "admin_comment": row[15],
+            "created_at": row[16],
+            "confirmed_at": row[17],
+            "completed_at": row[18],
+            "cancelled_at": row[19],
+            "client_name": row[20],
+            "client_phone": row[21],
+            "client_telegram_id": None,
+            "client_car_brand": None,
+            "client_car_model": None,
+            "service_name": row[22],
+            "master_name": str(master_name) if master_name else "Неизвестный мастер",
+            "post_number": row[23] if row[23] is not None else None,  # p.number as post_number
+        }
+        
+        masters_dict[dict_key]["bookings"].append(BookingResponse.model_validate(booking_dict))
+    
+    # Преобразуем в список
+    masters_list = list(masters_dict.values())
+    
+    return {
+        "date": schedule_date.isoformat(),
+        "masters": masters_list
     }
 

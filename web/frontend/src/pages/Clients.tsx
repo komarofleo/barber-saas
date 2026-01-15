@@ -183,24 +183,8 @@ function Clients() {
           onClose={() => setShowSuccessNotification(false)}
         />
       )}
-      <div className="page-header">
-        <div>
-          <h1>Клиенты</h1>
-        </div>
-        <button 
-          className="btn-primary" 
-          onClick={() => {
-            if (selectedClientsForBroadcast.length > 0) {
-              setShowBroadcastModal(true)
-            } else {
-              alert('Выберите клиентов для рассылки (чекбоксы в таблице)')
-            }
-          }}
-          disabled={selectedClientsForBroadcast.length === 0}
-          style={{ opacity: selectedClientsForBroadcast.length === 0 ? 0.5 : 1 }}
-        >
-          📧 Рассылка ({selectedClientsForBroadcast.length})
-        </button>
+      <div className="page-header-simple">
+        <h1>Клиенты</h1>
       </div>
 
       <div className="clients-filters">

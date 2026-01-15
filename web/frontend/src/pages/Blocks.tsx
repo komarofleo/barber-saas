@@ -86,10 +86,8 @@ function Blocks() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1>Блокировки</h1>
-        </div>
+      <div className="page-header-simple">
+        <h1>Блокировки</h1>
         <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
           + Добавить блокировку
         </button>

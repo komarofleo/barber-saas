@@ -34,9 +34,27 @@ def get_company_id_from_message(message: Message) -> Optional[int]:
 
 
 async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
-    """Отправить уведомление администраторам о новой записи"""
+    """Отправить уведомление администраторам о новой записи
+    
+    Args:
+        bot: Экземпляр Telegram бота
+        booking: Объект записи
+        service: Объект услуги
+    
+    Логирует:
+        - company_id, booking_id на каждом этапе
+        - Список найденных админов с их telegram_id
+        - Результат отправки каждому админу
+        - Причины ошибок при отправке
+    """
     import logging
+    from sqlalchemy import text
+    from bot.database.connection import get_session
+    
     logger = logging.getLogger(__name__)
+    
+    logger.info(f"📤 [NOTIFY_ADMIN] === НАЧАЛО ОТПРАВКИ УВЕДОМЛЕНИЯ АДМИНАМ ===")
+    logger.info(f"📤 [NOTIFY_ADMIN] booking_id={booking.id if booking else None}, booking_number={booking.booking_number if booking else None}")
     
     try:
         # Получаем company_id из booking (если есть) или из токена бота
@@ -44,6 +62,7 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
         try:
             from bot.database.connection import async_session_maker
             bot_token = bot.token
+            logger.info(f"📤 [NOTIFY_ADMIN] Получаем company_id для токена: {bot_token[:10]}...")
             async with async_session_maker() as temp_session:
                 result = await temp_session.execute(
                     text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
@@ -53,11 +72,14 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
                 if row:
                     company_id = row[0]
                     logger.info(f"✅ [NOTIFY_ADMIN] Найден company_id: {company_id}")
+                else:
+                    logger.error(f"❌ [NOTIFY_ADMIN] Компания с таким токеном не найдена!")
         except Exception as e:
             logger.error(f"❌ [NOTIFY_ADMIN] Ошибка получения company_id: {e}", exc_info=True)
         
         if not company_id:
-            logger.error("❌ [NOTIFY_ADMIN] Не удалось получить company_id!")
+            logger.error(f"❌ [NOTIFY_ADMIN] === ОШИБКА: НЕ УДАЛОСЬ ПОЛУЧИТЬ company_id ===")
+            logger.error(f"❌ [NOTIFY_ADMIN] booking_id={booking.id if booking else None}")
             return
         
         async for session in get_session():
@@ -108,6 +130,9 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
             service_row = service_result.fetchone()
             
             # Получаем всех администраторов с Telegram ID (в tenant схемах используется role='admin')
+            logger.info(f"📤 [NOTIFY_ADMIN] Ищем администраторов в tenant_{company_id}.users")
+            logger.info(f"📤 [NOTIFY_ADMIN] Условия: role='admin' AND telegram_id IS NOT NULL")
+            
             admins_result = await session.execute(
                 text(f"""
                     SELECT id, telegram_id, username, full_name, phone, role
@@ -116,6 +141,7 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
                 """)
             )
             admin_rows = admins_result.fetchall()
+            
             # Создаем объекты User для совместимости
             admins = []
             for row in admin_rows:
@@ -128,12 +154,16 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
                 user.role = row[5]
                 user.is_admin = True
                 admins.append(user)
+                logger.info(f"📤 [NOTIFY_ADMIN] Найден админ: user_id={user.id}, telegram_id={user.telegram_id}, full_name={user.full_name}")
             
             if not admins:
-                logger.warning(f"⚠️ [NOTIFY_ADMIN] Не найдено администраторов для уведомления в схеме {schema_name}")
+                logger.warning(f"⚠️ [NOTIFY_ADMIN] === НЕ НАЙДЕНО АДМИНИСТРАТОРОВ ===")
+                logger.warning(f"⚠️ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking.id if booking else None}")
+                logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: В tenant_{company_id}.users нет пользователей с role='admin' и telegram_id IS NOT NULL")
                 return
             
-            logger.info(f"✅ [NOTIFY_ADMIN] Найдено {len(admins)} администраторов для уведомления")
+            logger.info(f"✅ [NOTIFY_ADMIN] === НАЙДЕНО {len(admins)} АДМИНИСТРАТОРОВ ===")
+            logger.info(f"✅ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking.id if booking else None}")
             
             # Формируем сообщение
             from datetime import datetime
@@ -148,29 +178,63 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
             
             logger.info(f"📋 [NOTIFY_ADMIN] Данные записи: booking_number={booking_row[1]}, client_name={client_name}, client_phone={client_phone}, service_name={service_name}")
             
-            text = f"🔔 Новая запись!\n\n"
-            text += f"📋 {booking_row[1]}\n"  # booking_number
-            text += f"   👤 {client_name}\n"
-            text += f"   📞 {client_phone}\n"
-            text += f"   📅 {date_str} в {time_str}\n"
-            text += f"   🛠️ {service_name}\n"
+            message_text = f"🔔 Новая запись!\n\n"
+            message_text += f"📋 {booking_row[1]}\n"  # booking_number
+            message_text += f"   👤 {client_name}\n"
+            message_text += f"   📞 {client_phone}\n"
+            message_text += f"   📅 {date_str} в {time_str}\n"
+            message_text += f"   🛠️ {service_name}\n"
             
             # Отправляем уведомление всем администраторам
+            logger.info(f"📤 [NOTIFY_ADMIN] === ОТПРАВКА УВЕДОМЛЕНИЙ АДМИНИСТРАТОРАМ ===")
+            logger.info(f"📤 [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking.id if booking else None}")
+            logger.info(f"📤 [NOTIFY_ADMIN] Количество админов: {len(admins)}")
+            logger.info(f"📤 [NOTIFY_ADMIN] Текст сообщения: {message_text[:200]}...")
+            
             sent_count = 0
+            failed_count = 0
             for admin in admins:
                 try:
-                    await bot.send_message(
+                    logger.info(f"📤 [NOTIFY_ADMIN] Отправляем уведомление админу: user_id={admin.id}, telegram_id={admin.telegram_id}, full_name={admin.full_name}")
+                    result = await bot.send_message(
                         chat_id=admin.telegram_id,
-                        text=text
+                        text=message_text
                     )
                     sent_count += 1
-                    logger.info(f"✅ [NOTIFY_ADMIN] Уведомление отправлено администратору {admin.id} (telegram_id: {admin.telegram_id})")
+                    logger.info(f"✅ [NOTIFY_ADMIN] Уведомление отправлено успешно: user_id={admin.id}, telegram_id={admin.telegram_id}, message_id={result.message_id}")
                 except Exception as e:
-                    logger.error(f"❌ [NOTIFY_ADMIN] Ошибка отправки уведомления администратору {admin.id}: {e}", exc_info=True)
+                    error_msg = str(e)
+                    error_type = type(e).__name__
+                    failed_count += 1
+                    logger.error(f"❌ [NOTIFY_ADMIN] === ОШИБКА ОТПРАВКИ АДМИНУ ===")
+                    logger.error(f"❌ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking.id if booking else None}")
+                    logger.error(f"❌ [NOTIFY_ADMIN] user_id={admin.id}, telegram_id={admin.telegram_id}, full_name={admin.full_name}")
+                    logger.error(f"❌ [NOTIFY_ADMIN] Тип ошибки: {error_type}")
+                    logger.error(f"❌ [NOTIFY_ADMIN] Текст ошибки: {error_msg}")
+                    logger.error(f"❌ [NOTIFY_ADMIN] Полный traceback:", exc_info=True)
+                    
+                    # Проверяем специфичные ошибки Telegram API
+                    error_lower = error_msg.lower()
+                    if "chat not found" in error_lower or "user not found" in error_lower:
+                        logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: Админ {admin.id} не начал диалог с ботом или не найден")
+                    elif "blocked" in error_lower:
+                        logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: Админ {admin.id} заблокировал бота")
+                    elif "forbidden" in error_lower:
+                        logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: Бот не может отправить сообщение админу {admin.id}")
             
-            logger.info(f"✅ [NOTIFY_ADMIN] Отправлено {sent_count} из {len(admins)} уведомлений администраторам")
+            logger.info(f"✅ [NOTIFY_ADMIN] === ИТОГИ ОТПРАВКИ ===")
+            logger.info(f"✅ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking.id if booking else None}")
+            logger.info(f"✅ [NOTIFY_ADMIN] Отправлено успешно: {sent_count} из {len(admins)}")
+            if failed_count > 0:
+                logger.warning(f"⚠️ [NOTIFY_ADMIN] Не отправлено: {failed_count} из {len(admins)}")
     except Exception as e:
-        logger.error(f"❌ [NOTIFY_ADMIN] Ошибка в notify_admins_about_new_booking: {e}", exc_info=True)
+        error_msg = str(e)
+        error_type = type(e).__name__
+        logger.error(f"❌ [NOTIFY_ADMIN] === КРИТИЧЕСКАЯ ОШИБКА В notify_admins_about_new_booking ===")
+        logger.error(f"❌ [NOTIFY_ADMIN] booking_id={booking.id if booking else None}")
+        logger.error(f"❌ [NOTIFY_ADMIN] Тип ошибки: {error_type}")
+        logger.error(f"❌ [NOTIFY_ADMIN] Текст ошибки: {error_msg}")
+        logger.error(f"❌ [NOTIFY_ADMIN] Полный traceback:", exc_info=True)
 
 
 @router.message(F.text == "📅 Записаться")
@@ -434,18 +498,8 @@ async def finalize_booking(callback, state: FSMContext):
                 logger.info(f"Уведомление администраторам отправлено для записи {booking.id}")
             except Exception as e:
                 logger.error(f"Ошибка отправки уведомления администраторам: {e}", exc_info=True)
-                # Пытаемся через Celery
-                try:
-                    import sys
-                    import os
-                    web_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'web', 'backend')
-                    if web_path not in sys.path:
-                        sys.path.insert(0, web_path)
-                    from app.tasks.notifications import notify_admin_new_bookings_task
-                    notify_admin_new_bookings_task.delay()
-                    logger.info(f"Запущена Celery задача уведомления администраторов о новой записи {booking.id}")
-                except Exception as e2:
-                    logger.error(f"Ошибка запуска Celery задачи: {e2}", exc_info=True)
+                # Не пытаемся через Celery, так как уведомление уже отправлено синхронно
+                # Если не удалось - просто логируем ошибку
 
             # Отправляем подтверждение пользователю
             confirmation_text = (
@@ -518,7 +572,7 @@ async def confirm_attendance(callback: CallbackQuery):
             await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
         
-        booking = await get_booking_by_id(session, booking_id)
+        booking = await get_booking_by_id(session, booking_id, company_id=company_id)
         if not booking:
             await callback.answer("❌ Запись не найдена", show_alert=True)
             return
@@ -536,4 +590,76 @@ async def confirm_attendance(callback: CallbackQuery):
             f"Ждем вас в салоне красоты!"
         )
         await callback.answer("✅ Явка подтверждена")
+
+
+@router.callback_query(F.data.startswith("cancel_booking_"))
+async def cancel_booking_by_client(callback: CallbackQuery):
+    """Отменить запись клиентом"""
+    try:
+        booking_id = int(callback.data.split("_")[2])
+    except (ValueError, IndexError):
+        await callback.answer("❌ Ошибка", show_alert=True)
+        return
+    
+    # Получаем company_id из токена бота
+    company_id = None
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = callback.bot.token
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+    except Exception as e:
+        logger.error(f"Ошибка получения company_id: {e}")
+        pass
+    
+    async for session in get_session():
+        from bot.database.crud import get_booking_by_id, get_user_by_telegram_id, update_booking_status
+        from sqlalchemy import text
+        
+        user = await get_user_by_telegram_id(session, callback.from_user.id, company_id=company_id)
+        if not user:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
+            return
+        
+        booking = await get_booking_by_id(session, booking_id, company_id=company_id)
+        if not booking:
+            await callback.answer("❌ Запись не найдена", show_alert=True)
+            return
+        
+        # Проверяем, что это запись этого клиента
+        if booking.client.user_id != user.id:
+            await callback.answer("❌ Это не ваша запись", show_alert=True)
+            return
+        
+        # Проверяем, что запись еще не отменена или завершена
+        if booking.status in ['cancelled', 'completed']:
+            await callback.answer("❌ Запись уже отменена или завершена", show_alert=True)
+            return
+        
+        # Обновляем статус записи на "cancelled"
+        schema_name = f"tenant_{company_id}"
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+        
+        await update_booking_status(
+            session=session,
+            booking_id=booking_id,
+            status="cancelled",
+            company_id=company_id
+        )
+        
+        # Обновляем сообщение
+        await callback.message.edit_text(
+            f"❌ Запись отменена\n\n"
+            f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
+            f"⏰ Время: {booking.time.strftime('%H:%M')}\n\n"
+            f"Если у вас возникли вопросы, свяжитесь с администратором."
+        )
+        await callback.answer("❌ Запись отменена")
 

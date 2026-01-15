@@ -5,38 +5,7 @@
   flex-direction: column;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: -20px -20px 30px -20px;
-  padding: 30px 20px 30px 40px;
-  background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%) !important;
-  position: relative;
-  left: -20px;
-  right: -20px;
-  width: calc(100vw - 250px);
-  max-width: none;
-}
-
-.page-header::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.page-header h1 {
-  font-size: 32px;
-  font-weight: 600;
-  color: #fff;
-  margin: 0;
-  position: relative;
-  z-index: 1;
-}
+/* Стили для .page-header удалены - используется общий .page-header-simple из common.css */
 
 .calendar-controls {
   display: flex;
@@ -57,7 +26,7 @@
 }
 
 .legend-title {
-  color: rgba(255, 255, 255, 0.9);
+  color: #2c3e50;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -85,7 +54,7 @@
 }
 
 .legend-label {
-  color: rgba(255, 255, 255, 0.9);
+  color: #2c3e50;
   font-size: 12px;
   white-space: nowrap;
 }
@@ -102,7 +71,7 @@
   padding: 6px 12px;
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.8);
+  color: #2c3e50;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
@@ -110,11 +79,12 @@
 }
 
 .view-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(74, 158, 255, 0.1);
+  color: #4a9eff;
 }
 
 .view-btn.active {
-  background: rgba(255, 255, 255, 0.2);
+  background: #4a9eff;
   color: white;
   font-weight: 600;
 }
@@ -128,8 +98,8 @@
 .nav-btn {
   padding: 6px 12px;
   background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: #2c3e50;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
@@ -137,7 +107,9 @@
 }
 
 .nav-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(74, 158, 255, 0.1);
+  color: #4a9eff;
+  border-color: rgba(74, 158, 255, 0.3);
 }
 
 .today-btn {

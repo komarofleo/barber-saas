@@ -147,10 +147,8 @@ function Masters() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1>Мастера</h1>
-        </div>
+      <div className="page-header-simple">
+        <h1>Мастера</h1>
       </div>
 
       <div className="masters-filters">
@@ -356,11 +354,6 @@ function WorkOrderModal({ master, date, bookings, loading, onDateChange, onClose
                         👤 {booking.client_name || 'Неизвестно'}
                         {booking.client_phone && ` (${booking.client_phone})`}
                       </div>
-                      {booking.car_number && (
-                        <div className="work-order-car">
-                          🚗 {booking.car_number}
-                        </div>
-                      )}
                       {booking.post_number && (
                         <div className="work-order-post">
                           🏢 Пост №{booking.post_number}

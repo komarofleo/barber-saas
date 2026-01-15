@@ -4,7 +4,7 @@ from sqlalchemy import select, and_, or_
 from typing import Optional
 from datetime import date
 
-from ..database import get_db
+from app.deps.tenant import get_tenant_db
 from .auth import get_current_user
 from shared.database.models import User, BlockedSlot, Master, Post, Service
 from ..schemas.blocked_slot import BlockedSlotResponse, BlockedSlotListResponse, BlockedSlotCreateRequest
@@ -16,7 +16,7 @@ async def get_blocks(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     block_type: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Получить список блокировок"""
@@ -82,7 +82,7 @@ async def get_blocks(
 @router.post("", response_model=BlockedSlotResponse, status_code=201)
 async def create_block(
     block_data: BlockedSlotCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Создать блокировку"""
@@ -155,7 +155,7 @@ async def create_block(
 @router.delete("/{block_id}", status_code=204)
 async def delete_block(
     block_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Удалить блокировку"""
@@ -176,7 +176,7 @@ async def delete_block(
 @router.patch("/toggle-accepting")
 async def toggle_accepting(
     accepting: bool = Query(...),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Глобальная кнопка приема заявок"""

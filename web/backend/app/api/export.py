@@ -7,7 +7,7 @@ from datetime import date, datetime
 from io import BytesIO
 import csv
 
-from ..database import get_db
+from app.deps.tenant import get_tenant_db
 from .auth import get_current_user
 from shared.database.models import User, Booking, Client, Service, Master, Post
 
@@ -18,7 +18,7 @@ async def export_bookings(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     status: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Экспорт записей в CSV"""
@@ -105,7 +105,7 @@ async def export_bookings(
 
 @router.get("/clients")
 async def export_clients(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Экспорт клиентов в CSV"""
@@ -118,7 +118,7 @@ async def export_clients(
     output = BytesIO()
     writer = csv.writer(output)
     
-    writer.writerow(['ID', 'ФИО', 'Телефон', 'Email', 'Автомобиль', 'Дата создания'])
+    writer.writerow(['ID', 'ФИО', 'Телефон', 'Дата создания'])
     
     for client in clients:
         writer.writerow([
@@ -126,7 +126,7 @@ async def export_clients(
             client.full_name or '',
             client.phone or '',
             client.email or '',
-            f"{client.car_brand or ''} {client.car_model or ''} {client.car_year or ''}".strip(),
+            f"{client.car_brand or ''} {client.car_model or ''}".strip(),
             client.created_at.isoformat() if client.created_at else '',
         ])
     
@@ -144,7 +144,7 @@ async def export_clients(
 async def export_statistics(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Экспорт статистики в CSV"""
@@ -255,7 +255,7 @@ async def export_statistics(
 @router.get("/posts")
 async def export_posts(
     is_active: Optional[bool] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Экспорт постов в CSV"""

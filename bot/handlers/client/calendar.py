@@ -62,6 +62,13 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
     company_id = await get_company_id_from_callback(callback)
     
     async for session in get_session():
+        # Устанавливаем search_path для tenant схемы
+        if company_id:
+            from sqlalchemy import text
+            schema_name = f"tenant_{company_id}"
+            await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+            logger.info(f"✅ Установлен search_path: {schema_name}")
+        
         service = await get_service_by_id(session, service_id, company_id=company_id)
         if not service:
             await callback.answer("❌ Услуга не найдена", show_alert=True)
@@ -69,7 +76,12 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
 
         # Генерируем доступные временные слоты
         from bot.utils.time_slots import generate_time_slots
-        time_slots = await generate_time_slots(session, selected_date, service_duration)
+        try:
+            time_slots = await generate_time_slots(session, selected_date, service_duration, master_id=None, company_id=company_id)
+        except Exception as e:
+            logger.error(f"Ошибка генерации временных слотов: {e}", exc_info=True)
+            await callback.answer("❌ Ошибка при генерации временных слотов", show_alert=True)
+            return
 
         if not time_slots:
             await callback.message.edit_text(

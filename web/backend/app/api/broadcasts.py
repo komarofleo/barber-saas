@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, UploadFile, File, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, text
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import asyncio
@@ -9,7 +9,8 @@ import os
 import shutil
 from pathlib import Path
 
-from ..database import get_db, DATABASE_URL
+from ..database import DATABASE_URL
+from app.deps.tenant import get_tenant_db
 from .auth import get_current_user
 from shared.database.models import User, Broadcast, Client, Booking
 from ..schemas.broadcast import BroadcastResponse, BroadcastListResponse, BroadcastCreateRequest
@@ -23,7 +24,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "broadcasts")))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-async def send_broadcast_task(broadcast_id: int, db_url: str):
+async def send_broadcast_task(company_id: int, broadcast_id: int, db_url: str):
     """Фоновая задача для отправки рассылки"""
     # Создаем движок для этой задачи
     engine = create_async_engine(db_url, echo=False)
@@ -32,6 +33,9 @@ async def send_broadcast_task(broadcast_id: int, db_url: str):
     
     try:
         async with async_session_maker() as session:
+            # Переключаемся на tenant схему для фоновой задачи.
+            # ВАЖНО: в фоне нет dependency/middleware, поэтому search_path задаём явно.
+            await session.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
             # Получаем рассылку
             result = await session.execute(
                 select(Broadcast).where(Broadcast.id == broadcast_id)
@@ -157,6 +161,7 @@ async def send_broadcast_task(broadcast_id: int, db_url: str):
         print(f"Ошибка в send_broadcast_task: {e}")
         # Обновляем статус на "failed"
         async with async_session_maker() as session:
+            await session.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
             result = await session.execute(
                 select(Broadcast).where(Broadcast.id == broadcast_id)
             )
@@ -173,7 +178,7 @@ async def get_broadcasts(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Получить список рассылок"""
@@ -201,9 +206,10 @@ async def get_broadcasts(
 
 @router.post("", response_model=BroadcastResponse, status_code=201)
 async def create_broadcast(
+    request: Request,
     broadcast_data: BroadcastCreateRequest,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Создать рассылку"""
@@ -224,14 +230,15 @@ async def create_broadcast(
     await db.refresh(broadcast)
     
     # Запускаем фоновую задачу отправки
-    background_tasks.add_task(send_broadcast_task, broadcast.id, DATABASE_URL)
+    company_id = int(getattr(request.state, "company_id", 0) or 0)
+    background_tasks.add_task(send_broadcast_task, company_id, broadcast.id, DATABASE_URL)
     
     return BroadcastResponse.model_validate(broadcast)
 
 @router.get("/{broadcast_id}", response_model=BroadcastResponse)
 async def get_broadcast(
     broadcast_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Получить детали рассылки"""
@@ -249,7 +256,7 @@ async def get_broadcast(
 @router.delete("/{broadcast_id}", status_code=204)
 async def delete_broadcast(
     broadcast_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
     """Удалить рассылку"""

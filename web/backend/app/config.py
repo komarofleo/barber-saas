@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        extra = "ignore"  # Игнорировать дополнительные поля из .env
 
 
 settings = Settings()

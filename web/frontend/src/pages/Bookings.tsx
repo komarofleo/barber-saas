@@ -27,6 +27,14 @@ function Bookings() {
   const [dateCreatedFrom, setDateCreatedFrom] = useState('')
   const [dateCreatedTo, setDateCreatedTo] = useState('')
   const [selectedDates, setSelectedDates] = useState<string[]>([])
+  const [serviceFilter, setServiceFilter] = useState<string>(searchParams.get('service_id') || 'all')
+  const [masterFilter, setMasterFilter] = useState<string>(searchParams.get('master_id') || 'all')
+  const [postFilter, setPostFilter] = useState<string>(searchParams.get('post_id') || 'all')
+  
+  // Списки для фильтров
+  const [services, setServices] = useState<Service[]>([])
+  const [masters, setMasters] = useState<Master[]>([])
+  const [posts, setPosts] = useState<Post[]>([])
   
   // Сортировка - читаем из URL или используем значения по умолчанию
   const urlSortField = searchParams.get('sort') as SortField
@@ -36,10 +44,15 @@ function Bookings() {
 
   const [allBookings, setAllBookings] = useState<Booking[]>([])
 
+  // Загружаем списки для фильтров при монтировании
+  useEffect(() => {
+    loadFilterLists()
+  }, [])
+
   // Загружаем данные при изменении фильтров
   useEffect(() => {
     loadBookings()
-  }, [statusFilter, dateCreatedFrom, dateCreatedTo, searchName])
+  }, [statusFilter, dateCreatedFrom, dateCreatedTo, searchName, serviceFilter, masterFilter, postFilter])
 
   // Применяем фильтрацию по выбранным датам и сортировку
   useEffect(() => {
@@ -121,6 +134,28 @@ function Bookings() {
     }
   }, [sortField, sortDirection, allBookings, selectedDates])
 
+  const loadFilterLists = async () => {
+    try {
+      console.log('🔄 Загрузка списков для фильтров...')
+      // Загружаем услуги
+      const servicesData = await servicesApi.getServices(1, 1000, undefined, true)
+      console.log('✅ Загружено услуг:', servicesData.items.length)
+      setServices(servicesData.items)
+      
+      // Загружаем мастеров
+      const mastersData = await mastersApi.getMasters(1, 1000)
+      console.log('✅ Загружено мастеров:', mastersData.items.length)
+      setMasters(mastersData.items)
+      
+      // Загружаем посты
+      const postsData = await postsApi.getPosts(1, 1000, undefined, true)
+      console.log('✅ Загружено постов:', postsData.items.length)
+      setPosts(postsData.items)
+    } catch (error: any) {
+      console.error('❌ Ошибка загрузки списков для фильтров:', error)
+    }
+  }
+
   const loadBookings = async () => {
     try {
       setLoading(true)
@@ -140,6 +175,18 @@ function Bookings() {
       
       if (searchName) {
         filters.search = searchName
+      }
+      
+      if (serviceFilter !== 'all') {
+        filters.service_id = parseInt(serviceFilter)
+      }
+      
+      if (masterFilter !== 'all') {
+        filters.master_id = parseInt(masterFilter)
+      }
+      
+      if (postFilter !== 'all') {
+        filters.post_id = parseInt(postFilter)
       }
       
       const data = await bookingsApi.getBookings(1, 1000, filters)
@@ -170,7 +217,9 @@ function Bookings() {
   const handleStatusChange = async (bookingId: number, newStatus: string) => {
     console.log('🔄 Начало смены статуса:', { bookingId, newStatus })
     try {
-      const updatedBooking = await bookingsApi.updateBooking(bookingId, { status: newStatus })
+      // Отправляем только статус, без других полей
+      const updateData: { status: string } = { status: newStatus }
+      const updatedBooking = await bookingsApi.updateBooking(bookingId, updateData)
       console.log('✅ Статус обновлен, получен ответ:', updatedBooking)
       
       // Обновляем запись в списке без полной перезагрузки
@@ -229,6 +278,9 @@ function Bookings() {
     setDateCreatedFrom('')
     setDateCreatedTo('')
     setSelectedDates([])
+    setServiceFilter('all')
+    setMasterFilter('all')
+    setPostFilter('all')
     setSortField(null)
     setSortDirection('asc')
     setAllBookings([])
@@ -310,13 +362,8 @@ function Bookings() {
           duration={5000}
         />
       )}
-      <div className="page-header">
-        <div>
-          <h1>Записи</h1>
-        </div>
-        <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-          + Новая запись
-        </button>
+      <div className="bookings-page-header">
+        <h1>Записи</h1>
       </div>
 
       <div className="bookings-filters-panel">
@@ -378,6 +425,93 @@ function Bookings() {
           </div>
 
           <div className="filter-item">
+            <label>Услуга</label>
+            <select
+              value={serviceFilter}
+              onChange={(e) => {
+                setServiceFilter(e.target.value)
+                const newParams = new URLSearchParams(searchParams)
+                if (e.target.value === 'all') {
+                  newParams.delete('service_id')
+                } else {
+                  newParams.set('service_id', e.target.value)
+                }
+                setSearchParams(newParams)
+              }}
+              className="filter-select"
+            >
+              <option value="all">Все услуги</option>
+              {services.length > 0 ? (
+                services.map(service => (
+                  <option key={service.id} value={service.id.toString()}>
+                    {service.name}
+                  </option>
+                ))
+              ) : (
+                <option disabled>Загрузка...</option>
+              )}
+            </select>
+          </div>
+
+          <div className="filter-item">
+            <label>Мастер</label>
+            <select
+              value={masterFilter}
+              onChange={(e) => {
+                setMasterFilter(e.target.value)
+                const newParams = new URLSearchParams(searchParams)
+                if (e.target.value === 'all') {
+                  newParams.delete('master_id')
+                } else {
+                  newParams.set('master_id', e.target.value)
+                }
+                setSearchParams(newParams)
+              }}
+              className="filter-select"
+            >
+              <option value="all">Все мастера</option>
+              {masters.length > 0 ? (
+                masters.map(master => (
+                  <option key={master.id} value={master.id.toString()}>
+                    {master.full_name}
+                  </option>
+                ))
+              ) : (
+                <option disabled>Загрузка...</option>
+              )}
+            </select>
+          </div>
+
+          <div className="filter-item">
+            <label>Рабочее место</label>
+            <select
+              value={postFilter}
+              onChange={(e) => {
+                setPostFilter(e.target.value)
+                const newParams = new URLSearchParams(searchParams)
+                if (e.target.value === 'all') {
+                  newParams.delete('post_id')
+                } else {
+                  newParams.set('post_id', e.target.value)
+                }
+                setSearchParams(newParams)
+              }}
+              className="filter-select"
+            >
+              <option value="all">Все места</option>
+              {posts.length > 0 ? (
+                posts.map(post => (
+                  <option key={post.id} value={post.id.toString()}>
+                    {post.name || `№${post.number}`}
+                  </option>
+                ))
+              ) : (
+                <option disabled>Загрузка...</option>
+              )}
+            </select>
+          </div>
+
+          <div className="filter-item">
             <label>Выбор даты записи</label>
             <input
               type="date"
@@ -408,6 +542,9 @@ function Bookings() {
         </div>
 
         <div className="filters-actions">
+          <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+            + Новая запись
+          </button>
           <button className="btn-filter" onClick={loadBookings}>
             🔄 Обновить
           </button>
@@ -495,6 +632,7 @@ function Bookings() {
                 >
                   Статус {getSortIcon('status')}
                 </th>
+                <th>Оплачено</th>
                 <th>Окончание</th>
                 <th>Действия</th>
               </tr>
@@ -513,6 +651,11 @@ function Bookings() {
                   <td>
                     <span className={`status status-${booking.status}`}>
                       {booking.status}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={booking.is_paid ? 'status status-completed' : 'status status-new'}>
+                      {booking.is_paid ? 'Да' : 'Нет'}
                     </span>
                   </td>
                   <td>{getEndDateTime(booking)}</td>
@@ -956,10 +1099,10 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
       // Подготавливаем данные для отправки
       const updateData: any = {}
       if (editingMaster !== (booking.master_id || null)) {
-        updateData.master_id = editingMaster || undefined
+        updateData.master_id = editingMaster ?? null
       }
       if (editingPost !== (booking.post_id || null)) {
-        updateData.post_id = editingPost || undefined
+        updateData.post_id = editingPost ?? null
       }
       if (editingDate !== booking.date) {
         updateData.date = editingDate
@@ -967,6 +1110,13 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
       if (editingTime !== booking.time.substring(0, 5)) {
         updateData.time = timeStr
       }
+      
+      // Убираем undefined значения, чтобы не было ошибок валидации
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined) {
+          delete updateData[key]
+        }
+      })
       
       console.log('Отправка данных для обновления:', updateData)
       
@@ -1022,10 +1172,9 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
         updateData.is_paid = false
       }
       
-      if (editingPaymentMethod) {
-        updateData.payment_method = editingPaymentMethod
-      } else {
-        updateData.payment_method = null
+      // Передаем payment_method только если он изменился
+      if (editingPaymentMethod !== (booking.payment_method || '')) {
+        updateData.payment_method = editingPaymentMethod || null
       }
       
       console.log('Отправка данных для обновления оплаты:', updateData)
