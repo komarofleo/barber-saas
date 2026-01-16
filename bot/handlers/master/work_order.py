@@ -79,7 +79,7 @@ async def show_work_order(message: Message, master_id: int, work_date: date):
             .where(
                 and_(
                     Booking.master_id == master_id,
-                    Booking.date == work_date,
+                    Booking.service_date == work_date,
                     Booking.status.in_(["confirmed", "new"])
                 )
             )
@@ -259,7 +259,7 @@ async def back_to_work_order(callback: CallbackQuery):
             .where(
                 and_(
                     Booking.master_id == master.id,
-                    Booking.date == date.today(),
+                    Booking.service_date == date.today(),
                     Booking.status.in_(["confirmed", "new"])
                 )
             )

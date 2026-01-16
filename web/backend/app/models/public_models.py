@@ -211,3 +211,29 @@ class SuperAdmin(Base):
     # Даты
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class ContractRequest(Base):
+    """
+    Модель заявки на генерацию договора в public схеме.
+    
+    Используется главным ботом для хранения данных договора и ссылки на файл.
+    """
+    __tablename__ = "contract_requests"
+    __table_args__ = {"schema": "public"}
+    
+    id = Column(Integer, primary_key=True)
+    requester_telegram_id = Column(Integer, nullable=False, index=True)
+    
+    status = Column(String(20), default="new", nullable=False, index=True)
+    data = Column(JSONB, nullable=False)
+    
+    contract_number = Column(String(50), unique=True, nullable=False, index=True)
+    contract_date = Column(Date, nullable=False, index=True)
+    daily_seq = Column(Integer, nullable=False)
+    
+    document_path = Column(String(500), nullable=True)
+    public_url = Column(String(500), nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

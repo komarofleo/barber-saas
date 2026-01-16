@@ -172,7 +172,7 @@ async def export_statistics(
             func.count(case((BookingModel.status == 'no_show', BookingModel.id))).label('no_show'),
             func.count(BookingModel.id).label('total')
         ).where(
-            and_(BookingModel.date >= start_date, BookingModel.date <= end_date)
+            and_(BookingModel.service_date >= start_date, BookingModel.service_date <= end_date)
         )
     )
     counts = booking_counts_result.first()
@@ -199,7 +199,7 @@ async def export_statistics(
             Service.name,
             func.count(BookingModel.id).label('count')
         ).join(BookingModel, BookingModel.service_id == Service.id).where(
-            and_(BookingModel.date >= start_date, BookingModel.date <= end_date)
+            and_(BookingModel.service_date >= start_date, BookingModel.service_date <= end_date)
         ).group_by(Service.name).order_by(func.count(BookingModel.id).desc()).limit(5)
     )
     top_services = [(r.name, r.count) for r in top_services_result.all()]
@@ -210,7 +210,7 @@ async def export_statistics(
             Master.full_name,
             func.count(BookingModel.id).label('count')
         ).join(BookingModel, BookingModel.master_id == Master.id).where(
-            and_(BookingModel.date >= start_date, BookingModel.date <= end_date)
+            and_(BookingModel.service_date >= start_date, BookingModel.service_date <= end_date)
         ).group_by(Master.full_name).order_by(func.count(BookingModel.id).desc()).limit(5)
     )
     top_masters = [(r.full_name, r.count) for r in top_masters_result.all()]

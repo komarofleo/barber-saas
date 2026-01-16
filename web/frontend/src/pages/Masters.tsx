@@ -122,10 +122,10 @@ function Masters() {
         })
         allBookings = [...allBookings, ...newData.items]
         
-        // Сортируем по дате и времени
+        // Сортируем по дате услуги и времени
         allBookings.sort((a, b) => {
-          const dateA = new Date(`${a.date}T${a.time}`)
-          const dateB = new Date(`${b.date}T${b.time}`)
+          const dateA = new Date(`${a.service_date}T${a.time}`)
+          const dateB = new Date(`${b.service_date}T${b.time}`)
           return dateA.getTime() - dateB.getTime()
         })
         
@@ -345,7 +345,7 @@ function WorkOrderModal({ master, date, bookings, loading, onDateChange, onClose
                     <div className="work-order-number">{index + 1}</div>
                     <div className="work-order-details">
                       <div className="work-order-time">
-                        📅 {formatDateShort(booking.date)} ⏰ {formatTime(booking.time)} - {formatTime(booking.end_time || booking.time)}
+                        📅 {formatDateShort(booking.service_date)} ⏰ {formatTime(booking.time)} - {formatTime(booking.end_time || booking.time)}
                       </div>
                       <div className="work-order-service">
                         🛠️ {booking.service_name || 'Не указана'}

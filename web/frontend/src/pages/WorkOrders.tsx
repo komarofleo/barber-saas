@@ -31,12 +31,29 @@ function WorkOrders() {
       setLoading(true)
       setError(null)
 
+      console.log('🔍 Загрузка лист-нарядов для даты:', selectedDate)
       const data = await mastersApi.getAllWorkOrders(selectedDate)
-      setWorkOrders(data.masters)
+      console.log('📊 Полученные данные:', data)
+      console.log('📊 Количество мастеров:', data.masters?.length || 0)
+      
+      // Проверяем структуру данных
+      if (data && data.masters && Array.isArray(data.masters)) {
+        data.masters.forEach((master: any, index: number) => {
+          console.log(`👨‍🔧 Мастер ${index + 1}: ${master.master_name}, записей: ${master.bookings?.length || 0}`)
+        })
+        setWorkOrders(data.masters)
+      } else {
+        console.error('❌ Неверная структура данных:', data)
+        setError('Неверная структура данных от сервера')
+      }
     } catch (error: any) {
-      console.error('Ошибка загрузки лист-нарядов:', error)
+      console.error('❌ Ошибка загрузки лист-нарядов:', error)
+      console.error('Статус ошибки:', error.response?.status)
+      console.error('Данные ошибки:', error.response?.data)
       if (error.response?.status === 403) {
         setError('У вас нет доступа к просмотру лист-нарядов')
+      } else if (error.response?.status === 404) {
+        setError('API endpoint не найден')
       } else {
         setError('Не удалось загрузить лист-наряды')
       }

@@ -11,11 +11,13 @@ import secrets
 import string
 import httpx
 import logging
+from pathlib import Path
 from typing import Annotated
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
@@ -420,6 +422,36 @@ async def public_health_check():
         Статус "ok"
     """
     return {"status": "ok"}
+
+
+@router.get("/contracts/{file_name}")
+async def get_contract_file(file_name: str) -> FileResponse:
+    """
+    Скачать сгенерированный договор по публичной ссылке.
+    
+    Args:
+        file_name: Имя файла договора
+    
+    Returns:
+        DOCX файл договора
+    """
+    contracts_dir = Path(settings.CONTRACTS_DIR)
+    file_path = (contracts_dir / file_name).resolve()
+    
+    if not contracts_dir.exists():
+        raise HTTPException(status_code=404, detail="Договоры не найдены")
+    
+    if contracts_dir not in file_path.parents:
+        raise HTTPException(status_code=400, detail="Некорректный путь к файлу")
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Договор не найден")
+    
+    return FileResponse(
+        path=str(file_path),
+        filename=file_name,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
 
 # Import settings после создания импортов

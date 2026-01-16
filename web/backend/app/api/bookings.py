@@ -582,7 +582,8 @@ async def get_bookings(
             "service_id": booking.service_id,
             "master_id": booking.master_id,
             "post_id": booking.post_id,
-            "date": booking.service_date,
+            "service_date": booking.service_date,
+            "request_date": booking.request_date,
             "time": booking.time,
             "duration": booking.duration,
             "end_time": booking.end_time,
@@ -844,7 +845,8 @@ async def get_booking(
         "service_id": booking.service_id,
         "master_id": booking.master_id,
         "post_id": booking.post_id,
-        "date": booking.service_date,
+        "service_date": booking.service_date,
+        "request_date": booking.request_date,
         "time": booking.time,
         "duration": booking.duration,
         "end_time": booking.end_time,
@@ -950,7 +952,7 @@ async def create_booking(
     
     # Вычисляем end_time
     duration_minutes = booking_data.duration or 60
-    booking_datetime = datetime.combine(booking_data.date, booking_time)
+    booking_datetime = datetime.combine(booking_data.service_date, booking_time)
     end_time = (booking_datetime + timedelta(minutes=duration_minutes)).time()
     
     # Создаем запись
@@ -960,7 +962,8 @@ async def create_booking(
         service_id=booking_data.service_id,
         master_id=booking_data.master_id,
         post_id=booking_data.post_id,
-        service_date=booking_data.date,
+        service_date=booking_data.service_date,
+        request_date=date.today(),
         time=booking_time,
         duration=duration_minutes,
         end_time=end_time,
@@ -1002,7 +1005,8 @@ async def create_booking(
         "service_id": booking.service_id,
         "master_id": booking.master_id,
         "post_id": booking.post_id,
-        "date": booking.service_date,
+        "service_date": booking.service_date,
+        "request_date": booking.request_date,
         "time": booking.time,
         "duration": booking.duration,
         "end_time": booking.end_time,
@@ -1127,8 +1131,10 @@ async def update_booking(
         booking.master_id = booking_data.master_id
     if booking_data.post_id is not None:
         booking.post_id = booking_data.post_id
-    if booking_data.date is not None:
-        booking.service_date = booking_data.date
+    if booking_data.service_date is not None:
+        booking.service_date = booking_data.service_date
+    if booking_data.request_date is not None:
+        booking.request_date = booking_data.request_date
     if booking_data.time is not None:
         booking.time = booking_data.time
     if booking_data.duration is not None:
@@ -1214,7 +1220,8 @@ async def update_booking(
         "service_id": booking.service_id,
         "master_id": booking.master_id,
         "post_id": booking.post_id,
-        "date": booking.service_date,
+        "service_date": booking.service_date,
+        "request_date": booking.request_date,
         "time": booking.time,
         "duration": booking.duration,
         "end_time": booking.end_time,

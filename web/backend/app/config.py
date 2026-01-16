@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
     REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
     
+    # Договоры
+    CONTRACTS_DIR: str = os.getenv("CONTRACTS_DIR", "/app/dogovor/generated")
+    CONTRACTS_PUBLIC_BASE_URL: str = os.getenv(
+        "CONTRACTS_PUBLIC_BASE_URL",
+        "http://45.144.67.47/api/public/contracts"
+    )
+    
     class Config:
         env_file = ".env"
         extra = "ignore"  # Игнорировать дополнительные поля из .env

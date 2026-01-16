@@ -146,12 +146,12 @@ function Dashboard() {
               const now = new Date()
               const nextBooking = bookings
                 .filter(b => {
-                  const bookingTime = new Date(`${b.date}T${b.time}`)
+                  const bookingTime = new Date(`${b.service_date}T${b.time}`)
                   return bookingTime > now
                 })
                 .sort((a, b) => {
-                  const timeA = new Date(`${a.date}T${a.time}`)
-                  const timeB = new Date(`${b.date}T${b.time}`)
+                  const timeA = new Date(`${a.service_date}T${a.time}`)
+                  const timeB = new Date(`${b.service_date}T${b.time}`)
                   return timeA.getTime() - timeB.getTime()
                 })[0] || null
               
@@ -366,8 +366,8 @@ function Dashboard() {
         }
 
         // Проверяем пересечение времени
-        const bookingStart = new Date(`${booking.date}T${booking.time}:00`)
-        const bookingEnd = new Date(`${booking.date}T${booking.end_time}:00`)
+        const bookingStart = new Date(`${booking.service_date}T${booking.time}:00`)
+        const bookingEnd = new Date(`${booking.service_date}T${booking.end_time}:00`)
 
         // Если времена пересекаются
         if (!(slotEnd <= bookingStart || slotStart >= bookingEnd)) {
@@ -431,12 +431,12 @@ function Dashboard() {
   // Сортируем ближайшие записи на сегодня
   const upcomingTodayBookings = [...todayBookings]
     .filter(b => {
-      const bookingTime = new Date(`${b.date}T${b.time}`)
+      const bookingTime = new Date(`${b.service_date}T${b.time}`)
       return bookingTime > new Date() && (b.status === 'confirmed' || b.status === 'new')
     })
     .sort((a, b) => {
-      const timeA = new Date(`${a.date}T${a.time}`)
-      const timeB = new Date(`${b.date}T${b.time}`)
+      const timeA = new Date(`${a.service_date}T${a.time}`)
+      const timeB = new Date(`${b.service_date}T${b.time}`)
       return timeA.getTime() - timeB.getTime()
     })
     .slice(0, 10)
@@ -885,7 +885,7 @@ function Dashboard() {
                       title="Нажмите для просмотра деталей записи"
                     >
                       <td>{booking.booking_number}</td>
-                      <td>{booking.date}</td>
+                      <td>{booking.service_date}</td>
                       <td>{booking.time}</td>
                       <td>
                         <span className={`status status-${booking.status}`}>
@@ -940,7 +940,7 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
     service_id: undefined,
     master_id: undefined,
     post_id: undefined,
-    date: initialDate || new Date().toISOString().split('T')[0],
+    service_date: initialDate || new Date().toISOString().split('T')[0],
     time: initialTime || '',
     duration: 30,
     status: 'new',
@@ -951,13 +951,13 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
   }, [])
 
   useEffect(() => {
-    if (formData.date) {
+    if (formData.service_date) {
       loadAvailableSlots()
       if (initialTime && !formData.time) {
         setFormData(prev => ({ ...prev, time: initialTime }))
       }
     }
-  }, [formData.date, formData.service_id, formData.master_id, formData.post_id])
+  }, [formData.service_date, formData.service_id, formData.master_id, formData.post_id])
 
   useEffect(() => {
     if (formData.service_id) {
@@ -970,13 +970,13 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
 
   // Загрузка занятых рабочих мест при изменении даты, времени, длительности и мастера
   useEffect(() => {
-    if (formData.date && formData.time && formData.duration) {
+    if (formData.service_date && formData.time && formData.duration) {
       loadOccupiedPosts()
     } else {
       // Если нет времени, очищаем список занятых постов, чтобы все посты были доступны
       setOccupiedPostIds(new Set())
     }
-  }, [formData.date, formData.time, formData.duration, formData.master_id])
+  }, [formData.service_date, formData.time, formData.duration, formData.master_id])
 
   const loadData = async () => {
     try {
@@ -1002,7 +1002,7 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
   const loadAvailableSlots = async () => {
     try {
       const slots = await bookingsApi.getAvailableSlots(
-        formData.date,
+        formData.service_date,
         formData.service_id,
         formData.master_id,
         formData.post_id
@@ -1016,7 +1016,7 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
 
   // Функция для загрузки занятых рабочих мест на выбранное время
   const loadOccupiedPosts = async () => {
-    if (!formData.date || !formData.time || !formData.duration) {
+    if (!formData.service_date || !formData.time || !formData.duration) {
       setOccupiedPostIds(new Set())
       return
     }
@@ -1024,13 +1024,13 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
     try {
       // Получаем все записи на выбранную дату
       const bookingsData = await bookingsApi.getBookings(1, 1000, {
-        start_date: formData.date,
-        end_date: formData.date
+        start_date: formData.service_date,
+        end_date: formData.service_date
       })
 
       // Вычисляем время начала и конца новой записи
       const [hours, minutes] = formData.time.split(':').map(Number)
-      const startTime = new Date(`${formData.date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`)
+      const startTime = new Date(`${formData.service_date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`)
       const endTime = new Date(startTime.getTime() + (formData.duration || 30) * 60 * 1000)
 
       // Находим занятые рабочие места
@@ -1042,8 +1042,8 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
         }
 
         // Проверяем пересечение времени
-        const bookingStart = new Date(`${booking.date}T${booking.time}:00`)
-        const bookingEnd = new Date(`${booking.date}T${booking.end_time}:00`)
+        const bookingStart = new Date(`${booking.service_date}T${booking.time}:00`)
+        const bookingEnd = new Date(`${booking.service_date}T${booking.end_time}:00`)
 
         // Если времена пересекаются
         if (!(endTime <= bookingStart || startTime >= bookingEnd)) {
@@ -1054,7 +1054,7 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
       })
 
       setOccupiedPostIds(occupied)
-      console.log('🚫 Занятые рабочие места на', formData.date, formData.time, ':', Array.from(occupied))
+      console.log('🚫 Занятые рабочие места на', formData.service_date, formData.time, ':', Array.from(occupied))
     } catch (error) {
       console.error('Ошибка загрузки занятых рабочих мест:', error)
       setOccupiedPostIds(new Set())
@@ -1069,7 +1069,7 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.client_id || !formData.date || !formData.time) {
+    if (!formData.client_id || !formData.service_date || !formData.time) {
       alert('Заполните все обязательные поля')
       return
     }
@@ -1223,8 +1223,8 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
                 <label className="form-label-compact">Дата *</label>
                 <input
                   type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  value={formData.service_date}
+                  onChange={(e) => setFormData({ ...formData, service_date: e.target.value })}
                   required
                   className="form-input form-input-compact"
                   disabled={dataLoading}

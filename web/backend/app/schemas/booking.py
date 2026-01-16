@@ -11,7 +11,8 @@ class BookingResponse(BaseModel):
     service_id: Optional[int] = None
     master_id: Optional[int] = None
     post_id: Optional[int] = None
-    date: date
+    service_date: date
+    request_date: Optional[date] = None
     time: time
     duration: int
     end_time: time
@@ -55,7 +56,7 @@ class BookingCreateRequest(BaseModel):
     service_id: Optional[int] = None
     master_id: Optional[int] = None
     post_id: Optional[int] = None
-    date: date
+    service_date: date
     time: time
     duration: Optional[int] = 30
     status: Optional[str] = "new"
@@ -68,7 +69,8 @@ class BookingUpdateRequest(BaseModel):
     service_id: Optional[int] = None
     master_id: Optional[int] = None
     post_id: Optional[int] = None
-    date: Optional[date] = None
+    service_date: Optional[date] = None
+    request_date: Optional[date] = None
     time: Optional[time] = None
     duration: Optional[int] = None
     status: Optional[str] = None

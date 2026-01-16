@@ -17,7 +17,8 @@ class AdminBookingStates(StatesGroup):
 
 class AdminEditBookingStates(StatesGroup):
     """Состояния редактирования существующего заказа"""
-    editing_datetime = State()  # Изменение даты/времени
+    editing_service_date = State()  # Изменение даты услуги
+    editing_request_date = State()  # Изменение даты заявки
     editing_payment = State()  # Изменение оплаты
     editing_master = State()  # Изменение мастера
     editing_post = State()  # Изменение поста

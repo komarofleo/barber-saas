@@ -7,7 +7,8 @@ export interface Booking {
   service_id: number | null
   master_id: number | null
   post_id: number | null
-  date: string
+  service_date: string
+  request_date: string | null
   time: string
   duration: number
   end_time: string
@@ -44,7 +45,7 @@ export interface BookingCreateRequest {
   service_id?: number
   master_id?: number
   post_id?: number
-  date: string
+  service_date: string
   time: string
   duration?: number
   status?: string
@@ -57,7 +58,8 @@ export interface BookingUpdateRequest {
   service_id?: number
   master_id?: number
   post_id?: number
-  date?: string
+  service_date?: string
+  request_date?: string
   time?: string
   duration?: number
   status?: string

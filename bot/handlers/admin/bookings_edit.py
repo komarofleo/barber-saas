@@ -400,23 +400,20 @@ async def process_datetime_time_selection(callback: CallbackQuery, state: FSMCon
         
         # Обновляем дату и время заказа
         await session.execute(
-            text('''
+            text(
+                """
                 UPDATE bookings
                 SET service_date = :date, time = :time, end_time = :end_time, duration = :duration
                 WHERE id = :booking_id
-            '''),
-            text('''
-                UPDATE bookings
-                SET service_date = :date, time = :time, end_time = :end_time, duration = :duration
-                WHERE id = :booking_id
-            '''),
+                """
+            ),
             {
                 "date": booking_date,
                 "time": start_time,
                 "end_time": end_time,
                 "duration": duration,
-                "booking_id": booking_id
-            }
+                "booking_id": booking_id,
+            },
         )
         await session.commit()
         

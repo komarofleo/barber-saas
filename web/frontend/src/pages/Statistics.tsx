@@ -97,12 +97,12 @@ function Statistics() {
       // Статистика по дням
       const bookingsByDayMap = new Map<string, number>()
       bookings.forEach(b => {
-        // b.date может быть строкой "YYYY-MM-DD" или объектом Date
+        // b.service_date может быть строкой "YYYY-MM-DD" или объектом Date
         let dateStr: string
-        if (typeof b.date === 'string') {
-          dateStr = b.date.includes('T') ? b.date.split('T')[0] : b.date
+        if (typeof b.service_date === 'string') {
+          dateStr = b.service_date.includes('T') ? b.service_date.split('T')[0] : b.service_date
         } else {
-          dateStr = b.date
+          dateStr = b.service_date
         }
         bookingsByDayMap.set(dateStr, (bookingsByDayMap.get(dateStr) || 0) + 1)
       })

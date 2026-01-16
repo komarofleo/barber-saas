@@ -8,7 +8,7 @@ import { postsApi, Post } from '../api/posts'
 import { SuccessNotification } from '../components/SuccessNotification'
 import './Bookings.css'
 
-type SortField = 'id' | 'date' | 'master_name' | 'service_name' | 'post_number' | 'status' | null
+type SortField = 'id' | 'service_date' | 'master_name' | 'service_name' | 'post_number' | 'status' | null
 type SortDirection = 'asc' | 'desc'
 
 function Bookings() {
@@ -67,10 +67,10 @@ function Bookings() {
     let filtered = allBookings
     if (selectedDates.length > 0) {
       filtered = allBookings.filter(b => {
-        // Нормализуем дату записи (может быть строкой или объектом Date)
-        const bookingDate = typeof b.date === 'string' 
-          ? (b.date.includes('T') ? b.date.split('T')[0] : b.date)
-          : b.date
+        // Нормализуем дату услуги (может быть строкой или объектом Date)
+        const bookingDate = typeof b.service_date === 'string' 
+          ? (b.service_date.includes('T') ? b.service_date.split('T')[0] : b.service_date)
+          : b.service_date
         const isIncluded = selectedDates.includes(bookingDate)
         return isIncluded
       })
@@ -88,8 +88,8 @@ function Bookings() {
         let bValue: any = b[sortField as keyof Booking]
         
         // Обработка null/undefined
-        if (aValue == null || aValue === '') aValue = sortField === 'date' ? new Date(0) : (sortField === 'id' ? 0 : '')
-        if (bValue == null || bValue === '') bValue = sortField === 'date' ? new Date(0) : (sortField === 'id' ? 0 : '')
+        if (aValue == null || aValue === '') aValue = sortField === 'service_date' ? new Date(0) : (sortField === 'id' ? 0 : '')
+        if (bValue == null || bValue === '') bValue = sortField === 'service_date' ? new Date(0) : (sortField === 'id' ? 0 : '')
         
         // Для ID - преобразуем в число для сравнения
         if (sortField === 'id') {
@@ -98,9 +98,9 @@ function Bookings() {
         }
         
         // Для дат - преобразуем в Date для сравнения
-        if (sortField === 'date') {
-          const aDate = new Date(a.date + 'T' + (a.time || '00:00'))
-          const bDate = new Date(b.date + 'T' + (b.time || '00:00'))
+        if (sortField === 'service_date') {
+          const aDate = new Date(a.service_date + 'T' + (a.time || '00:00'))
+          const bDate = new Date(b.service_date + 'T' + (b.time || '00:00'))
           aValue = aDate.getTime()
           bValue = bDate.getTime()
         }
@@ -344,8 +344,8 @@ function Bookings() {
   }
 
   const getEndDateTime = (booking: Booking) => {
-    if (booking.date && booking.end_time) {
-      return formatDateTime(booking.date, booking.end_time)
+    if (booking.service_date && booking.end_time) {
+      return formatDateTime(booking.service_date, booking.end_time)
     }
     return '-'
   }
@@ -405,7 +405,7 @@ function Bookings() {
           </div>
 
           <div className="filter-item">
-            <label>Дата создания от</label>
+            <label>Дата услуги от</label>
             <input
               type="date"
               value={dateCreatedFrom}
@@ -415,7 +415,7 @@ function Bookings() {
           </div>
 
           <div className="filter-item">
-            <label>Дата создания до</label>
+            <label>Дата услуги до</label>
             <input
               type="date"
               value={dateCreatedTo}
@@ -595,15 +595,15 @@ function Bookings() {
                   ID {getSortIcon('id')}
                 </th>
                 <th>Клиент</th>
-                <th>TGID</th>
                 <th>Телефон</th>
                 <th 
                   className="sortable" 
-                  onClick={() => handleSort('date')}
+                  onClick={() => handleSort('service_date')}
                   style={{ cursor: 'pointer' }}
                 >
-                  Дата заявки {getSortIcon('date')}
+                  Дата услуги {getSortIcon('service_date')}
                 </th>
+                <th>Дата заявки</th>
                 <th 
                   className="sortable" 
                   onClick={() => handleSort('service_name')}
@@ -642,9 +642,9 @@ function Bookings() {
                 <tr key={booking.id}>
                   <td>{booking.id}</td>
                   <td>{booking.client_name || `ID: ${booking.client_id}`}</td>
-                  <td>{booking.client_telegram_id || '-'}</td>
                   <td>{booking.client_phone || '-'}</td>
-                  <td>{formatDate(booking.date)} {booking.time}</td>
+                  <td>{formatDate(booking.service_date)} {booking.time}</td>
+                  <td>{booking.request_date ? formatDate(booking.request_date) : '-'}</td>
                   <td>{booking.service_name || '-'}</td>
                   <td>{booking.master_name || '-'}</td>
                   <td>{booking.post_number ? `№${booking.post_number}` : '-'}</td>
@@ -705,7 +705,7 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
     service_id: undefined,
     master_id: undefined,
     post_id: undefined,
-    date: new Date().toISOString().split('T')[0],
+    service_date: new Date().toISOString().split('T')[0],
     time: '',
     duration: 30,
     status: 'new',
@@ -716,19 +716,19 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
   }, [])
 
   useEffect(() => {
-    if (formData.date && formData.service_id) {
+    if (formData.service_date && formData.service_id) {
       loadAvailableSlots()
     }
-  }, [formData.date, formData.service_id, formData.master_id, formData.post_id])
+  }, [formData.service_date, formData.service_id, formData.master_id, formData.post_id])
 
   // Загрузка занятых постов при изменении даты, времени и длительности
   useEffect(() => {
-    if (formData.date && formData.time && formData.duration) {
+    if (formData.service_date && formData.time && formData.duration) {
       loadOccupiedPosts()
     } else {
       setOccupiedPostIds(new Set())
     }
-  }, [formData.date, formData.time, formData.duration])
+  }, [formData.service_date, formData.time, formData.duration])
 
   const loadData = async () => {
     try {
@@ -750,7 +750,7 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
   const loadAvailableSlots = async () => {
     try {
       const slots = await bookingsApi.getAvailableSlots(
-        formData.date,
+        formData.service_date,
         formData.service_id,
         formData.master_id,
         formData.post_id
@@ -764,7 +764,7 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
 
   // Функция для загрузки занятых постов на выбранное время
   const loadOccupiedPosts = async () => {
-    if (!formData.date || !formData.time || !formData.duration) {
+    if (!formData.service_date || !formData.time || !formData.duration) {
       setOccupiedPostIds(new Set())
       return
     }
@@ -772,13 +772,13 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
     try {
       // Получаем все записи на выбранную дату
       const bookingsData = await bookingsApi.getBookings(1, 1000, {
-        start_date: formData.date,
-        end_date: formData.date
+        start_date: formData.service_date,
+        end_date: formData.service_date
       })
 
       // Вычисляем время начала и конца новой записи
       const [hours, minutes] = formData.time.split(':').map(Number)
-      const startTime = new Date(`${formData.date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`)
+      const startTime = new Date(`${formData.service_date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`)
       const endTime = new Date(startTime.getTime() + (formData.duration || 30) * 60 * 1000)
 
       // Находим занятые посты
@@ -790,8 +790,8 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
         }
 
         // Проверяем пересечение времени
-        const bookingStart = new Date(`${booking.date}T${booking.time}:00`)
-        const bookingEnd = new Date(`${booking.date}T${booking.end_time}:00`)
+        const bookingStart = new Date(`${booking.service_date}T${booking.time}:00`)
+        const bookingEnd = new Date(`${booking.service_date}T${booking.end_time}:00`)
 
         // Если времена пересекаются
         if (!(endTime <= bookingStart || startTime >= bookingEnd)) {
@@ -802,7 +802,7 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
       })
 
       setOccupiedPostIds(occupied)
-      console.log('🚫 Занятые посты на', formData.date, formData.time, ':', Array.from(occupied))
+      console.log('🚫 Занятые посты на', formData.service_date, formData.time, ':', Array.from(occupied))
     } catch (error) {
       console.error('Ошибка загрузки занятых постов:', error)
       setOccupiedPostIds(new Set())
@@ -811,7 +811,7 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.client_id || !formData.date || !formData.time) {
+    if (!formData.client_id || !formData.service_date || !formData.time) {
       alert('Заполните все обязательные поля')
       return
     }
@@ -950,8 +950,8 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
               <label>Дата *</label>
               <input
                 type="date"
-                value={formData.date}
-                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                value={formData.service_date}
+                onChange={(e) => setFormData({ ...formData, service_date: e.target.value })}
                 min={new Date().toISOString().split('T')[0]}
                 required
                 className="form-input"
@@ -965,7 +965,7 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
                 onChange={(e) => setFormData({ ...formData, time: e.target.value })}
                 required
                 className="form-input"
-                disabled={!formData.date || availableSlots.length === 0}
+                disabled={!formData.service_date || availableSlots.length === 0}
               >
                 <option value="">Выберите время</option>
                 {availableSlots.map(slot => (
@@ -974,7 +974,7 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
                   </option>
                 ))}
               </select>
-              {formData.date && availableSlots.length === 0 && (
+              {formData.service_date && availableSlots.length === 0 && (
                 <small className="text-muted">Нет доступных слотов на эту дату</small>
               )}
             </div>
@@ -1017,7 +1017,7 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
   const [services, setServices] = useState<Service[]>([])
   const [editingMaster, setEditingMaster] = useState<number | null>(booking.master_id || null)
   const [editingPost, setEditingPost] = useState<number | null>(booking.post_id || null)
-  const [editingDate, setEditingDate] = useState<string>(booking.date)
+  const [editingDate, setEditingDate] = useState<string>(booking.service_date)
   const [editingTime, setEditingTime] = useState<string>(booking.time.substring(0, 5))
   const [editingAmount, setEditingAmount] = useState<string>(booking.amount ? booking.amount.toString() : '')
   const [editingPaymentMethod, setEditingPaymentMethod] = useState<string>(booking.payment_method || '')
@@ -1043,7 +1043,7 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
   const hasChanges = 
     editingMaster !== (booking.master_id || null) || 
     editingPost !== (booking.post_id || null) ||
-    editingDate !== booking.date ||
+    editingDate !== booking.service_date ||
     editingTime !== booking.time.substring(0, 5)
 
   useEffect(() => {
@@ -1054,11 +1054,11 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
   useEffect(() => {
     setEditingMaster(booking.master_id || null)
     setEditingPost(booking.post_id || null)
-    setEditingDate(booking.date)
+    setEditingDate(booking.service_date)
     setEditingTime(booking.time.substring(0, 5))
     setEditingAmount(booking.amount ? booking.amount.toString() : '')
     setEditingPaymentMethod(booking.payment_method || '')
-  }, [booking.id, booking.master_id, booking.post_id, booking.date, booking.time, booking.amount, booking.payment_method])
+  }, [booking.id, booking.master_id, booking.post_id, booking.service_date, booking.time, booking.amount, booking.payment_method])
   
   // При смене статуса на "completed" и если есть услуга, подставляем цену как подсказку (только если сумма еще не введена)
   useEffect(() => {
@@ -1104,8 +1104,8 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
       if (editingPost !== (booking.post_id || null)) {
         updateData.post_id = editingPost ?? null
       }
-      if (editingDate !== booking.date) {
-        updateData.date = editingDate
+      if (editingDate !== booking.service_date) {
+        updateData.service_date = editingDate
       }
       if (editingTime !== booking.time.substring(0, 5)) {
         updateData.time = timeStr
@@ -1125,7 +1125,7 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
       // Обновляем локальное состояние после успешного сохранения
       setEditingMaster(updatedBooking.master_id || null)
       setEditingPost(updatedBooking.post_id || null)
-      setEditingDate(updatedBooking.date)
+      setEditingDate(updatedBooking.service_date)
       setEditingTime(updatedBooking.time.substring(0, 5))
       
       onUpdate() // Обновить список записей
@@ -1281,7 +1281,7 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
             <div className="booking-detail-section">
               <h3 className="detail-section-title">📅 Дата и время</h3>
               <div className="detail-item">
-                <div className="detail-label">Дата записи:</div>
+                <div className="detail-label">Дата услуги:</div>
                 {canEdit ? (
                   <input
                     type="date"
@@ -1291,13 +1291,19 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
                     style={{ width: '100%', maxWidth: '300px' }}
                   />
                 ) : (
-                  <div className="detail-value">{new Date(booking.date).toLocaleDateString('ru-RU', {
+                  <div className="detail-value">{new Date(booking.service_date).toLocaleDateString('ru-RU', {
                     day: '2-digit',
                     month: '2-digit',
                     year: 'numeric',
                     weekday: 'long'
                   })}</div>
                 )}
+              </div>
+              <div className="detail-item">
+                <div className="detail-label">Дата заявки:</div>
+                <div className="detail-value">
+                  {booking.request_date ? new Date(booking.request_date).toLocaleDateString('ru-RU') : '-'}
+                </div>
               </div>
               <div className="detail-item">
                 <div className="detail-label">Время начала:</div>
