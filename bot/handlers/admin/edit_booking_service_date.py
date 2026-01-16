@@ -155,8 +155,8 @@ async def confirm_service_date(callback: CallbackQuery, state: FSMContext):
         
         # Восстанавливаем предыдущее сообщение с деталями заказа
         from bot.handlers.admin.bookings_edit import show_booking_details
-        callback.data = f"booking_{booking_id}"
-        await show_booking_details(callback, state)
+        callback_copy = callback.model_copy(update={"data": f"booking_{booking_id}"})
+        await show_booking_details(callback_copy, state)
         
         # Показываем сообщение об успехе
         await callback.answer("✅ Дата услуги обновлена!")

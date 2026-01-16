@@ -113,9 +113,9 @@ async def change_booking_status(callback: CallbackQuery, state: FSMContext):
         
         # Обновляем сообщение с деталями заказа
         from bot.handlers.admin.bookings import show_booking_details
-        # Вызываем обработчик показа деталей заказа
-        callback.data = f"booking_{booking_id}"
-        await show_booking_details(callback, state)
+        # Вызываем обработчик показа деталей заказа без изменения callback.data (frozen)
+        callback_copy = callback.model_copy(update={"data": f"booking_{booking_id}"})
+        await show_booking_details(callback_copy, state)
 
 
 @router.callback_query(F.data.startswith("edit_payment_"))
@@ -223,8 +223,8 @@ async def toggle_booking_payment(callback: CallbackQuery, state: FSMContext):
         await callback.answer(f"✅ Статус оплаты изменен на: {'Оплачено' if new_is_paid else 'Не оплачено'}")
         
         # Возвращаемся к редактированию оплаты
-        callback.data = f"edit_payment_{booking_id}"
-        await edit_booking_payment(callback, state)
+        callback_copy = callback.model_copy(update={"data": f"edit_payment_{booking_id}"})
+        await edit_booking_payment(callback_copy, state)
 
 
 @router.callback_query(F.data.startswith("edit_datetime_"))
@@ -432,8 +432,8 @@ async def process_datetime_time_selection(callback: CallbackQuery, state: FSMCon
         
         # Возвращаемся к деталям заказа
         from bot.handlers.admin.bookings import show_booking_details
-        callback.data = f"booking_{booking_id}"
-        await show_booking_details(callback, state)
+        callback_copy = callback.model_copy(update={"data": f"booking_{booking_id}"})
+        await show_booking_details(callback_copy, state)
 
 
 @router.callback_query(F.data.startswith("time_"), AdminEditBookingStates.editing_datetime)
@@ -505,8 +505,8 @@ async def process_datetime_time_selection_simple(callback: CallbackQuery, state:
         await state.clear()
 
         from bot.handlers.admin.bookings import show_booking_details
-        callback.data = f"booking_{booking_id}"
-        await show_booking_details(callback, state)
+        callback_copy = callback.model_copy(update={"data": f"booking_{booking_id}"})
+        await show_booking_details(callback_copy, state)
 
 
 @router.callback_query(F.data.startswith("edit_master_"))
