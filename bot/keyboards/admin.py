@@ -93,6 +93,18 @@ def get_booking_actions_keyboard(booking_id: int, status: str) -> InlineKeyboard
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def get_edit_booking_keyboard(booking_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура редактирования заказа"""
+    buttons = [
+        [InlineKeyboardButton(text="📅 Изменить дату/время", callback_data=f"edit_datetime_{booking_id}")],
+        [InlineKeyboardButton(text="💰 Изменить оплату", callback_data=f"edit_payment_{booking_id}")],
+        [InlineKeyboardButton(text="👨‍🔧 Изменить мастера", callback_data=f"edit_master_{booking_id}")],
+        [InlineKeyboardButton(text="🏢 Изменить пост", callback_data=f"edit_post_{booking_id}")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"booking_{booking_id}")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def get_masters_keyboard(masters, booking_id: int) -> InlineKeyboardMarkup:
     """Клавиатура выбора мастера"""
     buttons = []
