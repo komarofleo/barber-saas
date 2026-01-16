@@ -367,7 +367,7 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext):
         service = booking.service
         text_msg = f"📋 Заказ #{booking.booking_number}\n\n"
         text_msg += f"🛠️ Услуга: {service.name if service else 'Не указана'}\n"
-        text_msg += f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
+        text_msg += f"📅 Дата: {booking.service_date.strftime('%d.%m.%Y')}\n"
         text_msg += f"⏰ Время: {booking.time.strftime('%H:%M')}\n\n"
         text_msg += "👨‍🔧 Выберите мастера:"
 
@@ -472,7 +472,7 @@ async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
             min_bookings = float('inf')
             selected_master = None
             for master in masters:
-                bookings_count = len(await get_master_bookings_by_date(session, master.id, booking.date))
+                bookings_count = len(await get_master_bookings_by_date(session, master.id, booking.service_date))
                 if bookings_count < min_bookings:
                     min_bookings = bookings_count
                     selected_master = master
@@ -510,7 +510,7 @@ async def assign_master_to_booking(callback: CallbackQuery, state: FSMContext):
         text_msg = f"📋 Заказ #{booking.booking_number}\n\n"
         text_msg += f"🛠️ Услуга: {service.name if service else 'Не указана'}\n"
         text_msg += f"👨‍🔧 Мастер: {master.full_name if master else 'Автоматически'}\n"
-        text_msg += f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
+        text_msg += f"📅 Дата: {booking.service_date.strftime('%d.%m.%Y')}\n"
         text_msg += f"⏰ Время: {booking.time.strftime('%H:%M')}\n\n"
         text_msg += "🏢 Выберите рабочее место:"
 

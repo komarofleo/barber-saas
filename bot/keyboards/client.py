@@ -57,7 +57,7 @@ def get_my_bookings_keyboard(bookings) -> InlineKeyboardMarkup:
     """Клавиатура списка записей клиента"""
     buttons = []
     for booking in bookings[:10]:
-        date_str = booking.date.strftime("%d.%m")
+        date_str = booking.service_date.strftime("%d.%m")
         time_str = booking.time.strftime("%H:%M")
         service_name = booking.service.name if booking.service else "Неизвестно"
         

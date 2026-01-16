@@ -504,7 +504,7 @@ async def finalize_booking(callback, state: FSMContext):
             # Отправляем подтверждение пользователю
             confirmation_text = (
                 f"✅ Запись создана!\n\n"
-                f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
+                f"📅 Дата: {booking.service_date.strftime('%d.%m.%Y')}\n"
                 f"⏰ Время: {booking.time.strftime('%H:%M')}\n"
                 f"🛠️ Услуга: {service.name}\n"
                 f"💰 Цена: {service.price}₽\n\n"
@@ -585,7 +585,7 @@ async def confirm_attendance(callback: CallbackQuery):
         # Обновляем сообщение
         await callback.message.edit_text(
             f"✅ Явка подтверждена!\n\n"
-            f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
+            f"📅 Дата: {booking.service_date.strftime('%d.%m.%Y')}\n"
             f"⏰ Время: {booking.time.strftime('%H:%M')}\n\n"
             f"Ждем вас в салоне красоты!"
         )
@@ -657,7 +657,7 @@ async def cancel_booking_by_client(callback: CallbackQuery):
         # Обновляем сообщение
         await callback.message.edit_text(
             f"❌ Запись отменена\n\n"
-            f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
+            f"📅 Дата: {booking.service_date.strftime('%d.%m.%Y')}\n"
             f"⏰ Время: {booking.time.strftime('%H:%M')}\n\n"
             f"Если у вас возникли вопросы, свяжитесь с администратором."
         )

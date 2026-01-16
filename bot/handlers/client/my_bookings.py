@@ -56,7 +56,7 @@ async def show_my_bookings(message: Message):
         result = await session.execute(
             select(Booking)
             .where(Booking.client_id == client.id)
-            .order_by(Booking.date.desc(), Booking.time.desc())
+            .order_by(Booking.service_date.desc(), Booking.time.desc())
             .options(
                 selectinload(Booking.service),
                 selectinload(Booking.master),
@@ -83,7 +83,7 @@ async def show_my_bookings(message: Message):
             text += f"🆕 Новые ({len(new_bookings)}):\n"
             for booking in new_bookings[:5]:
                 service_name = booking.service.name if booking.service else "Неизвестно"
-                text += f"  • {booking.date.strftime('%d.%m.%Y')} {booking.time.strftime('%H:%M')} - {service_name}\n"
+                text += f"  • {booking.service_date.strftime('%d.%m.%Y')} {booking.time.strftime('%H:%M')} - {service_name}\n"
                 text += f"    Номер: {booking.booking_number}\n"
             if len(new_bookings) > 5:
                 text += f"  ... и еще {len(new_bookings) - 5}\n"
@@ -94,7 +94,7 @@ async def show_my_bookings(message: Message):
             for booking in confirmed_bookings[:5]:
                 service_name = booking.service.name if booking.service else "Неизвестно"
                 master_name = booking.master.full_name if booking.master else "Не назначен"
-                text += f"  • {booking.date.strftime('%d.%m.%Y')} {booking.time.strftime('%H:%M')} - {service_name}\n"
+                text += f"  • {booking.service_date.strftime('%d.%m.%Y')} {booking.time.strftime('%H:%M')} - {service_name}\n"
                 text += f"    Мастер: {master_name}\n"
                 text += f"    Номер: {booking.booking_number}\n"
             if len(confirmed_bookings) > 5:
@@ -105,7 +105,7 @@ async def show_my_bookings(message: Message):
             text += f"✔️ Выполненные ({len(completed_bookings)}):\n"
             for booking in completed_bookings[:3]:
                 service_name = booking.service.name if booking.service else "Неизвестно"
-                text += f"  • {booking.date.strftime('%d.%m.%Y')} - {service_name}\n"
+                text += f"  • {booking.service_date.strftime('%d.%m.%Y')} - {service_name}\n"
             if len(completed_bookings) > 3:
                 text += f"  ... и еще {len(completed_bookings) - 3}\n"
             text += "\n"
@@ -114,7 +114,7 @@ async def show_my_bookings(message: Message):
             text += f"❌ Отмененные ({len(cancelled_bookings)}):\n"
             for booking in cancelled_bookings[:3]:
                 service_name = booking.service.name if booking.service else "Неизвестно"
-                text += f"  • {booking.date.strftime('%d.%m.%Y')} - {service_name}\n"
+                text += f"  • {booking.service_date.strftime('%d.%m.%Y')} - {service_name}\n"
             if len(cancelled_bookings) > 3:
                 text += f"  ... и еще {len(cancelled_bookings) - 3}\n"
 
@@ -143,7 +143,7 @@ async def show_booking_details(callback: CallbackQuery):
         text = f"📋 Запись #{booking.booking_number}\n\n"
         text += f"🛠️ Услуга: {service.name if service else 'Не указана'}\n"
         text += f"💰 Цена: {service.price}₽\n" if service else ""
-        text += f"📅 Дата: {booking.date.strftime('%d.%m.%Y')}\n"
+        text += f"📅 Дата: {booking.service_date.strftime('%d.%m.%Y')}\n"
         text += f"⏰ Время: {booking.time.strftime('%H:%M')} - {booking.end_time.strftime('%H:%M')}\n"
         text += f"📊 Статус: {booking.status}\n"
         

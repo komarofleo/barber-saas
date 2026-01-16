@@ -22,7 +22,7 @@ def get_bookings_keyboard(bookings) -> InlineKeyboardMarkup:
     buttons = []
     for booking in bookings[:10]:  # Показываем первые 10
         client_name = booking.client.full_name if booking.client else "Неизвестно"
-        date_str = booking.date.strftime("%d.%m")
+        date_str = booking.service_date.strftime("%d.%m")
         time_str = booking.time.strftime("%H:%M")
         service_name = booking.service.name if booking.service else "Неизвестно"
         
