@@ -1694,3 +1694,65 @@ async def update_booking_request_date(
     booking = await get_booking_by_id(session, booking_id, company_id=company_id)
     
     return booking
+
+
+async def update_booking_service_date(
+    session: AsyncSession,
+    booking_id: int,
+    new_service_date: Optional[date] = None,
+    company_id: Optional[int] = None,
+) -> Optional[Booking]:
+    """
+    Обновить дату услуги записи.
+    
+    Args:
+        session: Сессия БД
+        booking_id: ID записи
+        new_service_date: Новая дата услуги
+        company_id: ID компании (для tenant схемы)
+    
+    Returns:
+        Обновленный объект записи или None
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    schema_name = None
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+    else:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+                    schema_name = f"tenant_{company_id}"
+        except Exception:
+            pass
+    
+    if schema_name:
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    
+    booking = await get_booking_by_id(session, booking_id, company_id=company_id)
+    if not booking:
+        logger.error(f"❌ Запись {booking_id} не найдена")
+        return None
+    
+    logger.info(f"🔵 Обновляем дату услуги записи {booking_id}: {booking.service_date} -> {new_service_date}")
+    
+    await session.execute(
+        text("UPDATE bookings SET service_date = :service_date, updated_at = CURRENT_TIMESTAMP WHERE id = :booking_id"),
+        {"service_date": new_service_date, "booking_id": booking_id}
+    )
+    await session.commit()
+    
+    logger.info(f"✅ Дата услуги записи {booking_id} обновлена на {new_service_date}")
+    
+    if schema_name:
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    booking = await get_booking_by_id(session, booking_id, company_id=company_id)
+    
+    return booking
