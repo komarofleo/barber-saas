@@ -181,7 +181,7 @@ async def get_master_schedule(
     bookings_query = select(Booking).where(
         and_(
             Booking.master_id == master_id,
-            Booking.date == schedule_date,
+            Booking.service_date == schedule_date,
             Booking.status.in_(["confirmed", "new"])
         )
     ).order_by(Booking.time.asc()).options(

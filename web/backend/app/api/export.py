@@ -28,13 +28,13 @@ async def export_bookings(
     query = select(Booking)
     
     if start_date:
-        query = query.where(Booking.date >= start_date)
+        query = query.where(Booking.service_date >= start_date)
     if end_date:
-        query = query.where(Booking.date <= end_date)
+        query = query.where(Booking.service_date <= end_date)
     if status:
         query = query.where(Booking.status == status)
     
-    query = query.order_by(Booking.date.desc(), Booking.time.desc())
+    query = query.order_by(Booking.service_date.desc(), Booking.time.desc())
     
     result = await db.execute(query)
     bookings = result.scalars().all()

@@ -498,9 +498,9 @@ async def get_bookings(
     if status:
         conditions.append(Booking.status == status)
     if start_date:
-        conditions.append(Booking.date >= start_date)
+        conditions.append(Booking.service_date >= start_date)
     if end_date:
-        conditions.append(Booking.date <= end_date)
+        conditions.append(Booking.service_date <= end_date)
     if master_id:
         conditions.append(Booking.master_id == master_id)
     if service_id:
@@ -542,7 +542,7 @@ async def get_bookings(
     logger.info(f"📈 Всего записей в БД (без фильтров): {total_all}")
     
     # Сортировка перед пагинацией
-    query = query.order_by(Booking.date.desc(), Booking.time.desc(), Booking.created_at.desc())
+    query = query.order_by(Booking.service_date.desc(), Booking.time.desc(), Booking.created_at.desc())
     
     # Пагинация
     query = query.offset((page - 1) * page_size).limit(page_size)
@@ -693,7 +693,7 @@ async def get_available_slots(
             duration = service.duration
     
     # Получаем все записи на эту дату
-    booked_query = select(Booking).where(Booking.date == booking_date)
+    booked_query = select(Booking).where(Booking.service_date == booking_date)
     if master_id:
         booked_query = booked_query.where(Booking.master_id == master_id)
     booked_result = await tenant_session.execute(booked_query)
