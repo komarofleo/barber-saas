@@ -388,7 +388,7 @@ async def send_status_change_notification(booking_id: int, new_status: str):
         message = status_messages.get(new_status, f"Статус записи изменен: {new_status}")
         
         try:
-            date_str = booking.date.strftime("%d.%m.%Y")
+            date_str = booking.service_date.strftime("%d.%m.%Y")
             time_str = booking.time.strftime("%H:%M")
             service_name = booking.service.name if booking.service else "Услуга"
             
@@ -817,7 +817,7 @@ async def send_status_change_notification_tenant(company_id: int, booking_id: in
         message = status_messages.get(new_status, f"Статус записи изменен: {new_status}")
         
         try:
-            date_str = booking.date.strftime("%d.%m.%Y")
+            date_str = booking.service_date.strftime("%d.%m.%Y")
             time_str = booking.time.strftime("%H:%M")
             service_name = booking.service.name if booking.service else "Услуга"
             
@@ -989,7 +989,7 @@ async def notify_admin_new_bookings():
         text = f"🔔 Новые записи ({len(new_bookings)})\n\n"
         
         for booking in new_bookings[:10]:  # Показываем максимум 10 последних
-            date_str = booking.date.strftime("%d.%m.%Y")
+            date_str = booking.service_date.strftime("%d.%m.%Y")
             time_str = booking.time.strftime("%H:%M")
             client_name = booking.client.full_name if booking.client else "Неизвестно"
             service_name = booking.service.name if booking.service else "Не указана"

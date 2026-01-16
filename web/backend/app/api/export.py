@@ -84,7 +84,7 @@ async def export_bookings(
             service_name or '',
             master_name or '',
             f'Пост №{post_number}' if post_number else '',
-            booking.date.isoformat() if booking.date else '',
+            booking.service_date.isoformat() if booking.service_date else '',
             str(booking.time) if booking.time else '',
             booking.duration or 0,
             booking.status or '',

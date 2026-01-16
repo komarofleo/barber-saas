@@ -203,7 +203,7 @@ async def get_master_schedule(
             "service_id": booking.service_id,
             "master_id": booking.master_id,
             "post_id": booking.post_id,
-            "date": booking.date,
+            "date": booking.service_date,
             "time": booking.time,
             "duration": booking.duration,
             "end_time": booking.end_time,
