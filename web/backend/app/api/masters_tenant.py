@@ -430,7 +430,7 @@ async def get_all_work_orders(
     count_query = text("""
         SELECT COUNT(*) as total
         FROM bookings
-        WHERE date = :schedule_date
+        WHERE service_date = :schedule_date
     """)
     count_result = await tenant_session.execute(count_query, {"schedule_date": schedule_date})
     total_count = count_result.scalar()
