@@ -68,6 +68,7 @@ dist/
 # Backups
 backups/
 full_backup_*.tar.gz
+server-backups/
 
 # PostgreSQL
 *.pid
