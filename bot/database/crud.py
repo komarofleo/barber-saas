@@ -715,32 +715,10 @@ async def get_available_dates(
             current += timedelta(days=1)
             continue
         
-        # Проверяем, есть ли хотя бы один свободный слот на эту дату
-        # Для этого проверяем, не заняты ли все посты на весь рабочий день
-        bookings_query = select(Booking).where(
-            and_(
-                Booking.date == current,
-                Booking.status.in_(["new", "confirmed"])
-            )
-        )
-        bookings_result = await session.execute(bookings_query)
-        existing_bookings = bookings_result.scalars().all()
-        
-        # Подсчитываем количество занятых постов
-        occupied_posts = set()
-        bookings_without_post = 0
-        
-        for booking in existing_bookings:
-            if booking.post_id:
-                occupied_posts.add(booking.post_id)
-            else:
-                bookings_without_post += 1
-        
-        total_occupied = len(occupied_posts) + bookings_without_post
-        
-        # Если занято меньше постов, чем всего, значит есть свободные слоты
-        if total_occupied < total_posts:
-            available.add(current)
+        # Упрощенная проверка: если есть активные посты и нет блокировки на день,
+        # дата доступна, а свободные слоты проверяются на следующем шаге (выбор времени).
+        # Это устраняет ложные "нет свободных дат" при наличии записей без поста.
+        available.add(current)
         
         current += timedelta(days=1)
     
@@ -975,18 +953,20 @@ async def create_booking(
     
     # Используем прямой SQL INSERT
     now = datetime.utcnow()
+    today = date.today()  # Дата заявки - когда клиент отправил заявку
+    
     result = await session.execute(
         text(f"""
             INSERT INTO "{schema_name}".bookings (
                 booking_number, client_id, service_id, date, time, duration, end_time,
-                comment, created_by, status, created_at, updated_at
+                request_date, comment, created_by, status, created_at, updated_at
             )
             VALUES (
                 :booking_number, :client_id, :service_id, :date, :time, :duration, :end_time,
-                :comment, :created_by, :status, :created_at, :updated_at
+                :request_date, :comment, :created_by, :status, :created_at, :updated_at
             )
             RETURNING id, booking_number, client_id, service_id, date, time, duration, end_time,
-                      comment, created_by, status, created_at, updated_at
+                      request_date, comment, created_by, status, created_at, updated_at
         """),
         {
             "booking_number": booking_number,
@@ -996,6 +976,7 @@ async def create_booking(
             "time": booking_time,
             "duration": duration,
             "end_time": end_time,
+            "request_date": today,  # Дата заявки
             "comment": comment,
             "created_by": created_by,
             "status": "new",
@@ -1011,7 +992,7 @@ async def create_booking(
         booking.booking_number = row[1]
         booking.client_id = row[2]
         booking.service_id = row[3]
-        booking.date = row[4]
+        booking.service_date = row[4]  # Было booking.date, переименовано
         booking.time = row[5]
         booking.duration = row[6]
         booking.end_time = row[7]
@@ -1045,7 +1026,7 @@ async def get_bookings_by_client(session: AsyncSession, client_id: int) -> List[
     result = await session.execute(
         select(Booking)
         .where(Booking.client_id == client_id)
-        .order_by(Booking.date.desc(), Booking.time.desc())
+        .order_by(Booking.service_date.desc(), Booking.time.desc())
         .options(
             selectinload(Booking.service),
             selectinload(Booking.master),
@@ -1087,11 +1068,11 @@ async def get_all_bookings(session: AsyncSession, company_id: Optional[int] = No
         # Используем прямой SQL запрос для получения всех записей
         query = f"""
             SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
-                   b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+                   b.service_date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
                    b.payment_method, b.comment, b.admin_comment, b.created_at, b.updated_at,
                    b.confirmed_at, b.completed_at, b.cancelled_at, b.created_by
             FROM "{schema_name}".bookings b
-            ORDER BY b.date DESC, b.time DESC
+            ORDER BY b.service_date DESC, b.time DESC
         """
         if limit:
             query += f" LIMIT {limit}"
@@ -1120,7 +1101,7 @@ async def get_all_bookings(session: AsyncSession, company_id: Optional[int] = No
             booking.service_id = row[3]
             booking.master_id = row[4]
             booking.post_id = row[5]
-            booking.date = row[6]
+            booking.service_date = row[6]  # Было booking.date, переименовано
             booking.time = row[7]
             booking.duration = row[8]
             booking.end_time = row[9]
@@ -1223,12 +1204,12 @@ async def get_bookings_by_status(session: AsyncSession, status: str, company_id:
     result = await session.execute(
         text("""
             SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
-                   b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+                   b.service_date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
                    b.payment_method, b.comment, b.admin_comment, b.created_at, b.updated_at,
                    b.confirmed_at, b.completed_at, b.cancelled_at, b.created_by
             FROM bookings b
             WHERE b.status = :status
-            ORDER BY b.date ASC, b.time ASC
+            ORDER BY b.service_date ASC, b.time ASC
         """),
         {"status": status}
     )
@@ -1259,7 +1240,7 @@ async def get_bookings_by_status(session: AsyncSession, status: str, company_id:
         booking.service_id = row[3]
         booking.master_id = row[4]
         booking.post_id = row[5]
-        booking.date = row[6]
+        booking.service_date = row[6]
         booking.time = row[7]
         booking.duration = row[8]
         booking.end_time = row[9]
@@ -1382,7 +1363,7 @@ async def get_booking_by_id(session: AsyncSession, booking_id: int, company_id: 
         result = await session.execute(
             text(f"""
                 SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
-                       b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+                       b.service_date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
                        b.payment_method, b.comment, b.admin_comment, b.created_at, b.updated_at,
                        b.confirmed_at, b.completed_at, b.cancelled_at, b.created_by
                 FROM "{schema_name}".bookings b
@@ -1403,7 +1384,7 @@ async def get_booking_by_id(session: AsyncSession, booking_id: int, company_id: 
         booking.service_id = row[3]
         booking.master_id = row[4]
         booking.post_id = row[5]
-        booking.date = row[6]
+        booking.service_date = row[6]
         booking.time = row[7]
         booking.duration = row[8]
         booking.end_time = row[9]
@@ -1507,7 +1488,7 @@ async def get_master_bookings_by_date(
         .where(
             and_(
                 Booking.master_id == master_id,
-                Booking.date == booking_date,
+                Booking.service_date == booking_date,
                 Booking.status.in_(["confirmed", "new", "completed"])
             )
         )
@@ -1628,7 +1609,7 @@ async def update_booking_status(
                 schedule_booking_reminders(
                     company_id=company_id,
                     booking_id=booking_id,
-                    booking_date=booking.date,
+                    booking_date=booking.service_date,
                     booking_time=booking.time
                 )
                 logger.info(f"📅 [CRUD] Напоминания запланированы для записи {booking_id}")
@@ -1642,3 +1623,69 @@ async def update_booking_status(
     
     return booking
 
+
+async def update_booking_request_date(
+    session: AsyncSession,
+    booking_id: int,
+    new_request_date: Optional[date] = None,
+    company_id: Optional[int] = None,
+) -> Optional[Booking]:
+    """
+    Обновить дату заявки записи.
+    
+    Args:
+        session: Сессия БД
+        booking_id: ID записи
+        new_request_date: Новая дата заявки (если None, обновляется текущая)
+        company_id: ID компании (для tenant схемы)
+    
+    Returns:
+        Обновленный объект записи или None
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Определяем company_id и schema_name
+    schema_name = None
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+    else:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+                    schema_name = f"tenant_{company_id}"
+        except Exception:
+            pass
+    
+    if schema_name:
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    
+    # Получаем booking
+    booking = await get_booking_by_id(session, booking_id, company_id=company_id)
+    if not booking:
+        logger.error(f"❌ Запись {booking_id} не найдена")
+        return None
+    
+    old_request_date = booking.request_date
+    logger.info(f"🔵 Обновляем дату заявки записи {booking_id}: {old_request_date} -> {new_request_date}")
+    
+    # Выполняем UPDATE через SQL (search_path уже установлен)
+    await session.execute(
+        text(f"UPDATE bookings SET request_date = :request_date, updated_at = CURRENT_TIMESTAMP WHERE id = :booking_id"),
+        {"request_date": new_request_date, "booking_id": booking_id}
+    )
+    await session.commit()
+    
+    logger.info(f"✅ Дата заявки записи {booking_id} обновлена на {new_request_date}")
+    
+    # Получаем обновленную запись
+    if schema_name:
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    booking = await get_booking_by_id(session, booking_id, company_id=company_id)
+    
+    return booking
