@@ -91,7 +91,7 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
             # Загружаем запись с клиентом через прямой SQL
             booking_result = await session.execute(
                 text(f"""
-                    SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id
+                    SELECT b.id, b.booking_number, b.service_date, b.time, b.client_id, b.service_id
                     FROM "{schema_name}".bookings b
                     WHERE b.id = :booking_id
                 """),

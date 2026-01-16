@@ -243,7 +243,7 @@ async def show_booking_details(callback: CallbackQuery, state: FSMContext):
         booking_data_result = await session.execute(
             text('''
                 SELECT 
-                    b.booking_number, b.date, b.time, b.end_time, b.duration, b.status,
+                    b.booking_number, b.service_date, b.time, b.end_time, b.duration, b.status,
                     b.comment, b.admin_comment, b.master_id, b.post_id, b.service_id,
                     c.full_name as client_name, c.phone as client_phone,
                     s.name as service_name, s.price as service_price
@@ -290,7 +290,7 @@ async def show_booking_details(callback: CallbackQuery, state: FSMContext):
         text_msg += f"\n🛠️ Услуга: {booking_data[13] or 'Не указана'}\n"  # service_name
         if booking_data[14]:  # service_price
             text_msg += f"💰 Цена: {booking_data[14]}₽\n"
-        text_msg += f"📅 Дата: {booking_data[1].strftime('%d.%m.%Y')}\n"  # date
+        text_msg += f"📅 Дата: {booking_data[1].strftime('%d.%m.%Y')}\n"  # service_date
         text_msg += f"⏰ Время: {booking_data[2].strftime('%H:%M')} - {booking_data[3].strftime('%H:%M')}\n"  # time - end_time
         text_msg += f"⏱️ Длительность: {booking_data[4]} мин\n"  # duration
         text_msg += f"📊 Статус: {booking_data[5]}\n"  # status
@@ -704,7 +704,7 @@ async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
                 # Получаем данные заказа для уведомления
                 booking_data_result = await session.execute(
                     text('''
-                        SELECT b.booking_number, b.date, b.time, s.name as service_name
+                        SELECT b.booking_number, b.service_date, b.time, s.name as service_name
                         FROM bookings b
                         LEFT JOIN services s ON b.service_id = s.id
                         WHERE b.id = :booking_id
