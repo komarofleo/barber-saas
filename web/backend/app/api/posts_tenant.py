@@ -6,6 +6,7 @@ API для работы с постами (МУЛЬТИ-ТЕНАНТНАЯ ВЕ�
 - Использование get_tenant_session() для работы с tenant сессиями
 - Изоляция данных между компаниями
 """
+import logging
 from datetime import datetime
 from typing import Optional, Annotated
 from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
@@ -20,6 +21,8 @@ from app.schemas.post import (
     PostCreateRequest, PostUpdateRequest
 )
 from shared.database.models import User, Post, Booking
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 

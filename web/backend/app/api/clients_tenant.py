@@ -7,6 +7,7 @@ API для работы с клиентами (МУЛЬТИ-ТЕНАНТНАЯ �
 - Изоляция данных между компаниями
 """
 from datetime import datetime
+import logging
 from typing import Optional
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
@@ -20,6 +21,8 @@ from app.schemas.client import (
     ClientCreateRequest, ClientUpdateRequest
 )
 from shared.database.models import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 

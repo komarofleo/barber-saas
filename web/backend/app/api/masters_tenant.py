@@ -34,7 +34,6 @@ async def get_masters(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
-    is_active: Optional[bool] = None,
     tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -45,7 +44,6 @@ async def get_masters(
         page: номер страницы
         page_size: количество элементов на странице
         search: строка для поиска
-        is_active: фильтр по активности
         company_id: ID компании для мульти-тенантности
     """
     if not current_user.is_admin:
@@ -140,10 +138,12 @@ async def get_master(
     # Формируем ответ
     master_dict = {
         "id": master.id,
+        "user_id": master.user_id,
         "full_name": master.full_name,
         "phone": master.phone,
+        "telegram_id": master.telegram_id,
         "specialization": master.specialization,
-        "is_active": master.is_active,
+        "is_universal": master.is_universal,
         "booking_count": booking_count or 0,
         "created_at": master.created_at,
         "updated_at": master.updated_at,
@@ -182,10 +182,12 @@ async def create_master(
     
     # Создаем нового мастера
     master = Master(
+        user_id=master_data.user_id,
         full_name=master_data.full_name,
         phone=master_data.phone,
+        telegram_id=master_data.telegram_id,
         specialization=master_data.specialization,
-        is_active=True,
+        is_universal=master_data.is_universal if master_data.is_universal is not None else True,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
     )
@@ -203,10 +205,12 @@ async def create_master(
     # Формируем ответ
     master_dict = {
         "id": master.id,
+        "user_id": master.user_id,
         "full_name": master.full_name,
         "phone": master.phone,
+        "telegram_id": master.telegram_id,
         "specialization": master.specialization,
-        "is_active": master.is_active,
+        "is_universal": master.is_universal,
         "booking_count": 0,
         "created_at": master.created_at,
         "updated_at": master.updated_at,
@@ -248,8 +252,12 @@ async def update_master(
         master.phone = master_data.phone
     if master_data.specialization is not None:
         master.specialization = master_data.specialization
-    if master_data.is_active is not None:
-        master.is_active = master_data.is_active
+    if master_data.telegram_id is not None:
+        master.telegram_id = master_data.telegram_id
+    if master_data.user_id is not None:
+        master.user_id = master_data.user_id
+    if master_data.is_universal is not None:
+        master.is_universal = master_data.is_universal
     
     master.updated_at = datetime.utcnow()
     await tenant_session.commit()
@@ -265,10 +273,12 @@ async def update_master(
     
     master_dict = {
         "id": master.id,
+        "user_id": master.user_id,
         "full_name": master.full_name,
         "phone": master.phone,
+        "telegram_id": master.telegram_id,
         "specialization": master.specialization,
-        "is_active": master.is_active,
+        "is_universal": master.is_universal,
         "booking_count": booking_count or 0,
         "created_at": master.created_at,
         "updated_at": master.updated_at,
@@ -426,6 +436,7 @@ async def get_all_work_orders(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать все лист-наряды")
     
+    logger = logging.getLogger(__name__)
     company_id = getattr(request.state, "company_id", None)
     logger.info(f"📋 Запрос лист-нарядов: date={schedule_date}, company_id={company_id}, user_id={current_user.id}")
     

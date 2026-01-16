@@ -8,6 +8,7 @@ API для работы с пользователями (МУЛЬТИ-ТЕНАН
 """
 from datetime import datetime
 from hashlib import sha256
+import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,8 @@ from app.deps.tenant import get_tenant_db
 from app.api.auth import get_current_user
 from app.schemas.user import UserResponse, UserListResponse, UserCreateRequest
 from shared.database.models import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -359,6 +362,86 @@ async def update_user(
     company_id = getattr(request.state, "company_id", None)
     logger.info(f"✅ Обновлен пользователь: user_id={user_id}, company_id={company_id}")
 
+    return UserResponse.model_validate(
+        {
+            "id": user_id_db,
+            "telegram_id": telegram_id or 0,
+            "username": username,
+            "first_name": first_name or None,
+            "last_name": last_name or None,
+            "phone": phone,
+            "is_admin": role == "admin",
+            "is_master": role == "master",
+            "is_blocked": not bool(is_active),
+            "created_at": created_at,
+            "updated_at": updated_at or created_at,
+        }
+    )
+
+
+@router.patch("/{user_id}/admin", response_model=UserResponse)
+async def toggle_admin(
+    user_id: int,
+    request: Request,
+    is_admin: bool = Query(..., description="Назначить пользователя администратором"),
+    tenant_session: AsyncSession = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Назначить/снять права администратора.
+    
+    Аргументы:
+        user_id: ID пользователя
+        is_admin: флаг администратора
+        company_id: ID компании для мульти-тенантности
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администраторы могут менять права пользователей")
+    
+    exists = await tenant_session.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
+    if not exists.fetchone():
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    new_role = "admin" if is_admin else "client"
+    await tenant_session.execute(
+        text("UPDATE users SET role = :role, updated_at = :updated_at WHERE id = :id"),
+        {"role": new_role, "updated_at": datetime.utcnow(), "id": user_id},
+    )
+    await tenant_session.commit()
+    
+    result = await tenant_session.execute(
+        text(
+            """
+            SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
+            FROM users
+            WHERE id = :user_id
+            """
+        ),
+        {"user_id": user_id},
+    )
+    row = result.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    
+    (
+        user_id_db,
+        telegram_id,
+        username,
+        full_name,
+        phone,
+        role,
+        is_active,
+        created_at,
+        updated_at,
+    ) = row
+    
+    name_parts = (full_name or "").split(maxsplit=1) if full_name else ["", ""]
+    first_name = name_parts[0] if len(name_parts) > 0 else None
+    last_name = name_parts[1] if len(name_parts) > 1 else None
+    
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"✅ Обновлены права пользователя: user_id={user_id}, company_id={company_id}, role={role}")
+    
     return UserResponse.model_validate(
         {
             "id": user_id_db,

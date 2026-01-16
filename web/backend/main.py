@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
-from app.api import auth, bookings, services, blocks, promocodes, promotions, broadcasts, export, subscription
+from app.api import auth, bookings, blocks, promocodes, promotions, broadcasts, export, subscription
 from app.api import masters_tenant, posts_tenant, clients_tenant, services_tenant, users_tenant
 from app.api import settings as settings_api
 from app.middleware.tenant import TenantMiddleware
