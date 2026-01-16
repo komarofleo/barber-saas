@@ -955,24 +955,28 @@ async def create_booking(
     now = datetime.utcnow()
     today = date.today()  # Дата заявки - когда клиент отправил заявку
     
+    logger.info(
+        f"📝 [CRUD] Вставка записи: booking_number={booking_number}, service_date={booking_date}, "
+        f"time={booking_time}, duration={duration}, end_time={end_time}, request_date={today}"
+    )
     result = await session.execute(
         text(f"""
             INSERT INTO "{schema_name}".bookings (
-                booking_number, client_id, service_id, date, time, duration, end_time,
+                booking_number, client_id, service_id, service_date, time, duration, end_time,
                 request_date, comment, created_by, status, created_at, updated_at
             )
             VALUES (
-                :booking_number, :client_id, :service_id, :date, :time, :duration, :end_time,
+                :booking_number, :client_id, :service_id, :service_date, :time, :duration, :end_time,
                 :request_date, :comment, :created_by, :status, :created_at, :updated_at
             )
-            RETURNING id, booking_number, client_id, service_id, date, time, duration, end_time,
+            RETURNING id, booking_number, client_id, service_id, service_date, time, duration, end_time,
                       request_date, comment, created_by, status, created_at, updated_at
         """),
         {
             "booking_number": booking_number,
             "client_id": client_id,
             "service_id": service_id,
-            "date": booking_date,
+            "service_date": booking_date,
             "time": booking_time,
             "duration": duration,
             "end_time": end_time,
@@ -996,11 +1000,12 @@ async def create_booking(
         booking.time = row[5]
         booking.duration = row[6]
         booking.end_time = row[7]
-        booking.comment = row[8]
-        booking.created_by = row[9]
-        booking.status = row[10]
-        booking.created_at = row[11]
-        booking.updated_at = row[12]
+        booking.request_date = row[8]
+        booking.comment = row[9]
+        booking.created_by = row[10]
+        booking.status = row[11]
+        booking.created_at = row[12]
+        booking.updated_at = row[13]
         # Добавляем совместимые атрибуты для старого кода
         booking.master_id = None
         booking.post_id = None
