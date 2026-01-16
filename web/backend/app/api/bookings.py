@@ -950,7 +950,7 @@ async def create_booking(
     
     # Вычисляем end_time
     duration_minutes = booking_data.duration or 60
-    booking_datetime = datetime.combine(booking_data.date, booking_time)
+    booking_datetime = datetime.combine(booking_data.service_date, booking_time)
     end_time = (booking_datetime + timedelta(minutes=duration_minutes)).time()
     
     # Создаем запись
@@ -960,7 +960,7 @@ async def create_booking(
         service_id=booking_data.service_id,
         master_id=booking_data.master_id,
         post_id=booking_data.post_id,
-        date=booking_data.date,
+        service_date=booking_data.service_date,
         time=booking_time,
         duration=duration_minutes,
         end_time=end_time,
@@ -1127,13 +1127,13 @@ async def update_booking(
         booking.master_id = booking_data.master_id
     if booking_data.post_id is not None:
         booking.post_id = booking_data.post_id
-    if booking_data.date is not None:
-        booking.date = booking_data.date
+    if booking_data.service_date is not None:
+        booking.service_date = booking_data.service_date
     if booking_data.time is not None:
         booking.time = booking_data.time
     if booking_data.duration is not None:
         booking.duration = booking_data.duration
-        booking.end_time = (datetime.combine(booking.date, booking.time) + timedelta(minutes=booking_data.duration)).time()
+        booking.end_time = (datetime.combine(booking.service_date, booking.time) + timedelta(minutes=booking_data.duration)).time()
     if booking_data.status is not None:
         booking.status = booking_data.status
     if booking_data.amount is not None:
@@ -1167,7 +1167,7 @@ async def update_booking(
             schedule_booking_reminders(
                 company_id=company_id,
                 booking_id=booking_id,
-                booking_date=booking.date,
+                booking_date=booking.service_date,
                 booking_time=booking.time
             )
             logger.info(f"📅 Напоминания запланированы для записи {booking_id}")

@@ -219,8 +219,8 @@ class Booking(Base):
     client_history = relationship("ClientHistory", back_populates="booking")
 
     __table_args__ = (
-        Index("idx_bookings_date_time", "date", "time"),
-        Index("idx_bookings_date_status", "date", "status"),
+        Index("idx_bookings_date_time", "service_date", "time"),
+        Index("idx_bookings_date_status", "service_date", "status"),
     )
 
 

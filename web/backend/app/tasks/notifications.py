@@ -886,7 +886,7 @@ async def send_work_orders_to_masters():
                     .where(
                         and_(
                             Booking.master_id == master.id,
-                            Booking.date == today,
+                            Booking.service_date == today,
                             Booking.status.in_(["confirmed", "new"])
                         )
                     )
