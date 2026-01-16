@@ -6,6 +6,7 @@ API для работы с мастерами (МУЛЬТИ-ТЕНАНТНАЯ �
 - Использование get_tenant_session() для работы с tenant сессиями
 - Изоляция данных между компаниями
 """
+import logging
 from datetime import datetime
 from typing import Optional, Annotated
 from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
@@ -22,6 +23,8 @@ from app.schemas.master import (
 from app.schemas.booking import BookingResponse
 from datetime import date
 from shared.database.models import User, Master, Booking
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/masters", tags=["masters"])
 
