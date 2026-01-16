@@ -178,7 +178,12 @@ class Booking(Base):
     post_id = Column(Integer, ForeignKey("posts.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-    date = Column(Date, nullable=False, index=True)
+    # УДАЛЕНО: переименовано в service_date (дата услуги)
+    # date = Column(Date, nullable=False, index=True)
+    
+    service_date = Column(Date, nullable=False, index=True)  # Дата услуги
+    request_date = Column(Date, nullable=True)  # Дата когда клиент отправил заявку
+    
     time = Column(Time, nullable=False)
     duration = Column(Integer, nullable=False)  # в минутах
     end_time = Column(Time, nullable=False)
