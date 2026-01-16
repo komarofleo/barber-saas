@@ -346,7 +346,7 @@ async def get_master_schedule(
     # Получаем записи мастера на дату через прямой SQL
     bookings_query = text("""
         SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
-               b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+               b.service_date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
                b.payment_method, b.comment, b.admin_comment, b.created_at,
                b.confirmed_at, b.completed_at, b.cancelled_at,
                c.full_name as client_name, c.phone as client_phone,
@@ -356,7 +356,7 @@ async def get_master_schedule(
         LEFT JOIN services s ON b.service_id = s.id
         LEFT JOIN posts p ON b.post_id = p.id
         WHERE b.master_id = :master_id
-          AND b.date = :schedule_date
+          AND b.service_date = :schedule_date
           AND b.status IN ('confirmed', 'new')
         ORDER BY b.time ASC
     """)
@@ -415,6 +415,7 @@ async def get_master_schedule(
 async def get_all_work_orders(
     request: Request,
     schedule_date: date = Query(..., alias="date"),
+    company_id: Optional[int] = Query(None, description="ID компании для tenant сессии"),
     tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -422,12 +423,25 @@ async def get_all_work_orders(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать все лист-наряды")
     
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(f"📋 Запрос лист-нарядов: date={schedule_date}, company_id={company_id}, user_id={current_user.id}")
+    
+    # Сначала проверяем количество записей в БД на эту дату
+    count_query = text("""
+        SELECT COUNT(*) as total
+        FROM bookings
+        WHERE date = :schedule_date
+    """)
+    count_result = await tenant_session.execute(count_query, {"schedule_date": schedule_date})
+    total_count = count_result.scalar()
+    logger.info(f"📊 Всего записей в БД на {schedule_date}: {total_count}")
+    
     # Получаем все записи на дату через прямой SQL
     # Показываем все записи (как в календаре), но группируем по мастерам
     # Записи без мастера будут в отдельной группе "Без мастера"
     bookings_query = text("""
         SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
-               b.date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+               b.service_date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
                b.payment_method, b.comment, b.admin_comment, b.created_at,
                b.confirmed_at, b.completed_at, b.cancelled_at,
                c.full_name as client_name, c.phone as client_phone,
@@ -438,7 +452,7 @@ async def get_all_work_orders(
         LEFT JOIN services s ON b.service_id = s.id
         LEFT JOIN posts p ON b.post_id = p.id
         LEFT JOIN masters m ON b.master_id = m.id
-        WHERE b.date = :schedule_date
+        WHERE b.service_date = :schedule_date
         ORDER BY 
           CASE WHEN m.full_name IS NULL THEN 1 ELSE 0 END,
           m.full_name ASC NULLS LAST, 
@@ -450,6 +464,7 @@ async def get_all_work_orders(
         {"schedule_date": schedule_date}
     )
     bookings_rows = bookings_result.fetchall()
+    logger.info(f"📊 Количество записей после выполнения запроса: {len(bookings_rows)}")
     
     # Формируем ответ, группируя по мастерам
     masters_dict: dict[int, dict] = {}
@@ -509,6 +524,11 @@ async def get_all_work_orders(
     
     # Преобразуем в список
     masters_list = list(masters_dict.values())
+    
+    # Логируем результат перед возвратом
+    logger.info(f"✅ Подготовка ответа: {len(masters_list)} мастеров")
+    for master in masters_list:
+        logger.info(f"  - {master['master_name']}: {len(master['bookings'])} записей")
     
     return {
         "date": schedule_date.isoformat(),

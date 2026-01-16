@@ -306,7 +306,7 @@ async def get_promocode_statistics(
             {
                 "id": b.id,
                 "booking_number": b.booking_number,
-                "date": b.date.isoformat() if b.date else None,
+                "date": b.service_date.isoformat() if b.service_date else None,
                 "amount": float(b.amount or Decimal("0.00")),
                 "discount_amount": float(b.discount_amount or Decimal("0.00")),
                 "status": b.status

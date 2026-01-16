@@ -103,7 +103,7 @@ async def notify_admins_about_new_booking(company_id: int, booking_id: int, tena
         # Загружаем запись с клиентом через прямой SQL
         booking_result = await tenant_session.execute(
             sql_text(f"""
-                SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id
+                SELECT b.id, b.booking_number, b.service_date, b.time, b.client_id, b.service_id
                 FROM "{schema_name}".bookings b
                 WHERE b.id = :booking_id
             """),
@@ -290,7 +290,7 @@ async def send_booking_status_notification(company_id: int, booking_id: int, new
         # Получаем запись через прямой SQL (избегаем ORM проблем с total_visits)
         booking_result = await tenant_session.execute(
             sql_text(f"""
-                SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id
+                SELECT b.id, b.booking_number, b.service_date, b.time, b.client_id, b.service_id
                 FROM "tenant_{company_id}".bookings b
                 WHERE b.id = :booking_id
             """),

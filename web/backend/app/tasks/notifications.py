@@ -77,7 +77,7 @@ async def send_reminder_day_before():
                 # Находим подтвержденные записи на завтра в этой компании
                 bookings_result = await session.execute(
                     text(f"""
-                        SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id, 
+                        SELECT b.id, b.booking_number, b.service_date, b.time, b.client_id, b.service_id, 
                                b.master_id, b.post_id, b.status,
                                c.user_id,
                                u.telegram_id,
@@ -90,7 +90,7 @@ async def send_reminder_day_before():
                         LEFT JOIN "{schema_name}".services s ON b.service_id = s.id
                         LEFT JOIN "{schema_name}".masters m ON b.master_id = m.id
                         LEFT JOIN "{schema_name}".posts p ON b.post_id = p.id
-                        WHERE b.date = :tomorrow
+                        WHERE b.service_date = :tomorrow
                           AND b.status = 'confirmed'
                           AND u.telegram_id IS NOT NULL
                     """),
@@ -191,7 +191,7 @@ async def send_reminder_3_hours_before():
                 # Исключаем записи, для которых уже было отправлено напоминание за 3 часа
                 bookings_result = await session.execute(
                     text(f"""
-                        SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id, 
+                        SELECT b.id, b.booking_number, b.service_date, b.time, b.client_id, b.service_id, 
                                b.post_id, b.status,
                                c.user_id,
                                u.telegram_id,
@@ -202,7 +202,7 @@ async def send_reminder_3_hours_before():
                         LEFT JOIN "{schema_name}".users u ON c.user_id = u.id
                         LEFT JOIN "{schema_name}".services s ON b.service_id = s.id
                         LEFT JOIN "{schema_name}".posts p ON b.post_id = p.id
-                        WHERE b.date = :today
+                        WHERE b.service_date = :today
                           AND b.status = 'confirmed'
                           AND b.time >= :target_time_start
                           AND b.time <= :target_time_end
@@ -462,7 +462,7 @@ async def send_single_reminder_day_before(company_id: int, booking_id: int):
             # Получаем данные записи
             booking_result = await session.execute(
                 text(f"""
-                    SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id, 
+                    SELECT b.id, b.booking_number, b.service_date, b.time, b.client_id, b.service_id, 
                            b.master_id, b.post_id, b.status,
                            c.user_id,
                            u.telegram_id,
@@ -571,7 +571,7 @@ async def send_single_reminder_3_hours_before(company_id: int, booking_id: int):
             # Получаем данные записи
             booking_result = await session.execute(
                 text(f"""
-                    SELECT b.id, b.booking_number, b.date, b.time, b.client_id, b.service_id, 
+                    SELECT b.id, b.booking_number, b.service_date, b.time, b.client_id, b.service_id, 
                            b.post_id, b.status,
                            c.user_id,
                            u.telegram_id,
