@@ -10,6 +10,8 @@ from bot.database.crud import (
     get_user_by_telegram_id,
     get_booking_by_id,
     update_booking_status,
+    update_booking_service_date,
+    update_booking_request_date,
     get_masters,
     get_posts,
     get_all_clients,
@@ -19,6 +21,7 @@ from bot.database.crud import (
 )
 from bot.keyboards.admin import (
     get_booking_actions_keyboard,
+    get_edit_booking_keyboard,
     get_masters_keyboard,
     get_posts_keyboard,
 )
@@ -123,6 +126,8 @@ async def edit_booking_payment(callback: CallbackQuery, state: FSMContext):
     except (ValueError, IndexError):
         await callback.answer("❌ Ошибка", show_alert=True)
         return
+
+    logger.info(f"🟢 [ADMIN] Запрос изменения даты/времени: booking_id={booking_id}")
 
     ctx = get_company_context_from_bot(callback.bot)
     company_id = ctx.get('company_id')
@@ -252,7 +257,7 @@ async def edit_booking_datetime(callback: CallbackQuery, state: FSMContext):
         
         # Получаем текущую дату и длительность заказа
         booking_result = await session.execute(
-            text('SELECT date, duration, service_id FROM bookings WHERE id = :booking_id'),
+            text('SELECT service_date, duration, service_id FROM bookings WHERE id = :booking_id'),
             {"booking_id": booking_id}
         )
         booking_data = booking_result.fetchone()
@@ -264,6 +269,11 @@ async def edit_booking_datetime(callback: CallbackQuery, state: FSMContext):
         current_date = booking_data[0]
         duration = booking_data[1] or 60
         service_id = booking_data[2]
+
+        logger.info(
+            f"🟢 [ADMIN] Текущие параметры заказа: booking_id={booking_id}, "
+            f"service_date={current_date}, duration={duration}, service_id={service_id}"
+        )
         
         # Сохраняем duration и service_id в состояние
         await state.update_data(duration=duration, service_id=service_id)
@@ -296,6 +306,8 @@ async def process_datetime_date_selection(callback: CallbackQuery, state: FSMCon
         await callback.answer("❌ Ошибка выбора даты", show_alert=True)
         return
 
+    logger.info(f"🟢 [ADMIN] Выбрана дата для изменения: {selected_date}")
+
     ctx = get_company_context_from_bot(callback.bot)
     company_id = ctx.get('company_id')
     
@@ -317,6 +329,7 @@ async def process_datetime_date_selection(callback: CallbackQuery, state: FSMCon
         
         # Генерируем доступные временные слоты
         time_slots = await generate_time_slots(session, selected_date, duration, master_id=None, company_id=company_id)
+        logger.info(f"🟢 [ADMIN] Свободные слоты: {len(time_slots)}")
 
         if not time_slots:
             await callback.message.edit_text(
@@ -359,6 +372,8 @@ async def process_datetime_time_selection(callback: CallbackQuery, state: FSMCon
         await callback.answer("❌ Ошибка выбора времени", show_alert=True)
         return
 
+    logger.info(f"🟢 [ADMIN] Выбрано время: {start_time} - {end_time}")
+
     ctx = get_company_context_from_bot(callback.bot)
     company_id = ctx.get('company_id')
     
@@ -386,8 +401,13 @@ async def process_datetime_time_selection(callback: CallbackQuery, state: FSMCon
         # Обновляем дату и время заказа
         await session.execute(
             text('''
-                UPDATE bookings 
-                SET date = :date, time = :time, end_time = :end_time, duration = :duration
+                UPDATE bookings
+                SET service_date = :date, time = :time, end_time = :end_time, duration = :duration
+                WHERE id = :booking_id
+            '''),
+            text('''
+                UPDATE bookings
+                SET service_date = :date, time = :time, end_time = :end_time, duration = :duration
                 WHERE id = :booking_id
             '''),
             {
@@ -431,6 +451,8 @@ async def process_datetime_time_selection_simple(callback: CallbackQuery, state:
         await callback.answer("❌ Ошибка выбора времени", show_alert=True)
         return
 
+    logger.info(f"🟢 [ADMIN] Выбрано время (simple): {start_time}")
+
     ctx = get_company_context_from_bot(callback.bot)
     company_id = ctx.get("company_id")
     if not company_id:
@@ -459,7 +481,7 @@ async def process_datetime_time_selection_simple(callback: CallbackQuery, state:
             text(
                 """
                 UPDATE bookings
-                SET date = :date, time = :time, end_time = :end_time, duration = :duration
+                SET service_date = :date, time = :time, end_time = :end_time, duration = :duration
                 WHERE id = :booking_id
                 """
             ),
@@ -1362,7 +1384,7 @@ async def edit_datetime_change_month(callback: CallbackQuery, state: FSMContext)
         if booking_id:
             # Получаем текущую дату заказа
             booking_result = await session.execute(
-                text('SELECT date FROM bookings WHERE id = :booking_id'),
+                text('SELECT service_date FROM bookings WHERE id = :booking_id'),
                 {"booking_id": booking_id}
             )
             booking_data = booking_result.fetchone()
