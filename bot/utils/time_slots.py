@@ -119,7 +119,7 @@ async def check_slot_availability(
         # Проверяем существующие записи на это время
         query = select(Booking).where(
             and_(
-                Booking.date == booking_date,
+                Booking.service_date == booking_date,
                 Booking.status.in_(["new", "confirmed"]),
                 or_(
                     # Запись начинается в нашем слоте
