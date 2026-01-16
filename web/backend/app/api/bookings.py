@@ -552,7 +552,7 @@ async def get_bookings(
     
     logger.info(f"✅ Получено записей: {len(bookings)}")
     if len(bookings) > 0:
-        logger.info(f"📋 Первая запись: date={bookings[0].date}, status={bookings[0].status}")
+        logger.info(f"📋 Первая запись: date={bookings[0].service_date}, status={bookings[0].status}")
     
     # Получаем все user_id для записей одним запросом
     user_ids = set()
