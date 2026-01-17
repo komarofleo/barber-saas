@@ -294,20 +294,26 @@ class RegistrationResponse(BaseModel):
     """
     Схема ответа на запрос регистрации компании.
     
-    Возвращает ссылку на оплату через Юкассу.
+    Возвращает данные для входа или ссылку на оплату.
     """
     success: bool = True
-    payment_id: int
-    confirmation_url: str
-    message: str = "Платеж создан. Ожидает оплаты."
+    payment_id: Optional[int] = None
+    confirmation_url: Optional[str] = None
+    message: str = "Компания зарегистрирована."
+    company_id: Optional[int] = None
+    dashboard_url: Optional[str] = None
+    login_email: Optional[str] = None
+    password: Optional[str] = None
     
     class Config:
         schema_extra = {
             "example": {
                 "success": True,
-                "payment_id": 123,
-                "confirmation_url": "https://yoomoney.ru/checkout/...",
-                "message": "Платеж создан. Ожидает оплаты."
+                "company_id": 12,
+                "dashboard_url": "http://45.144.67.47/company/12/dashboard",
+                "login_email": "admin@avtoservis.ru",
+                "password": "AbCd1234XyZ",
+                "message": "Компания зарегистрирована."
             }
         }
 

@@ -30,6 +30,7 @@ class TenantService:
         """Инициализация сервиса."""
         self._engine: Optional[AsyncEngine] = None
         self._async_session_maker: Optional[async_sessionmaker] = None
+        self._initialized_companies: set[int] = set()
     
     async def _get_engine(self) -> AsyncEngine:
         """
@@ -146,15 +147,25 @@ class TenantService:
         try:
             async_session_maker = await self._get_async_session_maker()
             async with async_session_maker() as session:
-                # Удаляем таблицу в tenant схеме, если она существует
+                # Создаем таблицу в tenant схеме без копирования данных
                 await session.execute(
-                    text(f'DROP TABLE IF EXISTS "{schema_name}"."{table_name}" CASCADE')
+                    text(
+                        f'CREATE TABLE IF NOT EXISTS "{schema_name}"."{table_name}" '
+                        f'AS SELECT * FROM public."{table_name}" WHERE false'
+                    )
                 )
                 
-                # Клонируем таблицу из public в tenant схему
-                await session.execute(
-                    text(f'CREATE TABLE "{schema_name}"."{table_name}" AS SELECT * FROM public."{table_name}"')
-                )
+                if table_name == "users":
+                    # Добавляем колонки, которые использует бот (совместимость с tenant-схемой)
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}"."{table_name}" '
+                            'ADD COLUMN IF NOT EXISTS full_name VARCHAR(255), '
+                            'ADD COLUMN IF NOT EXISTS role VARCHAR(50), '
+                            'ADD COLUMN IF NOT EXISTS is_active BOOLEAN, '
+                            'ADD COLUMN IF NOT EXISTS password_hash TEXT'
+                        )
+                    )
                 
                 # Восстанавливаем последовательности (если есть)
                 # Проверяем существование последовательности перед setval
@@ -196,13 +207,14 @@ class TenantService:
             "users",
             "services",
             "masters",
-            # "bookings",  # Временно закомментировано для MVP (таблицы еще не созданы)
+            "bookings",
             "clients",
             "posts",
-            "slots",
+            "timeslots",
             "notifications",
             "settings",
-            "blocks",
+            "broadcasts",
+            "blocked_slots",
             "promocodes",
             "promotions",
         ]
@@ -270,6 +282,10 @@ class TenantService:
         schema_name = f"tenant_{company_id}"
         logger.info(f"Получение tenant сессии для компании {company_id} (схема: {schema_name})")
         
+        if company_id not in self._initialized_companies:
+            if await self._ensure_tenant_tables(company_id):
+                self._initialized_companies.add(company_id)
+        
         async_session_maker = await self._get_async_session_maker()
         
         async with async_session_maker() as session:
@@ -284,6 +300,60 @@ class TenantService:
                     await session.execute(text('SET search_path TO public'))
                 except Exception as e:
                     logger.warning(f"Не удалось сбросить search_path в public для {schema_name}: {e}")
+
+    async def _ensure_tenant_tables(self, company_id: int) -> bool:
+        """
+        Убедиться, что tenant схема содержит все необходимые таблицы.
+        
+        Создает отсутствующие таблицы по структуре public схемы без копирования данных.
+        """
+        schema_name = f"tenant_{company_id}"
+        tables_to_clone = [
+            "users",
+            "services",
+            "masters",
+            "bookings",
+            "clients",
+            "posts",
+            "timeslots",
+            "notifications",
+            "settings",
+            "broadcasts",
+            "blocked_slots",
+            "promocodes",
+            "promotions",
+        ]
+        
+        try:
+            async_session_maker = await self._get_async_session_maker()
+            async with async_session_maker() as session:
+                result = await session.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = :schema_name"
+                    ),
+                    {"schema_name": schema_name},
+                )
+                existing = {row[0] for row in result.fetchall()}
+                missing_tables = [table for table in tables_to_clone if table not in existing]
+                if not missing_tables:
+                    return True
+                
+                logger.info(
+                    f"Tenant {schema_name}: создаем отсутствующие таблицы: {', '.join(missing_tables)}"
+                )
+                for table_name in missing_tables:
+                    await session.execute(
+                        text(
+                            f'CREATE TABLE IF NOT EXISTS "{schema_name}"."{table_name}" '
+                            f'AS SELECT * FROM public."{table_name}" WHERE false'
+                        )
+                    )
+                await session.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Ошибка при создании таблиц tenant схемы {schema_name}: {e}")
+            return False
 
 
 _tenant_service: Optional[TenantService] = None

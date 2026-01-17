@@ -554,7 +554,7 @@ async def get_all_work_orders(
     # Записи без мастера будут в отдельной группе "Без мастера"
     bookings_query = text("""
         SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
-               b.service_date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+               b.service_date, b.request_date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
                b.payment_method, b.comment, b.admin_comment, b.created_at,
                b.confirmed_at, b.completed_at, b.cancelled_at,
                c.full_name as client_name, c.phone as client_phone,
@@ -585,12 +585,12 @@ async def get_all_work_orders(
     for row in bookings_rows:
         # Правильная индексация полей из SELECT запроса:
         # 0: b.id, 1: booking_number, 2: client_id, 3: service_id, 4: master_id, 5: post_id,
-        # 6: date, 7: time, 8: duration, 9: end_time, 10: status, 11: amount, 12: is_paid,
-        # 13: payment_method, 14: comment, 15: admin_comment, 16: created_at,
-        # 17: confirmed_at, 18: completed_at, 19: cancelled_at,
-        # 20: client_name, 21: client_phone, 22: service_name, 23: post_number, 24: master_name
+        # 6: service_date, 7: request_date, 8: time, 9: duration, 10: end_time, 11: status,
+        # 12: amount, 13: is_paid, 14: payment_method, 15: comment, 16: admin_comment, 17: created_at,
+        # 18: confirmed_at, 19: completed_at, 20: cancelled_at,
+        # 21: client_name, 22: client_phone, 23: service_name, 24: post_number, 25: master_name
         master_id = row[4]  # b.master_id (может быть None)
-        master_name = row[24] if len(row) > 24 else "Без мастера"  # COALESCE(m.full_name, 'Без мастера')
+        master_name = row[25] if len(row) > 25 else "Без мастера"  # COALESCE(m.full_name, 'Без мастера')
         
         # Используем специальный ключ для записей без мастера
         dict_key = master_id if master_id is not None else -1
@@ -609,28 +609,29 @@ async def get_all_work_orders(
             "service_id": row[3],
             "master_id": row[4],
             "post_id": row[5],
-            "date": row[6],
-            "time": row[7],
-            "duration": row[8],
-            "end_time": row[9],
-            "status": row[10],
-            "amount": row[11],
-            "is_paid": row[12] or False,
-            "payment_method": row[13],
-            "comment": row[14],
-            "admin_comment": row[15],
-            "created_at": row[16],
-            "confirmed_at": row[17],
-            "completed_at": row[18],
-            "cancelled_at": row[19],
-            "client_name": row[20],
-            "client_phone": row[21],
+            "service_date": row[6],
+            "request_date": row[7],
+            "time": row[8],
+            "duration": row[9],
+            "end_time": row[10],
+            "status": row[11],
+            "amount": row[12],
+            "is_paid": row[13] or False,
+            "payment_method": row[14],
+            "comment": row[15],
+            "admin_comment": row[16],
+            "created_at": row[17],
+            "confirmed_at": row[18],
+            "completed_at": row[19],
+            "cancelled_at": row[20],
+            "client_name": row[21],
+            "client_phone": row[22],
             "client_telegram_id": None,
             "client_car_brand": None,
             "client_car_model": None,
-            "service_name": row[22],
+            "service_name": row[23],
             "master_name": str(master_name) if master_name else "Неизвестный мастер",
-            "post_number": row[23] if row[23] is not None else None,  # p.number as post_number
+            "post_number": row[24] if row[24] is not None else None,  # p.number as post_number
         }
         
         masters_dict[dict_key]["bookings"].append(BookingResponse.model_validate(booking_dict))

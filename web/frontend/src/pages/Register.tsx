@@ -22,7 +22,7 @@ const Register: React.FC = () => {
                     <div className="register-left">
                         {/* Заголовок страницы */}
                         <div className="register-header">
-                            <h1 className="page-title">💇 Barber SaaS</h1>
+                            <h1 className="page-title">💇 Booking SaaS</h1>
                             <p className="page-subtitle">
                                 Платформа для управления салонами красоты с мульти-тенантной архитектурой и полной изоляцией данных
                             </p>

@@ -16,6 +16,7 @@ import Promotions from './pages/Promotions'
 import Clients from './pages/Clients'
 import Broadcasts from './pages/Broadcasts'
 import Register from './pages/Register'
+import RegistrationSuccess from './pages/RegistrationSuccess'
 import Billing from './pages/Billing'
 import WorkOrders from './pages/WorkOrders'
 import PaymentSuccess from './pages/PaymentSuccess'
@@ -122,6 +123,7 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/company/:id/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/register/success" element={<RegistrationSuccess />} />
       <Route path="/payment/success" element={<PaymentSuccess />} />
       <Route path="/payment/error" element={<PaymentError />} />
       

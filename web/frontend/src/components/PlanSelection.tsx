@@ -37,9 +37,12 @@ const PlanSelection: React.FC<PlanSelectionProps> = ({
       const { getPlans } = await import('../api/public')
       const fetchedPlans = await getPlans()
       
+      // Убираем бесплатные тарифы (нельзя создать платеж на 0)
+      const paidPlans = fetchedPlans.filter(plan => plan.price_monthly > 0)
+
       // Убираем дубликаты по name и display_order, оставляя только уникальные
       const uniquePlansMap = new Map<string, Plan>()
-      fetchedPlans.forEach(plan => {
+      paidPlans.forEach(plan => {
         const key = `${plan.name}-${plan.display_order}`
         if (!uniquePlansMap.has(key)) {
           uniquePlansMap.set(key, plan)
@@ -57,8 +60,8 @@ const PlanSelection: React.FC<PlanSelectionProps> = ({
       setPlans(limitedPlans)
       
       // Автовыбираем первый активный план, если еще ничего не выбрано
-      if (sortedPlans.length > 0 && !selectedPlanId) {
-        onPlanSelect(sortedPlans[0].id)
+      if (limitedPlans.length > 0 && !selectedPlanId) {
+        onPlanSelect(limitedPlans[0].id)
       }
     } catch (err: any) {
       console.error('Ошибка загрузки тарифных планов:', err)
