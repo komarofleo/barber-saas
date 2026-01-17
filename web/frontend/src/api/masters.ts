@@ -57,6 +57,11 @@ export const mastersApi = {
     return response.data
   },
 
+  createMasterFromClient: async (clientId: number): Promise<Master> => {
+    const response = await apiClient.post(`/api/masters/from-client/${clientId}`)
+    return response.data
+  },
+
   updateMaster: async (masterId: number, data: MasterUpdateRequest): Promise<Master> => {
     const response = await apiClient.patch(`/api/masters/${masterId}`, data)
     return response.data

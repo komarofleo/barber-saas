@@ -1,6 +1,6 @@
 """Обработчик /start и регистрация"""
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import FSInputFile, Message, ReplyKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +49,17 @@ async def cmd_start(message: Message, state: FSMContext):
     
     logger.info(f"📋 Начинаем обработку /start для company_id={company_id}, telegram_id={message.from_user.id}")
     
+    async def send_welcome_photo(caption: str, reply_markup: ReplyKeyboardMarkup | None = None) -> None:
+        """Отправить приветствие с фото."""
+        try:
+            photo = FSInputFile("/app/bot/salon.jpg")
+            logger.info("🖼️ Отправляем приветственное фото")
+            await message.answer_photo(photo=photo, caption=caption, reply_markup=reply_markup)
+            logger.info("✅ Приветственное фото отправлено")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось отправить фото приветствия: {e}")
+            await message.answer(caption, reply_markup=reply_markup)
+
     async for session in get_session():
         try:
             # Устанавливаем search_path для tenant схемы
@@ -79,7 +90,7 @@ async def cmd_start(message: Message, state: FSMContext):
                 # Начинаем регистрацию
                 logger.info(f"📝 Клиент не найден, начинаем регистрацию")
                 await state.set_state(RegistrationStates.waiting_full_name)
-                await message.answer(
+                await send_welcome_photo(
                     "👋 Добро пожаловать в салон красоты!\n\n"
                     "Здесь вы можете за 1 минуту записаться на наши услуги!\n\n"
                     "Для начала работы необходимо пройти регистрацию.\n"
@@ -90,7 +101,7 @@ async def cmd_start(message: Message, state: FSMContext):
             else:
                 # Пользователь уже зарегистрирован
                 logger.info(f"✅ Клиент найден: {client.full_name}, отправляем главное меню")
-                await message.answer(
+                await send_welcome_photo(
                     f"👋 Здравствуйте, {client.full_name}!\n\n"
                     "Здесь вы можете за 1 минуту записаться на наши услуги!\n\n"
                     "Выберите действие:",

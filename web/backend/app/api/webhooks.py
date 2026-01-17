@@ -156,6 +156,68 @@ async def yookassa_webhook(
                     extra_data = json.loads(extra_data)
                 except:
                     extra_data = {}
+
+            # Если платеж относится к существующей компании - продлеваем подписку
+            if payment.company_id:
+                logger.info(f"Продление подписки для компании {payment.company_id}")
+
+                company_result = await db.execute(
+                    select(Company).where(Company.id == payment.company_id)
+                )
+                company = company_result.scalar_one_or_none()
+
+                if not company:
+                    logger.error(f"Компания {payment.company_id} не найдена")
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Компания не найдена"
+                    )
+
+                plan_result = await db.execute(
+                    select(Plan).where(Plan.id == payment.plan_id)
+                )
+                plan = plan_result.scalar_one_or_none()
+
+                if not plan:
+                    logger.error(f"План {payment.plan_id} не найден")
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Тарифный план не найден"
+                    )
+
+                billing_period = extra_data.get("billing_period", "monthly")
+                period_days = 365 if billing_period == "yearly" else 30
+                new_end_date = date.today() + timedelta(days=period_days)
+
+                async with db.begin():
+                    subscription = Subscription(
+                        company_id=company.id,
+                        plan_id=payment.plan_id,
+                        start_date=date.today(),
+                        end_date=new_end_date,
+                        status="active"
+                    )
+                    db.add(subscription)
+                    await db.flush()
+
+                    payment.status = "succeeded"
+                    payment.yookassa_payment_status = webhook_data.object_.get("status", "succeeded")
+                    payment.subscription_id = subscription.id
+
+                    company.plan_id = payment.plan_id
+                    company.subscription_status = "active"
+                    company.subscription_end_date = new_end_date
+                    company.can_create_bookings = True
+                    company.is_active = True
+
+                logger.info(f"Подписка компании {company.id} продлена до {new_end_date}")
+
+                return {
+                    "success": True,
+                    "message": "Подписка продлена",
+                    "company_id": company.id,
+                    "subscription_end_date": new_end_date
+                }
             
             # Начинаем транзакцию для создания всех сущностей
             async with db.begin():

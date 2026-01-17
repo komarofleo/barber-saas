@@ -56,7 +56,8 @@ function Masters() {
       loadMasters()
     } catch (error: any) {
       console.error('Ошибка создания мастера:', error)
-      alert('Не удалось создать мастера')
+      const message = error.response?.data?.detail || 'Не удалось создать мастера'
+      alert(message)
     }
   }
 

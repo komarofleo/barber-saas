@@ -169,22 +169,31 @@ async def create_master(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать мастеров")
     
-    # Проверяем, существует ли мастер с таким именем
-    existing_master = await tenant_session.execute(
-        select(Master).where(Master.full_name == master_data.full_name)
-    ).scalar_one_or_none()
-    
+    # Нормализуем значения для проверки дублей
+    full_name = master_data.full_name.strip()
+    phone = master_data.phone.strip() if master_data.phone else None
+
+    # Проверяем, существует ли мастер с таким именем и телефоном (если указан)
+    duplicate_query = select(Master).where(func.lower(Master.full_name) == full_name.lower())
+    if phone:
+        duplicate_query = duplicate_query.where(Master.phone == phone)
+
+    result = await tenant_session.execute(duplicate_query)
+    existing_master = result.scalar_one_or_none()
+
     if existing_master:
         raise HTTPException(
             status_code=400,
-            detail=f"Мастер с именем '{master_data.full_name}' уже существует"
+            detail="Мастер с таким ФИО и телефоном уже существует"
+            if phone
+            else "Мастер с таким ФИО уже существует"
         )
     
     # Создаем нового мастера
     master = Master(
         user_id=master_data.user_id,
-        full_name=master_data.full_name,
-        phone=master_data.phone,
+        full_name=full_name,
+        phone=phone,
         telegram_id=master_data.telegram_id,
         specialization=master_data.specialization,
         is_universal=master_data.is_universal if master_data.is_universal is not None else True,
@@ -193,8 +202,8 @@ async def create_master(
     )
     
     tenant_session.add(master)
+    await tenant_session.flush()
     await tenant_session.commit()
-    await tenant_session.refresh(master)
     
     company_id = getattr(request.state, "company_id", None)
     logger.info(f"✅ Создан мастер: name={master.full_name}, phone={master.phone}, company_id={company_id}")
@@ -216,6 +225,96 @@ async def create_master(
         "updated_at": master.updated_at,
     }
     
+    return MasterResponse.model_validate(master_dict)
+
+
+@router.post("/from-client/{client_id}", response_model=MasterResponse, status_code=201)
+async def create_master_from_client(
+    client_id: int,
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Создать мастера на основе клиента (по user_id и telegram_id).
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администраторы могут назначать мастеров")
+
+    result = await tenant_session.execute(
+        text("""
+            SELECT c.id, c.user_id, c.full_name, c.phone, u.telegram_id
+            FROM clients c
+            LEFT JOIN users u ON u.id = c.user_id
+            WHERE c.id = :client_id
+        """),
+        {"client_id": client_id},
+    )
+    row = result.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Клиент не найден")
+
+    client_user_id = row[1]
+    client_full_name = row[2]
+    client_phone = row[3]
+    client_telegram_id = row[4]
+
+    if not client_user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Клиент не связан с пользователем. Попросите его написать боту /start",
+        )
+
+    existing_master_result = await tenant_session.execute(
+        select(Master).where(
+            or_(
+                Master.user_id == client_user_id,
+                Master.telegram_id == client_telegram_id,
+            )
+        )
+    )
+    existing_master = existing_master_result.scalar_one_or_none()
+    if existing_master:
+        raise HTTPException(status_code=400, detail="Мастер уже назначен")
+
+    master = Master(
+        user_id=client_user_id,
+        full_name=client_full_name,
+        phone=client_phone,
+        telegram_id=client_telegram_id,
+        specialization=None,
+        is_universal=True,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    tenant_session.add(master)
+    await tenant_session.flush()
+
+    await tenant_session.execute(
+        text("UPDATE users SET role = :role WHERE id = :user_id"),
+        {"role": "master", "user_id": client_user_id},
+    )
+
+    await tenant_session.commit()
+
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(
+        f"✅ Назначен мастер из клиента: client_id={client_id}, master_id={master.id}, company_id={company_id}"
+    )
+
+    master_dict = {
+        "id": master.id,
+        "user_id": master.user_id,
+        "full_name": master.full_name,
+        "phone": master.phone,
+        "telegram_id": master.telegram_id,
+        "specialization": master.specialization,
+        "is_universal": master.is_universal,
+        "booking_count": 0,
+        "created_at": master.created_at,
+        "updated_at": master.updated_at,
+    }
+
     return MasterResponse.model_validate(master_dict)
 
 

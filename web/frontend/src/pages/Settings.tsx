@@ -7,6 +7,7 @@ function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [formValues, setFormValues] = useState<Record<string, string>>({})
 
   useEffect(() => {
     loadSettings()
@@ -17,6 +18,11 @@ function Settings() {
       setLoading(true)
       const data = await settingsApi.getSettings()
       setSettings(data)
+      const valuesMap: Record<string, string> = {}
+      data.forEach((setting) => {
+        valuesMap[setting.key] = setting.value || ''
+      })
+      setFormValues(valuesMap)
     } catch (error: any) {
       console.error('Ошибка загрузки настроек:', error)
       if (error.response?.status === 401) {
@@ -46,22 +52,78 @@ function Settings() {
   }
 
   const getSettingValue = (key: string): string => {
+    if (key in formValues) {
+      return formValues[key]
+    }
     const setting = settings.find(s => s.key === key)
     return setting?.value || ''
   }
 
   const handleTimeChange = (key: string, value: string) => {
-    handleUpdate(key, value)
+    setFormValues((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleTimeBlur = (key: string) => {
+    const value = formValues[key] || ''
+    if (/^\d{2}:\d{2}$/.test(value)) {
+      handleUpdate(key, value)
+    }
   }
 
   const handleNumberChange = (key: string, value: string) => {
     if (value === '' || /^\d+$/.test(value)) {
+      setFormValues((prev) => ({ ...prev, [key]: value }))
+    }
+  }
+
+  const handleNumberBlur = (key: string) => {
+    const value = formValues[key] || ''
+    if (value !== '' && /^\d+$/.test(value)) {
       handleUpdate(key, value)
     }
   }
 
   const handleBooleanChange = (key: string, checked: boolean) => {
-    handleUpdate(key, checked.toString())
+    const value = checked.toString()
+    setFormValues((prev) => ({ ...prev, [key]: value }))
+    handleUpdate(key, value)
+  }
+
+  const handleTextChange = (key: string, value: string) => {
+    setFormValues((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleTextBlur = (key: string) => {
+    const value = formValues[key] ?? ''
+    handleUpdate(key, value)
+  }
+
+  const companyFields = [
+    'company_contact_full_name',
+    'company_phone',
+    'company_name',
+    'company_inn',
+    'company_address',
+    'company_bank_details',
+  ]
+
+  const handleCompanySave = async () => {
+    try {
+      setSaving('company_form')
+      setError(null)
+      for (const key of companyFields) {
+        const value = formValues[key] ?? ''
+        await settingsApi.updateSetting(key, { value })
+      }
+      await loadSettings()
+      alert('Данные компании сохранены')
+    } catch (error: any) {
+      console.error('Ошибка сохранения данных компании:', error)
+      setError(error.response?.data?.detail || 'Не удалось сохранить данные компании')
+      alert('Не удалось сохранить данные компании')
+    } finally {
+      setSaving(null)
+    }
   }
 
   if (loading) {
@@ -101,6 +163,7 @@ function Settings() {
                 type="time"
                 value={getSettingValue('work_start_time')}
                 onChange={(e) => handleTimeChange('work_start_time', e.target.value)}
+                onBlur={() => handleTimeBlur('work_start_time')}
                 className="setting-input"
                 disabled={saving === 'work_start_time'}
               />
@@ -114,6 +177,7 @@ function Settings() {
                 type="time"
                 value={getSettingValue('work_end_time')}
                 onChange={(e) => handleTimeChange('work_end_time', e.target.value)}
+                onBlur={() => handleTimeBlur('work_end_time')}
                 className="setting-input"
                 disabled={saving === 'work_end_time'}
               />
@@ -125,7 +189,10 @@ function Settings() {
               </label>
               <select
                 value={getSettingValue('slot_duration')}
-                onChange={(e) => handleNumberChange('slot_duration', e.target.value)}
+                onChange={(e) => {
+                  handleNumberChange('slot_duration', e.target.value)
+                  handleUpdate('slot_duration', e.target.value)
+                }}
                 className="setting-input"
                 disabled={saving === 'slot_duration'}
               >
@@ -149,6 +216,7 @@ function Settings() {
                 type="time"
                 value={getSettingValue('reminder_day_before_time')}
                 onChange={(e) => handleTimeChange('reminder_day_before_time', e.target.value)}
+                onBlur={() => handleTimeBlur('reminder_day_before_time')}
                 className="setting-input"
                 disabled={saving === 'reminder_day_before_time'}
               />
@@ -178,6 +246,7 @@ function Settings() {
                 min="0"
                 value={getSettingValue('notify_admin_delay_minutes')}
                 onChange={(e) => handleNumberChange('notify_admin_delay_minutes', e.target.value)}
+                onBlur={() => handleNumberBlur('notify_admin_delay_minutes')}
                 className="setting-input"
                 disabled={saving === 'notify_admin_delay_minutes'}
               />
@@ -191,6 +260,7 @@ function Settings() {
                 type="time"
                 value={getSettingValue('work_order_time')}
                 onChange={(e) => handleTimeChange('work_order_time', e.target.value)}
+                onBlur={() => handleTimeBlur('work_order_time')}
                 className="setting-input"
                 disabled={saving === 'work_order_time'}
               />
@@ -232,6 +302,101 @@ function Settings() {
                 <span>Включено</span>
               </label>
             </div>
+          </div>
+        </div>
+
+        {/* Данные компании */}
+        <div className="settings-section">
+          <h2>🏢 Данные компании</h2>
+          <div className="settings-grid">
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">ФИО ответственного лица</span>
+                <span className="setting-description">ФИО для договоров и контактов</span>
+              </label>
+              <input
+                type="text"
+                value={getSettingValue('company_contact_full_name')}
+                onChange={(e) => handleTextChange('company_contact_full_name', e.target.value)}
+                className="setting-input"
+                disabled={saving === 'company_form'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Телефон</span>
+                <span className="setting-description">Контактный номер компании</span>
+              </label>
+              <input
+                type="tel"
+                value={getSettingValue('company_phone')}
+                onChange={(e) => handleTextChange('company_phone', e.target.value)}
+                className="setting-input"
+                disabled={saving === 'company_form'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Название компании</span>
+                <span className="setting-description">Название для договоров и счетов</span>
+              </label>
+              <input
+                type="text"
+                value={getSettingValue('company_name')}
+                onChange={(e) => handleTextChange('company_name', e.target.value)}
+                className="setting-input"
+                disabled={saving === 'company_form'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">ИНН</span>
+                <span className="setting-description">ИНН компании</span>
+              </label>
+              <input
+                type="text"
+                value={getSettingValue('company_inn')}
+                onChange={(e) => handleTextChange('company_inn', e.target.value)}
+                className="setting-input"
+                disabled={saving === 'company_form'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Адрес</span>
+                <span className="setting-description">Юридический или фактический адрес</span>
+              </label>
+              <input
+                type="text"
+                value={getSettingValue('company_address')}
+                onChange={(e) => handleTextChange('company_address', e.target.value)}
+                className="setting-input"
+                disabled={saving === 'company_form'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Банковские реквизиты</span>
+                <span className="setting-description">Р/с, БИК, банк, к/с и т.д.</span>
+              </label>
+              <textarea
+                value={getSettingValue('company_bank_details')}
+                onChange={(e) => handleTextChange('company_bank_details', e.target.value)}
+                className="setting-input"
+                disabled={saving === 'company_form'}
+                rows={4}
+              />
+            </div>
+          </div>
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleCompanySave}
+              disabled={saving === 'company_form'}
+            >
+              {saving === 'company_form' ? 'Сохранение...' : 'Сохранить'}
+            </button>
           </div>
         </div>
       </div>

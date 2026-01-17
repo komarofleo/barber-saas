@@ -556,11 +556,11 @@ async def get_or_create_client(
     import logging
     logger = logging.getLogger(__name__)
     from datetime import datetime
+    from sqlalchemy import text
     
     # Если company_id не указан, пытаемся определить из search_path
     if not company_id:
         try:
-            from sqlalchemy import text
             result = await session.execute(text("SHOW search_path"))
             search_path = result.scalar()
             if search_path and "tenant_" in search_path:

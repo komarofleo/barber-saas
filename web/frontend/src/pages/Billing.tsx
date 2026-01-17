@@ -1,39 +1,129 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { authApi } from '../api/auth'
+import { Plan } from '../api/public'
+import { billingApi, BillingPayment, BillingPeriod } from '../api/billing'
+import PlanCard from '../components/PlanCard'
+import '../components/PlanCard.css'
 import './Billing.css'
-
-interface Payment {
-  id: number
-  amount: number
-  currency: string
-  status: string
-  payment_method: string
-  created_at: string
-  yookassa_payment_id: string | null
-}
 
 function Billing() {
   const { subscription, subscriptionLoading, refreshSubscription } = useAuth()
-  const [payments, setPayments] = useState<Payment[]>([])
+  const [payments, setPayments] = useState<BillingPayment[]>([])
+  const [plans, setPlans] = useState<Plan[]>([])
+  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null)
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
+  const [paymentLoading, setPaymentLoading] = useState(false)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [timeRemaining, setTimeRemaining] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     loadPayments()
+    loadPlans()
   }, [])
 
   const loadPayments = async () => {
     try {
       setLoading(true)
-      // TODO: Загрузить платежи через API
-      // const response = await billingApi.getPayments()
-      // setPayments(response.payments)
-      setPayments([])
+      const response = await billingApi.getPayments()
+      setPayments(response)
     } catch (err: any) {
-      setError(err.message || 'Ошибка загрузки платежей')
+      if (err.response?.status === 404) {
+        setPayments([])
+        setError(null)
+      } else {
+        setError(err.message || 'Ошибка загрузки платежей')
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadPlans = async () => {
+    try {
+      const response = await billingApi.getPlans()
+      const activePlans = response.filter((plan) => plan.is_active)
+      const uniquePlansMap = new Map<string, Plan>()
+      activePlans.forEach((plan) => {
+        const key = `${plan.name}-${plan.display_order}`
+        if (!uniquePlansMap.has(key)) {
+          uniquePlansMap.set(key, plan)
+        }
+      })
+      const sortedPlans = Array.from(uniquePlansMap.values()).sort(
+        (a, b) => a.display_order - b.display_order
+      )
+      const limitedPlans = sortedPlans.slice(0, 3)
+      setPlans(limitedPlans)
+      if (limitedPlans.length > 0 && !selectedPlanId) {
+        setSelectedPlanId(limitedPlans[0].id)
+      }
+    } catch (err: any) {
+      setPaymentError(err.message || 'Ошибка загрузки тарифных планов')
+    }
+  }
+
+  useEffect(() => {
+    if (!subscription?.end_date) {
+      setTimeRemaining(null)
+      return
+    }
+
+    const updateTimer = () => {
+      const endDate = new Date(subscription.end_date)
+      endDate.setHours(23, 59, 59, 999)
+      const diffMs = endDate.getTime() - Date.now()
+
+      if (diffMs <= 0) {
+        setTimeRemaining('00:00:00')
+        return
+      }
+
+      const totalSeconds = Math.floor(diffMs / 1000)
+      const days = Math.floor(totalSeconds / 86400)
+      const hours = Math.floor((totalSeconds % 86400) / 3600)
+      const minutes = Math.floor((totalSeconds % 3600) / 60)
+      const seconds = totalSeconds % 60
+
+      const formatUnit = (value: number) => value.toString().padStart(2, '0')
+      setTimeRemaining(`${days}д ${formatUnit(hours)}:${formatUnit(minutes)}:${formatUnit(seconds)}`)
+    }
+
+    updateTimer()
+    const interval = window.setInterval(updateTimer, 1000)
+    return () => window.clearInterval(interval)
+  }, [subscription?.end_date])
+
+  const selectedPlan = useMemo(
+    () => plans.find((plan) => plan.id === selectedPlanId) || null,
+    [plans, selectedPlanId]
+  )
+
+  const handlePayment = async () => {
+    if (!selectedPlanId) {
+      setPaymentError('Выберите тарифный план')
+      return
+    }
+
+    try {
+      setPaymentLoading(true)
+      setPaymentError(null)
+      const response = await billingApi.createPayment({
+        plan_id: selectedPlanId,
+        billing_period: billingPeriod,
+      })
+
+      if (response.confirmation_url) {
+        window.location.href = response.confirmation_url
+        return
+      }
+
+      setPaymentError('Не удалось получить ссылку на оплату')
+    } catch (err: any) {
+      setPaymentError(err.response?.data?.detail || err.message || 'Ошибка создания платежа')
+    } finally {
+      setPaymentLoading(false)
     }
   }
 
@@ -56,6 +146,8 @@ function Billing() {
         return 'Оплачено'
       case 'pending':
         return 'Ожидает оплаты'
+      case 'cancelled':
+        return 'Отменено'
       case 'failed':
         return 'Ошибка оплаты'
       default:
@@ -120,6 +212,12 @@ function Billing() {
                 </span>
               </div>
               <div className="subscription-info-row">
+                <span className="label">Обратный отсчет:</span>
+                <span className="value">
+                  {timeRemaining || '—'}
+                </span>
+              </div>
+              <div className="subscription-info-row">
                 <span className="label">Осталось дней:</span>
                 <span className="value">
                   {subscription.days_remaining > 0 ? subscription.days_remaining : 0}
@@ -133,6 +231,11 @@ function Billing() {
                 </a>
               </div>
             )}
+            <div className="subscription-card-footer subscription-actions">
+              <button className="btn-secondary" onClick={refreshSubscription}>
+                Обновить статус
+              </button>
+            </div>
           </div>
         ) : (
           <div className="no-subscription">
@@ -140,6 +243,67 @@ function Billing() {
             <a href="/register" className="btn-primary">
               Оформить подписку
             </a>
+          </div>
+        )}
+      </div>
+
+      <div className="billing-section">
+        <h2>Оплата подписки</h2>
+        {plans.length === 0 ? (
+          <div className="no-payments">
+            <p>Тарифные планы недоступны</p>
+            <p className="hint">Попробуйте обновить страницу позже</p>
+          </div>
+        ) : (
+          <div className="billing-plans">
+            <div className="plans-grid">
+              {plans.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  isSelected={selectedPlanId === plan.id}
+                  onSelect={setSelectedPlanId}
+                />
+              ))}
+            </div>
+            <div className="billing-controls">
+              <div className="billing-period">
+                <label className="billing-period-label">Период оплаты</label>
+                <div className="billing-period-buttons">
+                  <button
+                    className={`period-button ${billingPeriod === 'monthly' ? 'active' : ''}`}
+                    onClick={() => setBillingPeriod('monthly')}
+                  >
+                    Ежемесячно
+                  </button>
+                  <button
+                    className={`period-button ${billingPeriod === 'yearly' ? 'active' : ''}`}
+                    onClick={() => setBillingPeriod('yearly')}
+                  >
+                    Ежегодно
+                  </button>
+                </div>
+              </div>
+              <div className="billing-summary">
+                <div className="summary-row">
+                  <span>Тариф:</span>
+                  <strong>{selectedPlan?.name || 'Не выбран'}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Стоимость:</span>
+                  <strong>
+                    {selectedPlan
+                      ? `${(billingPeriod === 'monthly' ? selectedPlan.price_monthly : selectedPlan.price_yearly)
+                          .toLocaleString('ru-RU')} ₽`
+                      : '—'}
+                  </strong>
+                </div>
+              </div>
+              {paymentError && <div className="error">{paymentError}</div>}
+              <button className="btn-primary" onClick={handlePayment} disabled={paymentLoading}>
+                {paymentLoading ? 'Создаем платеж...' : 'Оплатить подписку'}
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -172,7 +336,7 @@ function Billing() {
                   <tr key={payment.id}>
                     <td>{formatDate(payment.created_at)}</td>
                     <td>{payment.amount} {payment.currency}</td>
-                    <td>{payment.payment_method}</td>
+                    <td>Юкасса</td>
                     <td>
                       <span
                         className="status-badge"

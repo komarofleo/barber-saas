@@ -19,9 +19,17 @@ def get_work_order_keyboard(bookings, work_date: date) -> InlineKeyboardMarkup:
     """Клавиатура лист-наряда"""
     buttons = []
     for booking in bookings:
-        time_str = booking.time.strftime("%H:%M")
-        client_name = booking.client.full_name if booking.client else "Неизвестно"
-        service_name = booking.service.name if booking.service else "Неизвестно"
+        if isinstance(booking, dict):
+            time_value = booking.get("time")
+            time_str = time_value.strftime("%H:%M") if time_value else "??:??"
+            client_name = booking.get("client_name") or "Неизвестно"
+            service_name = booking.get("service_name") or "Неизвестно"
+            booking_id = booking.get("id")
+        else:
+            time_str = booking.time.strftime("%H:%M")
+            client_name = booking.client.full_name if booking.client else "Неизвестно"
+            service_name = booking.service.name if booking.service else "Неизвестно"
+            booking_id = booking.id
         
         text = f"{time_str} - {client_name} ({service_name})"
         if len(text) > 60:
@@ -30,11 +38,14 @@ def get_work_order_keyboard(bookings, work_date: date) -> InlineKeyboardMarkup:
         buttons.append([
             InlineKeyboardButton(
                 text=text,
-                callback_data=f"master_booking_{booking.id}"
+                callback_data=f"master_booking_{booking_id}"
             )
         ])
     
-    buttons.append([InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_work_order")])
+    buttons.append([
+        InlineKeyboardButton(text="📅 Календарь", callback_data="master_calendar_open"),
+        InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_work_order"),
+    ])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

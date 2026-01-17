@@ -9,7 +9,10 @@ def generate_calendar(
     year: int,
     month: int,
     available_dates: Set[date],
-    current_date: date = None
+    current_date: date = None,
+    date_callback_prefix: str = "calendar_date",
+    month_callback_prefix: str = "calendar_month",
+    cancel_callback: str = "cancel",
 ) -> InlineKeyboardMarkup:
     """Генерация календаря на месяц"""
     if current_date is None:
@@ -83,7 +86,7 @@ def generate_calendar(
             current_row.append(
                 InlineKeyboardButton(
                     text=text,
-                    callback_data=f"calendar_date_{year}_{month}_{day}"
+                    callback_data=f"{date_callback_prefix}_{year}_{month}_{day}"
                 )
             )
         
@@ -112,9 +115,9 @@ def generate_calendar(
         next_year += 1
     
     nav_buttons = [
-        InlineKeyboardButton(text="◀️", callback_data=f"calendar_month_{prev_year}_{prev_month}"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel"),
-        InlineKeyboardButton(text="▶️", callback_data=f"calendar_month_{next_year}_{next_month}"),
+        InlineKeyboardButton(text="◀️", callback_data=f"{month_callback_prefix}_{prev_year}_{prev_month}"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data=cancel_callback),
+        InlineKeyboardButton(text="▶️", callback_data=f"{month_callback_prefix}_{next_year}_{next_month}"),
     ]
     buttons.append(nav_buttons)
     

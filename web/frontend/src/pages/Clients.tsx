@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { clientsApi, Client } from '../api/clients'
+import { mastersApi } from '../api/masters'
 import { usersApi } from '../api/users'
 import { useAuth } from '../hooks/useAuth'
 import { SuccessNotification } from '../components/SuccessNotification'
@@ -156,6 +157,26 @@ function Clients() {
   const handleEdit = (client: Client) => {
     setEditingClient(client)
     setShowEditModal(true)
+  }
+
+  const handleAssignMaster = async (client: Client) => {
+    if (!client.user_id || client.user_id === 0 || !client.user_telegram_id) {
+      alert('У клиента нет Telegram ID. Попросите его написать боту /start')
+      return
+    }
+
+    const confirmAssign = confirm(`Назначить клиента "${client.full_name}" мастером?`)
+    if (!confirmAssign) {
+      return
+    }
+
+    try {
+      await mastersApi.createMasterFromClient(client.id)
+      alert('Мастер назначен')
+    } catch (error: any) {
+      console.error('Ошибка назначения мастера:', error)
+      alert(error.response?.data?.detail || 'Не удалось назначить мастером')
+    }
   }
 
   const formatCurrency = (amount: number | null) => {
@@ -323,6 +344,9 @@ function Clients() {
                       </button>
                       <button className="btn-sm btn-edit" onClick={() => handleEdit(client)}>
                         ✏️ Редактировать
+                      </button>
+                      <button className="btn-sm" onClick={() => handleAssignMaster(client)}>
+                        🧑‍🔧 В мастера
                       </button>
                     </div>
                   </td>
