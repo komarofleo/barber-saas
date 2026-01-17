@@ -735,6 +735,15 @@ async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
                         reply_markup=get_confirm_attendance_keyboard(booking_id)
                     )
                     logger.info(f"✅ [HANDLER] Уведомление отправлено клиенту {client_telegram_id}")
+                else:
+                    logger.warning(
+                        f"⚠️ [HANDLER] Не найдены данные записи для уведомления: booking_id={booking_id}"
+                    )
+            else:
+                logger.warning(
+                    "⚠️ [HANDLER] У клиента нет telegram_id или запись не найдена: "
+                    f"booking_id={booking_id}"
+                )
         except Exception as e:
             logger.error(f"❌ [HANDLER] Ошибка отправки уведомления клиенту: {e}", exc_info=True)
 

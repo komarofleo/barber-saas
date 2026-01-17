@@ -230,4 +230,5 @@
 ## ✅ Рекомендация по качеству
 - [ ] Прогнать автоматический ревью: **Bugbot** или **CodeRabbit** по последним изменениям (особенно `bookings.py`, `clients_tenant.py`, bot handlers).
   - [x] Подготовлен PR для запуска CodeRabbit (ветка `chore/coderabbit-check`).
+  - [x] Боевой PR: добавлены логи уведомления клиента в `bot/handlers/admin/bookings.py`.
 
