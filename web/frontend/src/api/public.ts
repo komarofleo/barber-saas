@@ -59,6 +59,17 @@ export interface CompanyRegistration {
   plan_id: number
 }
 
+export interface RegistrationResponse {
+  success: boolean
+  payment_id?: number
+  confirmation_url?: string | null
+  message?: string
+  company_id?: number | null
+  dashboard_url?: string | null
+  login_email?: string | null
+  password?: string | null
+}
+
 /**
  * Данные платежа
  */

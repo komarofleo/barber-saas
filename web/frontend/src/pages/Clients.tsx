@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { clientsApi, Client } from '../api/clients'
 import { mastersApi } from '../api/masters'
-import { usersApi } from '../api/users'
 import { useAuth } from '../hooks/useAuth'
 import { SuccessNotification } from '../components/SuccessNotification'
 import { broadcastsApi } from '../api/broadcasts'
@@ -368,36 +367,9 @@ function Clients() {
 interface ViewClientModalProps {
   client: Client
   onClose: () => void
-  onAdminToggle?: () => void
 }
 
-function ViewClientModal({ client, onClose, onAdminToggle }: ViewClientModalProps) {
-  const { user: currentUser } = useAuth()
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(client.user_is_admin ?? null)
-  const [togglingAdmin, setTogglingAdmin] = useState(false)
-
-  // Обновляем isAdmin при изменении client
-  useEffect(() => {
-    setIsAdmin(client.user_is_admin ?? null)
-  }, [client.user_is_admin])
-
-  const handleToggleAdmin = async () => {
-    if (!client.user_id || !currentUser?.is_admin) return
-    
-    try {
-      setTogglingAdmin(true)
-      await usersApi.toggleAdmin(client.user_id, !isAdmin)
-      setIsAdmin(!isAdmin)
-      if (onAdminToggle) {
-        onAdminToggle()
-      }
-    } catch (error: any) {
-      console.error('Ошибка изменения статуса администратора:', error)
-      alert(error.response?.data?.detail || 'Не удалось изменить статус администратора')
-    } finally {
-      setTogglingAdmin(false)
-    }
-  }
+function ViewClientModal({ client, onClose }: ViewClientModalProps) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
@@ -428,30 +400,6 @@ function ViewClientModal({ client, onClose, onAdminToggle }: ViewClientModalProp
                   <div className="detail-label">Имя в Telegram:</div>
                   <div className="detail-value">
                     {[client.user_first_name, client.user_last_name].filter(Boolean).join(' ') || '-'}
-                  </div>
-                </div>
-              )}
-              {client.user_id && currentUser?.is_admin && (
-                <div className="detail-item">
-                  <div className="detail-label">Статус администратора:</div>
-                  <div className="detail-value">
-                    {isAdmin !== null ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span className={`badge ${isAdmin ? 'badge-success' : 'badge-default'}`}>
-                          {isAdmin ? 'Администратор' : 'Не администратор'}
-                        </span>
-                        <button
-                          className="btn-sm"
-                          onClick={handleToggleAdmin}
-                          disabled={togglingAdmin}
-                          style={{ marginLeft: '10px' }}
-                        >
-                          {togglingAdmin ? '...' : isAdmin ? '❌ Снять админа' : '✅ Назначить админом'}
-                        </button>
-                      </div>
-                    ) : (
-                      '-'
-                    )}
                   </div>
                 </div>
               )}
@@ -629,35 +577,11 @@ interface EditClientModalProps {
 }
 
 function EditClientModal({ client, onClose, onSuccess }: EditClientModalProps) {
-  const { user: currentUser } = useAuth()
   const [formData, setFormData] = useState({
     full_name: client.full_name,
     phone: client.phone || '',
   })
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(client.user_is_admin ?? null)
   const [loading, setLoading] = useState(false)
-  const [togglingAdmin, setTogglingAdmin] = useState(false)
-
-  // Обновляем isAdmin при изменении client
-  useEffect(() => {
-    setIsAdmin(client.user_is_admin ?? null)
-  }, [client.user_is_admin])
-
-  const handleToggleAdmin = async () => {
-    if (!client.user_id || !currentUser?.is_admin) return
-    
-    try {
-      setTogglingAdmin(true)
-      await usersApi.toggleAdmin(client.user_id, !isAdmin)
-      setIsAdmin(!isAdmin)
-      onSuccess() // Обновляем список клиентов
-    } catch (error: any) {
-      console.error('Ошибка изменения статуса администратора:', error)
-      alert(error.response?.data?.detail || 'Не удалось изменить статус администратора')
-    } finally {
-      setTogglingAdmin(false)
-    }
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -711,24 +635,6 @@ function EditClientModal({ client, onClose, onSuccess }: EditClientModalProps) {
             />
           </div>
 
-          {client.user_id && currentUser?.is_admin && (
-            <div className="form-group">
-              <label>Статус администратора</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
-                <span className={`badge ${isAdmin ? 'badge-success' : 'badge-default'}`}>
-                  {isAdmin !== null ? (isAdmin ? 'Администратор' : 'Не администратор') : 'Неизвестно'}
-                </span>
-                <button
-                  type="button"
-                  className="btn-sm"
-                  onClick={handleToggleAdmin}
-                  disabled={togglingAdmin || isAdmin === null}
-                >
-                  {togglingAdmin ? '...' : isAdmin ? '❌ Снять админа' : '✅ Назначить админом'}
-                </button>
-              </div>
-            </div>
-          )}
 
           <div className="modal-footer">
             <button type="button" className="btn-secondary" onClick={onClose}>

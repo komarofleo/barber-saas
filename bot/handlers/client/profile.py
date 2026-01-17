@@ -1,9 +1,10 @@
 """Обработчики профиля и информации о сервисе"""
 from aiogram import Router, F
-from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import FSInputFile, Message, InlineKeyboardButton, InlineKeyboardMarkup
+from pathlib import Path
 
 from bot.database.connection import get_session
-from bot.database.crud import get_user_by_telegram_id, get_client_by_user_id
+from bot.database.crud import get_user_by_telegram_id, get_client_by_user_id, get_setting_value
 from shared.database.models import ClientHistory, Booking, Client
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -177,9 +178,45 @@ async def show_full_history(callback):
 @router.message(F.text == "ℹ️ О нас")
 async def show_about(message: Message):
     """Показать информацию о салоне красоты"""
-    text = "ℹ️ О нас\n\n"
-    text += "Самый лучший салон красоты в городе!\n"
-    text += "📞 8 800 555 78 13"
+    import logging
+    from sqlalchemy import text
+    from bot.database.connection import async_session_maker
     
-    await message.answer(text)
+    logger = logging.getLogger(__name__)
+    company_id = None
+    try:
+        bot_token = message.bot.token
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+    except Exception as e:
+        logger.error(f"Ошибка получения company_id: {e}", exc_info=True)
+    
+    about_text = "ℹ️ О нас\n\nСамый лучший салон красоты в городе!\n📞 8 800 555 78 13"
+    about_photo = None
+    
+    if company_id:
+        async with async_session_maker() as session:
+            about_text_value = await get_setting_value(session, "bot_about_text", company_id=company_id)
+            about_photo_value = await get_setting_value(session, "bot_about_photo", company_id=company_id)
+            if about_text_value:
+                about_text = about_text_value
+            if about_photo_value:
+                about_photo = about_photo_value
+    
+    if about_photo:
+        try:
+            photo_file = Path(about_photo)
+            if photo_file.exists():
+                await message.answer_photo(FSInputFile(about_photo), caption=about_text)
+                return
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось отправить фото 'О нас': {e}")
+    
+    await message.answer(about_text)
 

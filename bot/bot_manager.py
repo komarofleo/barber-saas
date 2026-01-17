@@ -40,7 +40,7 @@ class BotInstance:
         # Сохраняем контекст в диспетчере
         self.dispatcher['company_id'] = company_id
         self.dispatcher['company_name'] = None  # Будет загружен из БД
-        self.dispatcher['schema_name'] = f'tenant_{company_id:03d}'
+        self.dispatcher['schema_name'] = f'tenant_{company_id}'
         self.dispatcher['can_create_bookings'] = True  # Будет загружен из БД
         self.dispatcher['subscription_status'] = None  # Будет загружен из БД
         
@@ -80,7 +80,7 @@ class BotManager:
             companies = result.scalars().all()
         
         logger.info(f"Загружено {len(companies)} активных компаний")
-            return companies
+        return companies
     
     async def create_bot_instance(self, company: Company) -> BotInstance:
         """

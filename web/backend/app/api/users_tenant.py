@@ -290,7 +290,15 @@ async def update_user(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять пользователей")
 
-    exists = await tenant_session.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
+    company_id = getattr(request.state, "company_id", None)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id не найден")
+    schema_name = f"tenant_{company_id}"
+
+    exists = await tenant_session.execute(
+        text(f'SELECT 1 FROM "{schema_name}".users WHERE id = :id'),
+        {"id": user_id},
+    )
     if not exists.fetchone():
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
@@ -323,7 +331,7 @@ async def update_user(
 
     set_parts = ", ".join([f"{k} = :{k}" for k in update_fields.keys()])
     await tenant_session.execute(
-        text(f"UPDATE users SET {set_parts} WHERE id = :id"),
+        text(f'UPDATE "{schema_name}".users SET {set_parts} WHERE id = :id'),
         {"id": user_id, **update_fields},
     )
     await tenant_session.commit()
@@ -331,9 +339,9 @@ async def update_user(
     # Возвращаем актуальную строку
     result = await tenant_session.execute(
         text(
-            """
+            f"""
             SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
-            FROM users
+            FROM "{schema_name}".users
             WHERE id = :user_id
             """
         ),
@@ -359,7 +367,6 @@ async def update_user(
     first_name = name_parts[0] if len(name_parts) > 0 else None
     last_name = name_parts[1] if len(name_parts) > 1 else None
 
-    company_id = getattr(request.state, "company_id", None)
     logger.info(f"✅ Обновлен пользователь: user_id={user_id}, company_id={company_id}")
 
     return UserResponse.model_validate(
@@ -397,23 +404,31 @@ async def toggle_admin(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут менять права пользователей")
-    
-    exists = await tenant_session.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
+
+    company_id = getattr(request.state, "company_id", None)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id не найден")
+    schema_name = f"tenant_{company_id}"
+
+    exists = await tenant_session.execute(
+        text(f'SELECT 1 FROM "{schema_name}".users WHERE id = :id'),
+        {"id": user_id},
+    )
     if not exists.fetchone():
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     new_role = "admin" if is_admin else "client"
     await tenant_session.execute(
-        text("UPDATE users SET role = :role, updated_at = :updated_at WHERE id = :id"),
+        text(f'UPDATE "{schema_name}".users SET role = :role, updated_at = :updated_at WHERE id = :id'),
         {"role": new_role, "updated_at": datetime.utcnow(), "id": user_id},
     )
     await tenant_session.commit()
     
     result = await tenant_session.execute(
         text(
-            """
+            f"""
             SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
-            FROM users
+            FROM "{schema_name}".users
             WHERE id = :user_id
             """
         ),

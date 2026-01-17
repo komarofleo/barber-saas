@@ -184,7 +184,6 @@ async def get_clients(
             "user_telegram_id": None,
             "user_first_name": None,
             "user_last_name": None,
-            "user_is_admin": None,
         }
         
         # Преобразуем total_amount в float, если это Decimal
@@ -205,7 +204,6 @@ async def get_clients(
                     name_parts = user_full_name.split(maxsplit=1) if user_full_name else ['', '']
                     client_dict["user_first_name"] = name_parts[0] if len(name_parts) > 0 else None
                     client_dict["user_last_name"] = name_parts[1] if len(name_parts) > 1 else None
-                    client_dict["user_is_admin"] = (user_row[2] == "admin") if user_row[2] else False
             except Exception as e:
                 logger.warning(f"Ошибка при получении данных пользователя для клиента {client.id}: {e}")
         
@@ -267,7 +265,6 @@ async def get_client(
     user_telegram_id = None
     user_first_name = None
     user_last_name = None
-    user_is_admin = None
     if user_id:
         user_result = await tenant_session.execute(
             text("SELECT telegram_id, full_name, role FROM users WHERE id = :user_id"),
@@ -280,7 +277,6 @@ async def get_client(
             parts = user_full_name.split(maxsplit=1) if user_full_name else ["", ""]
             user_first_name = parts[0] if len(parts) > 0 else None
             user_last_name = parts[1] if len(parts) > 1 else None
-            user_is_admin = (user_row[2] == "admin") if user_row[2] else False
 
     company_id = getattr(request.state, "company_id", None)
     logger.info(f"🔍 Запрос клиента: client_id={client_id}, company_id={company_id}")
@@ -301,7 +297,6 @@ async def get_client(
             "user_telegram_id": user_telegram_id,
             "user_first_name": user_first_name,
             "user_last_name": user_last_name,
-            "user_is_admin": user_is_admin,
         }
     )
 
@@ -360,7 +355,6 @@ async def create_client(
             "user_telegram_id": None,
             "user_first_name": None,
             "user_last_name": None,
-            "user_is_admin": None,
         }
     )
 
@@ -444,7 +438,6 @@ async def update_client(
             "user_telegram_id": None,
             "user_first_name": None,
             "user_last_name": None,
-            "user_is_admin": None,
         }
     )
 

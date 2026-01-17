@@ -548,7 +548,7 @@ async def get_bookings(
     query = query.offset((page - 1) * page_size).limit(page_size)
     
     result = await tenant_session.execute(query)
-    bookings = result.scalars().all()
+    bookings = [booking for booking in result.scalars().all() if booking is not None]
     
     logger.info(f"✅ Получено записей: {len(bookings)}")
     if len(bookings) > 0:
@@ -720,6 +720,8 @@ async def get_available_slots(
             
             is_available = True
             for booking in booked:
+                if not booking or not booking.service_date or not booking.time or not booking.end_time:
+                    continue
                 if booking.post_id == post_id:
                     booking_start = datetime.combine(booking.service_date, booking.time)
                     booking_end = datetime.combine(booking.service_date, booking.end_time)
@@ -756,6 +758,8 @@ async def get_available_slots(
         bookings_without_post = 0
         
         for booking in booked:
+            if not booking or not booking.service_date or not booking.time or not booking.end_time:
+                continue
             booking_start = datetime.combine(booking.service_date, booking.time)
             booking_end = datetime.combine(booking.service_date, booking.end_time)
             

@@ -86,7 +86,7 @@ function Login() {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1>Barber</h1>
+        <h1>Booking</h1>
         <h2>Вход в админ-панель</h2>
         
         {/* Переключатель типа входа */}

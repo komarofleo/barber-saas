@@ -2,6 +2,7 @@
 API для работы с подписками в контексте текущего пользователя
 """
 from typing import Annotated, Optional, Literal
+from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -269,10 +270,31 @@ async def create_subscription_payment(
 
     amount = plan.price_monthly if payment_data.billing_period == "monthly" else plan.price_yearly
     description = f"Продление подписки: {plan.name}"
-    return_url = f"{settings.YOOKASSA_RETURN_URL}?payment_id=0"
 
     from app.services.yookassa_service import create_payment
 
+    payment = Payment(
+        company_id=company_id,
+        plan_id=plan.id,
+        subscription_id=None,
+        amount=amount,
+        currency="RUB",
+        status="pending",
+        yookassa_payment_id=f"pending_{uuid4().hex}",
+        yookassa_payment_status="pending",
+        yookassa_confirmation_url=None,
+        yookassa_return_url=None,
+        description=description,
+        extra_data={
+            "company_id": company_id,
+            "plan_id": plan.id,
+            "billing_period": payment_data.billing_period,
+        },
+    )
+    db.add(payment)
+    await db.flush()
+
+    return_url = f"{settings.YOOKASSA_RETURN_URL}?payment_id={payment.id}"
     yookassa_payment = await create_payment(
         amount=amount,
         description=description,
@@ -287,31 +309,12 @@ async def create_subscription_payment(
     if not yookassa_payment or "id" not in yookassa_payment:
         raise HTTPException(status_code=500, detail="Не удалось создать платеж")
 
-    payment = Payment(
-        company_id=company_id,
-        plan_id=plan.id,
-        subscription_id=None,
-        amount=amount,
-        currency=yookassa_payment.get("currency", "RUB"),
-        status="pending",
-        yookassa_payment_id=yookassa_payment["id"],
-        yookassa_payment_status=yookassa_payment.get("status", "pending"),
-        yookassa_confirmation_url=yookassa_payment.get("confirmation_url"),
-        yookassa_return_url=return_url,
-        description=description,
-        extra_data={
-            "company_id": company_id,
-            "plan_id": plan.id,
-            "billing_period": payment_data.billing_period,
-        },
-    )
-    db.add(payment)
+    payment.yookassa_payment_id = yookassa_payment["id"]
+    payment.yookassa_payment_status = yookassa_payment.get("status", "pending")
+    payment.yookassa_confirmation_url = yookassa_payment.get("confirmation_url")
+    payment.yookassa_return_url = return_url
     await db.commit()
     await db.refresh(payment)
-
-    if payment.yookassa_return_url:
-        payment.yookassa_return_url = payment.yookassa_return_url.replace("payment_id=0", f"payment_id={payment.id}")
-        await db.commit()
 
     return PaymentCreateResponse(
         payment_id=payment.id,

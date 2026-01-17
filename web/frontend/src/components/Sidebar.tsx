@@ -88,7 +88,7 @@ function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h2>Barber</h2>
+        <h2>Booking</h2>
         <div className="user-info">
           <span className="user-name">{user?.first_name || user?.telegram_id}</span>
           {user?.is_admin && <span className="user-role">Администратор</span>}

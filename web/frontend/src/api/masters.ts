@@ -37,6 +37,7 @@ export interface MasterUpdateRequest {
   is_universal?: boolean
 }
 
+
 export const mastersApi = {
   getMasters: async (page: number = 1, pageSize: number = 20, search?: string): Promise<MasterListResponse> => {
     let url = `/api/masters?page=${page}&page_size=${pageSize}`
@@ -70,6 +71,7 @@ export const mastersApi = {
   deleteMaster: async (masterId: number): Promise<void> => {
     await apiClient.delete(`/api/masters/${masterId}`)
   },
+
 
   getMasterSchedule: async (masterId: number, date: string): Promise<{ master_id: number; master_name: string; date: string; bookings: Booking[] }> => {
     const response = await apiClient.get(`/api/masters/${masterId}/schedule?date=${date}`)
