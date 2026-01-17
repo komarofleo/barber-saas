@@ -152,6 +152,8 @@ async def get_master(
     return MasterResponse.model_validate(master_dict)
 
 
+
+
 @router.post("", response_model=MasterResponse, status_code=201)
 async def create_master(
     master_data: MasterCreateRequest,
@@ -458,7 +460,7 @@ async def get_master_schedule(
     # Получаем записи мастера на дату через прямой SQL
     bookings_query = text("""
         SELECT b.id, b.booking_number, b.client_id, b.service_id, b.master_id, b.post_id,
-               b.service_date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
+               b.service_date, b.request_date, b.time, b.duration, b.end_time, b.status, b.amount, b.is_paid,
                b.payment_method, b.comment, b.admin_comment, b.created_at,
                b.confirmed_at, b.completed_at, b.cancelled_at,
                c.full_name as client_name, c.phone as client_phone,
@@ -489,28 +491,29 @@ async def get_master_schedule(
             "service_id": row[3],
             "master_id": row[4],
             "post_id": row[5],
-            "date": row[6],
-            "time": row[7],
-            "duration": row[8],
-            "end_time": row[9],
-            "status": row[10],
-            "amount": row[11],
-            "is_paid": row[12] or False,
-            "payment_method": row[13],
-            "comment": row[14],
-            "admin_comment": row[15],
-            "created_at": row[16],
-            "confirmed_at": row[17],
-            "completed_at": row[18],
-            "cancelled_at": row[19],
-            "client_name": row[20],
-            "client_phone": row[21],
+            "service_date": row[6],
+            "request_date": row[7],
+            "time": row[8],
+            "duration": row[9],
+            "end_time": row[10],
+            "status": row[11],
+            "amount": row[12],
+            "is_paid": row[13] or False,
+            "payment_method": row[14],
+            "comment": row[15],
+            "admin_comment": row[16],
+            "created_at": row[17],
+            "confirmed_at": row[18],
+            "completed_at": row[19],
+            "cancelled_at": row[20],
+            "client_name": row[21],
+            "client_phone": row[22],
             "client_telegram_id": None,
             "client_car_brand": None,
             "client_car_model": None,
-            "service_name": row[22],
+            "service_name": row[23],
             "master_name": master.full_name,
-            "post_number": row[23],
+            "post_number": row[24],
         }
         
         items.append(BookingResponse.model_validate(booking_dict))

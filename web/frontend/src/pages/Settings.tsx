@@ -8,6 +8,8 @@ function Settings() {
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [formValues, setFormValues] = useState<Record<string, string>>({})
+  const [botWelcomeFile, setBotWelcomeFile] = useState<File | null>(null)
+  const [botAboutFile, setBotAboutFile] = useState<File | null>(null)
 
   useEffect(() => {
     loadSettings()
@@ -121,6 +123,54 @@ function Settings() {
       console.error('Ошибка сохранения данных компании:', error)
       setError(error.response?.data?.detail || 'Не удалось сохранить данные компании')
       alert('Не удалось сохранить данные компании')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const getFileNameFromPath = (value: string) => {
+    if (!value) return ''
+    const parts = value.split('/')
+    return parts[parts.length - 1]
+  }
+
+  const handleBotSave = async () => {
+    try {
+      setSaving('bot_form')
+      setError(null)
+      await settingsApi.updateSetting('bot_welcome_text', { value: formValues['bot_welcome_text'] || '' })
+      await settingsApi.updateSetting('bot_about_text', { value: formValues['bot_about_text'] || '' })
+      if (botWelcomeFile) {
+        await settingsApi.uploadSettingFile('bot_welcome_photo', botWelcomeFile)
+      }
+      if (botAboutFile) {
+        await settingsApi.uploadSettingFile('bot_about_photo', botAboutFile)
+      }
+      await loadSettings()
+      setBotWelcomeFile(null)
+      setBotAboutFile(null)
+      alert('Настройки бота сохранены')
+    } catch (error: any) {
+      console.error('Ошибка сохранения настроек бота:', error)
+      setError(error.response?.data?.detail || 'Не удалось сохранить настройки бота')
+      alert('Не удалось сохранить настройки бота')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const handleMasterSpecializationsSave = async () => {
+    try {
+      setSaving('master_specializations')
+      setError(null)
+      const value = formValues['master_specializations'] ?? ''
+      await settingsApi.updateSetting('master_specializations', { value })
+      await loadSettings()
+      alert('Список специализаций сохранен')
+    } catch (error: any) {
+      console.error('Ошибка сохранения специализаций:', error)
+      setError(error.response?.data?.detail || 'Не удалось сохранить специализации')
+      alert('Не удалось сохранить специализации')
     } finally {
       setSaving(null)
     }
@@ -302,6 +352,115 @@ function Settings() {
                 <span>Включено</span>
               </label>
             </div>
+          </div>
+        </div>
+
+        {/* Мастера */}
+        <div className="settings-section">
+          <h2>👤 Мастера</h2>
+          <div className="settings-grid">
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Список специализаций</span>
+                <span className="setting-description">По одной специализации в строке</span>
+              </label>
+              <textarea
+                value={getSettingValue('master_specializations')}
+                onChange={(e) => handleTextChange('master_specializations', e.target.value)}
+                className="setting-input"
+                rows={6}
+                disabled={saving === 'master_specializations'}
+              />
+            </div>
+          </div>
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleMasterSpecializationsSave}
+              disabled={saving === 'master_specializations'}
+            >
+              {saving === 'master_specializations' ? 'Сохранение...' : 'Сохранить'}
+            </button>
+          </div>
+        </div>
+
+        {/* Настройки бота */}
+        <div className="settings-section">
+          <h2>🤖 Бот: приветствие и О нас</h2>
+          <div className="settings-grid">
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Текст приветствия</span>
+                <span className="setting-description">Сообщение при /start</span>
+              </label>
+              <textarea
+                value={getSettingValue('bot_welcome_text')}
+                onChange={(e) => handleTextChange('bot_welcome_text', e.target.value)}
+                className="setting-input"
+                rows={4}
+                disabled={saving === 'bot_form'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Картинка приветствия</span>
+                <span className="setting-description">PNG/JPG/WEBP</span>
+              </label>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(e) => setBotWelcomeFile(e.target.files?.[0] || null)}
+                className="setting-input"
+                disabled={saving === 'bot_form'}
+              />
+              {getSettingValue('bot_welcome_photo') && (
+                <div className="setting-description">
+                  Текущий файл: {getFileNameFromPath(getSettingValue('bot_welcome_photo'))}
+                </div>
+              )}
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Текст «О нас»</span>
+                <span className="setting-description">Сообщение по кнопке «О нас»</span>
+              </label>
+              <textarea
+                value={getSettingValue('bot_about_text')}
+                onChange={(e) => handleTextChange('bot_about_text', e.target.value)}
+                className="setting-input"
+                rows={4}
+                disabled={saving === 'bot_form'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Картинка «О нас»</span>
+                <span className="setting-description">PNG/JPG/WEBP</span>
+              </label>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(e) => setBotAboutFile(e.target.files?.[0] || null)}
+                className="setting-input"
+                disabled={saving === 'bot_form'}
+              />
+              {getSettingValue('bot_about_photo') && (
+                <div className="setting-description">
+                  Текущий файл: {getFileNameFromPath(getSettingValue('bot_about_photo'))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleBotSave}
+              disabled={saving === 'bot_form'}
+            >
+              {saving === 'bot_form' ? 'Сохранение...' : 'Сохранить'}
+            </button>
           </div>
         </div>
 

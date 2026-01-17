@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     
     # Telegram (главный бот)
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+    # Файлы Telegram ботов
+    BOT_MEDIA_DIR: str = os.getenv("BOT_MEDIA_DIR", "/app/bot_media")
     
     # Договоры
     CONTRACTS_DIR: str = os.getenv("CONTRACTS_DIR", "/app/dogovor/generated")

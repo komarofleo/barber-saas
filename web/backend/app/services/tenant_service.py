@@ -166,6 +166,171 @@ class TenantService:
                             'ADD COLUMN IF NOT EXISTS password_hash TEXT'
                         )
                     )
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".users_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".users '
+                            'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".users_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'users_pkey'
+                                    AND conrelid = '{schema_name}.users'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".users
+                                    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+                                END IF;
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'users_telegram_id_key'
+                                    AND conrelid = '{schema_name}.users'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".users
+                                    ADD CONSTRAINT users_telegram_id_key UNIQUE (telegram_id);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
+                if table_name == "services":
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".services_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".services '
+                            'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".services_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'services_pkey'
+                                    AND conrelid = '{schema_name}.services'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".services
+                                    ADD CONSTRAINT services_pkey PRIMARY KEY (id);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
+                if table_name == "masters":
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".masters_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".masters '
+                            'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".masters_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'masters_pkey'
+                                    AND conrelid = '{schema_name}.masters'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".masters
+                                    ADD CONSTRAINT masters_pkey PRIMARY KEY (id);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
+                if table_name == "bookings":
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".bookings_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".bookings '
+                            'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".bookings_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'bookings_pkey'
+                                    AND conrelid = '{schema_name}.bookings'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".bookings
+                                    ADD CONSTRAINT bookings_pkey PRIMARY KEY (id);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
+                if table_name == "settings":
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".settings_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".settings '
+                            'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".settings_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'settings_pkey'
+                                    AND conrelid = '{schema_name}.settings'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".settings
+                                    ADD CONSTRAINT settings_pkey PRIMARY KEY (id);
+                                END IF;
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'settings_key_key'
+                                    AND conrelid = '{schema_name}.settings'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".settings
+                                    ADD CONSTRAINT settings_key_key UNIQUE (key);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
                 
                 # Восстанавливаем последовательности (если есть)
                 # Проверяем существование последовательности перед setval

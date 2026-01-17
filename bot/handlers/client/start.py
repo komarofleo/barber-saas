@@ -1,12 +1,13 @@
 """Обработчик /start и регистрация"""
 from aiogram import Router, F
 from aiogram.types import FSInputFile, Message, ReplyKeyboardMarkup
+from pathlib import Path
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.connection import get_session
-from bot.database.crud import get_or_create_user, get_or_create_client
+from bot.database.crud import get_or_create_user, get_or_create_client, get_setting_value
 from bot.keyboards.client import get_client_main_keyboard, get_cancel_keyboard
 from bot.states.client_states import RegistrationStates
 
@@ -49,10 +50,21 @@ async def cmd_start(message: Message, state: FSMContext):
     
     logger.info(f"📋 Начинаем обработку /start для company_id={company_id}, telegram_id={message.from_user.id}")
     
-    async def send_welcome_photo(caption: str, reply_markup: ReplyKeyboardMarkup | None = None) -> None:
+    async def send_welcome_photo(
+        caption: str,
+        reply_markup: ReplyKeyboardMarkup | None = None,
+        photo_path: str | None = None,
+    ) -> None:
         """Отправить приветствие с фото."""
+        if photo_path == "":
+            await message.answer(caption, reply_markup=reply_markup)
+            return
         try:
-            photo = FSInputFile("/app/bot/salon.jpg")
+            resolved_path = photo_path or "/app/bot/salon.jpg"
+            photo_file = Path(resolved_path)
+            if not photo_file.exists():
+                raise FileNotFoundError(resolved_path)
+            photo = FSInputFile(resolved_path)
             logger.info("🖼️ Отправляем приветственное фото")
             await message.answer_photo(photo=photo, caption=caption, reply_markup=reply_markup)
             logger.info("✅ Приветственное фото отправлено")
@@ -68,6 +80,10 @@ async def cmd_start(message: Message, state: FSMContext):
             await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
             logger.info(f"✅ Установлен search_path: {schema_name}")
             
+            # Получаем настройки бота
+            welcome_text = await get_setting_value(session, "bot_welcome_text", company_id=company_id)
+            welcome_photo = await get_setting_value(session, "bot_welcome_photo", company_id=company_id)
+
             # Получаем или создаем пользователя
             logger.info(f"👤 Получаем или создаем пользователя telegram_id={message.from_user.id}")
             user = await get_or_create_user(
@@ -86,26 +102,27 @@ async def cmd_start(message: Message, state: FSMContext):
             client = await get_client_by_user_id(session, user.id, company_id=company_id)
             logger.info(f"✅ Клиент получен: client_id={client.id if client else None}")
 
+            base_text = welcome_text or "👋 Добро пожаловать в салон красоты!\n\nЗдесь вы можете записаться на наши услуги!"
             if not client:
                 # Начинаем регистрацию
                 logger.info(f"📝 Клиент не найден, начинаем регистрацию")
                 await state.set_state(RegistrationStates.waiting_full_name)
                 await send_welcome_photo(
-                    "👋 Добро пожаловать в салон красоты!\n\n"
-                    "Здесь вы можете за 1 минуту записаться на наши услуги!\n\n"
+                    f"{base_text}\n\n"
                     "Для начала работы необходимо пройти регистрацию.\n"
                     "Введите ваше ФИО:",
-                    reply_markup=get_cancel_keyboard()
+                    reply_markup=get_cancel_keyboard(),
+                    photo_path=welcome_photo
                 )
                 logger.info(f"✅ Сообщение о регистрации отправлено")
             else:
                 # Пользователь уже зарегистрирован
                 logger.info(f"✅ Клиент найден: {client.full_name}, отправляем главное меню")
                 await send_welcome_photo(
-                    f"👋 Здравствуйте, {client.full_name}!\n\n"
-                    "Здесь вы можете за 1 минуту записаться на наши услуги!\n\n"
+                    f"{base_text}\n\n"
                     "Выберите действие:",
-                    reply_markup=get_client_main_keyboard()
+                    reply_markup=get_client_main_keyboard(),
+                    photo_path=welcome_photo
                 )
                 await state.clear()
                 logger.info(f"✅ Главное меню отправлено")
@@ -141,6 +158,27 @@ async def process_phone(message: Message, state: FSMContext):
         await message.answer("❌ Неверный формат телефона. Попробуйте еще раз:")
         return
 
+    await _complete_registration(message, state, phone)
+
+
+@router.message(RegistrationStates.waiting_phone, F.contact)
+async def process_phone_contact(message: Message, state: FSMContext):
+    """Обработка телефона из контакта"""
+    if not message.contact or not message.contact.phone_number:
+        await message.answer("❌ Не удалось прочитать номер телефона. Попробуйте еще раз:")
+        return
+    phone = message.contact.phone_number.strip()
+    await _complete_registration(message, state, phone)
+
+
+async def _complete_registration(message: Message, state: FSMContext, phone: str) -> None:
+    """Завершить регистрацию клиента по телефону"""
+    # Простая валидация телефона
+    phone_clean = phone.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if not phone_clean.isdigit() or len(phone_clean) < 10:
+        await message.answer("❌ Неверный формат телефона. Попробуйте еще раз:")
+        return
+
     data = await state.get_data()
     full_name = data.get("full_name")
 
@@ -163,17 +201,17 @@ async def process_phone(message: Message, state: FSMContext):
         logger = logging.getLogger(__name__)
         logger.error(f"Ошибка получения company_id: {e}")
         pass
-    
+
     if not company_id:
         await message.answer("❌ Ошибка конфигурации бота. Обратитесь к администратору.")
         return
-    
+
     async for session in get_session():
         # Устанавливаем search_path для tenant схемы
         from sqlalchemy import text
         schema_name = f"tenant_{company_id}"
         await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
-        
+
         # Получаем пользователя
         from bot.database.crud import get_user_by_telegram_id
         user = await get_user_by_telegram_id(session, message.from_user.id, company_id=company_id)

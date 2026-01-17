@@ -6,7 +6,7 @@ from sqlalchemy import select, update, text
 from sqlalchemy.orm import selectinload
 
 from shared.database.models import (
-    User, Client, Service, Booking, Master, Post
+    User, Client, Service, Booking, Master, Post, Setting
 )
 from bot.config import ADMIN_IDS
 
@@ -83,18 +83,24 @@ async def get_user_by_telegram_id(session: AsyncSession, telegram_id: int, compa
                 user.last_name = None
             return user
         return None
-    else:
-        # Если company_id не указан и не определен, используем обычный запрос
-        # Это может не работать для tenant схемы, но попробуем
-        logger.warning("⚠️ company_id не указан для get_user_by_telegram_id, используем обычный запрос")
-        try:
-            result = await session.execute(
-                select(User).where(User.telegram_id == telegram_id)
-            )
-            return result.scalar_one_or_none()
-        except Exception as e:
-            logger.error(f"❌ Ошибка при получении пользователя: {e}", exc_info=True)
-            return None
+
+
+async def get_setting_value(session: AsyncSession, key: str, company_id: Optional[int] = None) -> Optional[str]:
+    """
+    Получить значение настройки по ключу.
+    
+    Args:
+        session: Сессия БД
+        key: Ключ настройки
+        company_id: ID компании (для tenant схемы)
+    """
+    if company_id:
+        from sqlalchemy import text
+        schema_name = f"tenant_{company_id}"
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    result = await session.execute(select(Setting).where(Setting.key == key))
+    setting = result.scalar_one_or_none()
+    return setting.value if setting else None
 
 
 async def create_user(

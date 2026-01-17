@@ -27,6 +27,14 @@ export const settingsApi = {
     const response = await apiClient.patch(`/api/settings/${key}`, data)
     return response.data
   },
+  uploadSettingFile: async (key: string, file: File): Promise<Setting> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await apiClient.post(`/api/settings/upload/${key}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
 }
 
 

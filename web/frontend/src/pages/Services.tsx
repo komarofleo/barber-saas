@@ -281,7 +281,7 @@ function ServiceModal({ service, onClose, onSave }: ServiceModalProps) {
                 type="number"
                 step="0.01"
                 min="0"
-                value={formData.price}
+                value={formData.price === 0 ? '' : formData.price}
                 onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
                 required
                 className="form-input"
