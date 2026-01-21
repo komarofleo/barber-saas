@@ -57,6 +57,7 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     service_id = data.get("service_id")
     service_duration = data.get("service_duration", 60)
+    service_name = data.get("service_name") or "Другое"
 
     # Получаем company_id из токена бота
     company_id = await get_company_id_from_callback(callback)
@@ -69,15 +70,19 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
             await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
             logger.info(f"✅ Установлен search_path: {schema_name}")
         
-        service = await get_service_by_id(session, service_id, company_id=company_id)
-        if not service:
-            await callback.answer("❌ Услуга не найдена", show_alert=True)
-            return
+        service = None
+        if service_id is not None:
+            service = await get_service_by_id(session, service_id, company_id=company_id)
+            if not service:
+                await callback.answer("❌ Услуга не найдена", show_alert=True)
+                return
 
         # Генерируем доступные временные слоты
         from bot.utils.time_slots import generate_time_slots
         try:
-            time_slots = await generate_time_slots(session, selected_date, service_duration, master_id=None, company_id=company_id)
+            time_slots = await generate_time_slots(
+                session, selected_date, service_duration, master_id=None, company_id=company_id
+            )
         except Exception as e:
             logger.error(f"Ошибка генерации временных слотов: {e}", exc_info=True)
             await callback.answer("❌ Ошибка при генерации временных слотов", show_alert=True)
@@ -91,7 +96,7 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
             # Показываем календарь снова
             today = date.today()
             end_date = today + timedelta(days=60)
-            available_dates = await get_available_dates(session, today, end_date)
+            available_dates = await get_available_dates(session, today, end_date, company_id=company_id)
             calendar = generate_calendar(today.year, today.month, available_dates, today)
             await callback.message.edit_text(
                 f"🛠️ Услуга: {service.name}\n"
@@ -103,8 +108,9 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
             return
 
         from bot.keyboards.client import get_time_slots_keyboard
+        service_title = service.name if service else service_name
         await callback.message.edit_text(
-            f"🛠️ Услуга: {service.name}\n"
+            f"🛠️ Услуга: {service_title}\n"
             f"📅 Дата: {selected_date.strftime('%d.%m.%Y')}\n\n"
             f"⏰ Выберите время:",
             reply_markup=get_time_slots_keyboard(time_slots)
@@ -124,22 +130,24 @@ async def change_month(callback: CallbackQuery, state: FSMContext):
         return
 
     async for session in get_session():
+        # Получаем company_id из токена бота
+        company_id = await get_company_id_from_callback(callback)
+
         # Получаем доступные даты
         today = date.today()
         start_date = date(year, month, 1)
         end_date = date(year, month, 28) + timedelta(days=4)  # До конца месяца
-        available_dates = await get_available_dates(session, start_date, end_date)
+        available_dates = await get_available_dates(session, start_date, end_date, company_id=company_id)
 
         calendar = generate_calendar(year, month, available_dates, today)
 
         # Получаем данные услуги из состояния
         data = await state.get_data()
         service_id = data.get("service_id")
-
-        # Получаем company_id из токена бота
-        company_id = await get_company_id_from_callback(callback)
+        service_name = data.get("service_name")
+        service_duration = data.get("service_duration", 60)
         
-        if service_id:
+        if service_id is not None:
             service = await get_service_by_id(session, service_id, company_id=company_id)
             if service:
                 await callback.message.edit_text(
@@ -150,6 +158,15 @@ async def change_month(callback: CallbackQuery, state: FSMContext):
                 )
                 await callback.answer()
                 return
+        elif service_name:
+            await callback.message.edit_text(
+                f"🛠️ Услуга: {service_name}\n"
+                f"⏱️ Длительность: {service_duration} мин\n\n"
+                f"📅 Выберите дату:",
+                reply_markup=calendar
+            )
+            await callback.answer()
+            return
 
         await callback.message.edit_text(
             "📅 Выберите дату:",

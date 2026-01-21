@@ -21,7 +21,6 @@ from bot.keyboards.admin import (
     get_bookings_keyboard, get_confirm_keyboard, get_admin_main_keyboard,
     get_masters_keyboard, get_posts_keyboard, get_booking_actions_keyboard
 )
-from bot.keyboards.client import get_confirm_attendance_keyboard
 from shared.database.models import Master, Post
 from sqlalchemy import select, text, func
 from datetime import date, time, timedelta
@@ -726,13 +725,11 @@ async def assign_post_to_booking(callback: CallbackQuery, state: FSMContext):
                         f"⏰ Время: {booking_time.strftime('%H:%M')}\n"
                         f"🛠️ Услуга: {service_name}\n"
                         f"👨‍🔧 Мастер: {master_name}\n"
-                        f"🏢 Рабочее место: {post_name}\n\n"
-                        f"Пожалуйста, подтвердите явку:"
+                        f"🏢 Рабочее место: {post_name}"
                     )
                     await callback.bot.send_message(
                         chat_id=client_telegram_id,
-                        text=client_message,
-                        reply_markup=get_confirm_attendance_keyboard(booking_id)
+                        text=client_message
                     )
                     logger.info(f"✅ [HANDLER] Уведомление отправлено клиенту {client_telegram_id}")
                 else:
@@ -799,6 +796,66 @@ async def reject_booking(callback: CallbackQuery, state: FSMContext):
             f"Клиент будет уведомлен."
         )
         await callback.answer("❌ Заказ отклонен")
+        
+        # Отправляем уведомление клиенту
+        try:
+            # Получаем данные клиента для уведомления
+            client_result = await session.execute(
+                text('''
+                    SELECT c.user_id, u.telegram_id 
+                    FROM bookings b
+                    JOIN clients c ON b.client_id = c.id
+                    LEFT JOIN users u ON c.user_id = u.id
+                    WHERE b.id = :booking_id
+                '''),
+                {"booking_id": booking_id}
+            )
+            client_row = client_result.fetchone()
+            
+            if client_row and client_row[1]:  # client_row[1] = telegram_id
+                client_telegram_id = client_row[1]
+                
+                # Получаем данные заказа для уведомления
+                booking_data_result = await session.execute(
+                    text('''
+                        SELECT b.booking_number, b.service_date, b.time, s.name as service_name
+                        FROM bookings b
+                        LEFT JOIN services s ON b.service_id = s.id
+                        WHERE b.id = :booking_id
+                    '''),
+                    {"booking_id": booking_id}
+                )
+                booking_data_row = booking_data_result.fetchone()
+                
+                if booking_data_row:
+                    booking_number = booking_data_row[0]
+                    booking_date = booking_data_row[1]
+                    booking_time = booking_data_row[2]
+                    service_name = booking_data_row[3] or "Не указана"
+                    
+                    client_message = (
+                        f"❌ Запись отменена\n\n"
+                        f"📋 Номер записи: {booking_number}\n"
+                        f"📅 Дата: {booking_date.strftime('%d.%m.%Y')}\n"
+                        f"⏰ Время: {booking_time.strftime('%H:%M')}\n"
+                        f"🛠️ Услуга: {service_name}"
+                    )
+                    
+                    await callback.bot.send_message(
+                        chat_id=client_telegram_id,
+                        text=client_message
+                    )
+                    logger.info(f"✅ [HANDLER] Уведомление об отмене отправлено клиенту {client_telegram_id}")
+                else:
+                    logger.warning(
+                        f"⚠️ [HANDLER] Не найдены данные записи для уведомления: booking_id={booking_id}"
+                    )
+            else:
+                logger.warning(
+                    f"⚠️ [HANDLER] У клиента нет telegram_id или запись не найдена: booking_id={booking_id}"
+                )
+        except Exception as e:
+            logger.error(f"❌ [HANDLER] Ошибка отправки уведомления клиенту об отмене: {e}", exc_info=True)
 
 
 @router.callback_query(F.data == "back_to_bookings")

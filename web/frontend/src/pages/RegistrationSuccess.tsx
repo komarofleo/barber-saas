@@ -54,6 +54,7 @@ const RegistrationSuccess = () => {
               <p><strong>Логин (Email):</strong> {credentials.login_email}</p>
               <p><strong>Пароль:</strong> {credentials.password}</p>
               <p className="credentials-hint">Сохраните данные и смените пароль после входа.</p>
+              <p className="credentials-hint">Также мы отправили данные в Telegram.</p>
             </div>
           </div>
         )}

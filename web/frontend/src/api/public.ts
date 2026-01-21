@@ -54,7 +54,7 @@ export interface CompanyRegistration {
   name: string
   email: string
   phone: string
-  telegram_bot_token: string
+  telegram_bot_token?: string
   admin_telegram_id: number
   plan_id: number
 }

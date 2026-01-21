@@ -24,7 +24,14 @@ class Settings(BaseSettings):
     YOOKASSA_SECRET_KEY: str = os.getenv("YOOKASSA_SECRET_KEY", "")
     YOOKASSA_API_URL: str = os.getenv("YOOKASSA_API_URL", "https://api.yookassa.ru/v3")
     YOOKASSA_RETURN_URL: str = os.getenv("YOOKASSA_RETURN_URL", "http://localhost:3000/success")
+    YOOKASSA_RETURN_URL_BILLING: str = os.getenv(
+        "YOOKASSA_RETURN_URL_BILLING",
+        "http://localhost:3000/billing"
+    )
     YOOKASSA_WEBHOOK_URL: str = os.getenv("YOOKASSA_WEBHOOK_URL", "http://localhost:8000/api/public/webhooks/yookassa")
+
+    # Email уведомления
+    EMAIL_NOTIFICATIONS_ENABLED: bool = os.getenv("EMAIL_NOTIFICATIONS_ENABLED", "false").lower() == "true"
     
     # Redis (Celery брокер)
     REDIS_HOST: str = os.getenv("REDIS_HOST", "redis")

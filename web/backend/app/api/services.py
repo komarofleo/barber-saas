@@ -44,7 +44,11 @@ async def get_services(
     
     # Пагинация
     query = query.offset((page - 1) * page_size).limit(page_size)
-    query = query.order_by(Service.name)
+    # Сортировка: сначала по sort_order (если есть), затем по имени
+    if hasattr(Service, 'sort_order'):
+        query = query.order_by(Service.sort_order.asc(), Service.name.asc())
+    else:
+        query = query.order_by(Service.name.asc())
     
     result = await db.execute(query)
     services = result.scalars().all()
@@ -87,12 +91,22 @@ async def create_service(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать услуги")
     
+    # Определяем sort_order для новой услуги
+    if service_data.sort_order is not None:
+        sort_order = service_data.sort_order
+    else:
+        # Если не указан, ставим в конец
+        max_order_result = await db.execute(select(func.max(Service.sort_order)))
+        max_order = max_order_result.scalar() or 0
+        sort_order = max_order + 1
+    
     service = Service(
         name=service_data.name,
         description=service_data.description,
         price=service_data.price,
         duration=service_data.duration,
-        is_active=service_data.is_active
+        is_active=service_data.is_active,
+        sort_order=sort_order,
     )
     
     db.add(service)
@@ -131,6 +145,8 @@ async def update_service(
         service.duration = service_data.duration
     if service_data.is_active is not None:
         service.is_active = service_data.is_active
+    if service_data.sort_order is not None:
+        service.sort_order = service_data.sort_order
     
     await db.commit()
     await db.refresh(service)

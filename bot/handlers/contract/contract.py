@@ -13,8 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from app.database import async_session_maker
 from app.models.public_models import ContractRequest
 
+from bot.handlers.client.company_contract import _get_main_keyboard
 from bot.keyboards.contract import (
-    get_contract_main_keyboard,
     get_skip_keyboard,
     get_confirm_keyboard,
     get_contract_term_keyboard,
@@ -60,7 +60,7 @@ async def start_contract_bot(message: Message, state: FSMContext) -> None:
     await message.answer(
         "👋 Добро пожаловать!\n\n"
         "Здесь можно сгенерировать договор по шаблону.",
-        reply_markup=get_contract_main_keyboard(),
+        reply_markup=_get_main_keyboard(),
     )
 
 
@@ -181,7 +181,7 @@ async def handle_customer_bank_requisites(message: Message, state: FSMContext) -
     
     await state.update_data(contract_data=data)
     await state.set_state(ContractStates.signer_name)
-    await message.answer("Введите ФИО подписанта:", reply_markup=get_contract_main_keyboard())
+    await message.answer("Введите ФИО подписанта:", reply_markup=_get_main_keyboard())
 
 
 @router.message(ContractStates.signer_name)
@@ -199,7 +199,7 @@ async def cancel_contract(callback: CallbackQuery, state: FSMContext) -> None:
     """Отменить генерацию договора."""
     await state.clear()
     await callback.message.edit_text("❌ Генерация договора отменена.")
-    await callback.message.answer("Выберите действие:", reply_markup=get_contract_main_keyboard())
+    await callback.message.answer("Выберите действие:", reply_markup=_get_main_keyboard())
     await callback.answer()
 
 
@@ -255,7 +255,7 @@ async def confirm_contract(callback: CallbackQuery, state: FSMContext) -> None:
             "Файл отправлен ниже."
         )
         await callback.message.answer_document(FSInputFile(str(file_path)))
-        await callback.message.answer("Готово. Можно сгенерировать новый договор.", reply_markup=get_contract_main_keyboard())
+        await callback.message.answer("Готово. Можно сгенерировать новый договор.", reply_markup=_get_main_keyboard())
         await state.clear()
     except IntegrityError:
         logger.warning("Конфликт номера договора, пробуем снова")

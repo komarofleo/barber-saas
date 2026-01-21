@@ -31,8 +31,10 @@ def _get_main_keyboard() -> ReplyKeyboardMarkup:
     """Главное меню бота договоров."""
     return ReplyKeyboardMarkup(
         keyboard=[
+            [KeyboardButton(text="📝 Регистрация")],
             [KeyboardButton(text="📄 Генерация договора")],
             [KeyboardButton(text="📄 Договор для пользователей")],
+            [KeyboardButton(text="ℹ️ О нас")],
         ],
         resize_keyboard=True,
     )
@@ -96,8 +98,24 @@ async def start_contract_menu(message: Message, state: FSMContext) -> None:
     """Показать главное меню бота договоров."""
     await state.clear()
     await message.answer(
-        "👋 Добро пожаловать!\n\nВыберите действие:",
+        "👋 Добро пожаловать!\n"
+        "Здесь вы можете зарегистрироваться в системе бронирования и управлять своим ботом!\n"
+        "Полная регистрация также доступна по адресу: http://45.144.67.47/register\n\n"
+        "Выберите действие:",
         reply_markup=_get_main_keyboard(),
+    )
+
+
+@router.message(F.text == "ℹ️ О нас")
+async def show_about_barber76(message: Message) -> None:
+    """Показать информацию о сервисе."""
+    await message.answer(
+        "ℹ️ О нас\n\n"
+        "Наша система онлайн бронирования с привязкой в Телеграм - поможет вам зарабатывать больше, "
+        "а ваши клиенты будут самыми довольными!\n\n"
+        "Звоните нам: ☎️ +7 961 021 1760\n"
+        "Пишите: @biz_bot_bot\n"
+        "https://mybizbot.ru/"
     )
 
 

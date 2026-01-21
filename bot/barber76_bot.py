@@ -10,6 +10,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.handlers.client import company_contract
+from bot.handlers.client import company_registration
 from bot.handlers.contract import contract as contract_router
 from bot.database.connection import init_db, close_db
 
@@ -33,6 +34,7 @@ async def main() -> None:
     bot = Bot(token=token)
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(company_contract.router)
+    dp.include_router(company_registration.router)
     dp.include_router(contract_router.router)
 
     stop_event = asyncio.Event()

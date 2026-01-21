@@ -294,7 +294,8 @@ async def create_subscription_payment(
     db.add(payment)
     await db.flush()
 
-    return_url = f"{settings.YOOKASSA_RETURN_URL}?payment_id={payment.id}"
+    return_url_base = settings.YOOKASSA_RETURN_URL_BILLING or settings.YOOKASSA_RETURN_URL
+    return_url = f"{return_url_base}?payment_id={payment.id}"
     yookassa_payment = await create_payment(
         amount=amount,
         description=description,

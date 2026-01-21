@@ -31,7 +31,11 @@ from app.services.tenant_service import get_tenant_service
 from app.api.settings import DEFAULT_SETTINGS
 from shared.database.models import Setting
 from app.services.email_service import send_welcome_email
-from app.services.telegram_notification_service import send_activation_notification
+from app.services.telegram_notification_service import (
+    send_activation_notification,
+    TelegramNotificationService,
+)
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +163,12 @@ async def process_successful_payment(payment: Payment, db: AsyncSession) -> None
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ошибка создания tenant схемы"
         )
+    
+    # Убеждаемся, что все sequence созданы для всех таблиц
+    logger.info(f"Проверка sequence для всех таблиц в tenant_{company.id}...")
+    sequences_ok = await tenant_service.ensure_all_sequences_exist(company.id)
+    if not sequences_ok:
+        logger.warning(f"Не удалось проверить sequence для компании {company.id}, но продолжаем...")
 
     # Инициализируем настройки tenant данными регистрации и дефолтами
     schema_name = f"tenant_{company.id}"
@@ -167,20 +177,77 @@ async def process_successful_payment(payment: Payment, db: AsyncSession) -> None
         await tenant_session.execute(
             text(f'CREATE TABLE IF NOT EXISTS "{schema_name}".settings (LIKE public.settings INCLUDING ALL)')
         )
-        await tenant_session.execute(delete(Setting))
+        # Гарантируем PK/sequence для settings (избавляемся от проблем вставки)
+        await tenant_session.execute(
+            text(
+                f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".settings_id_seq '
+                'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+            )
+        )
+        await tenant_session.execute(
+            text(
+                f'ALTER TABLE "{schema_name}".settings '
+                f'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".settings_id_seq\'::regclass)'
+            )
+        )
+        await tenant_session.execute(
+            text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'settings_pkey'
+                        AND conrelid = '{schema_name}.settings'::regclass
+                    ) THEN
+                        ALTER TABLE "{schema_name}".settings
+                        ADD CONSTRAINT settings_pkey PRIMARY KEY (id);
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'settings_key_key'
+                        AND conrelid = '{schema_name}.settings'::regclass
+                    ) THEN
+                        ALTER TABLE "{schema_name}".settings
+                        ADD CONSTRAINT settings_key_key UNIQUE (key);
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        await tenant_session.execute(text(f'DELETE FROM "{schema_name}".settings'))
         for key, default_data in DEFAULT_SETTINGS.items():
             value = default_data["value"]
             if key == "company_name":
                 value = extra_data.get("company_name", value)
             if key == "company_phone":
                 value = extra_data.get("phone", value)
-            tenant_session.add(
-                Setting(
-                    key=key,
-                    value=str(value) if value is not None else "",
-                    description=default_data["description"],
-                )
+            await tenant_session.execute(
+                text(
+                    f"""
+                    INSERT INTO "{schema_name}".settings (key, value, description, updated_at)
+                    VALUES (:key, :value, :description, NOW())
+                    """
+                ),
+                {
+                    "key": key,
+                    "value": str(value) if value is not None else "",
+                    "description": default_data["description"],
+                },
             )
+        await tenant_session.commit()
+        
+        # Создаем дефолтный пост для новой компании
+        logger.info(f"Создание дефолтного поста для компании {company.id}...")
+        await tenant_session.execute(
+            text(
+                f"""
+                INSERT INTO "{schema_name}".posts (number, name, description, is_active, created_at, updated_at)
+                VALUES ('1', 'Рабочее место 1', 'Основное рабочее место', true, NOW(), NOW())
+                ON CONFLICT DO NOTHING
+                """
+            )
+        )
         await tenant_session.commit()
         break
 
@@ -202,28 +269,36 @@ async def process_successful_payment(payment: Payment, db: AsyncSession) -> None
 
     try:
         password = extra_data.get("password", "GeneratedPassword123")
-        await send_welcome_email(
-            company_name=company.name,
-            email=company.email,
-            password=password,
-            dashboard_url=f"https://barber-saas.com/company/{company.id:03d}/dashboard",
-            plan_name=plan.name,
-            subscription_end_date=company.subscription_end_date
-        )
-        logger.info(f"Приветственное email отправлено на {company.email}")
+        if settings.EMAIL_NOTIFICATIONS_ENABLED:
+            await send_welcome_email(
+                company_name=company.name,
+                email=company.email,
+                password=password,
+                dashboard_url=f"https://barber-saas.com/company/{company.id:03d}/dashboard",
+                plan_name=plan.name,
+                subscription_end_date=company.subscription_end_date
+            )
+            logger.info(f"Приветственное email отправлено на {company.email}")
+        else:
+            logger.info("Email уведомления отключены")
 
-        await send_activation_notification(
-            telegram_id=company.admin_telegram_id,
-            company_name=company.name,
-            plan_name=plan.name,
-            subscription_end_date=company.subscription_end_date,
-            dashboard_url=f"https://barber-saas.com/company/{company.id:03d}/dashboard",
-            can_create_bookings=True,
-            login_email=company.email,
-            password=password,
-        )
-        if company.admin_telegram_id:
-            logger.info(f"Telegram уведомление отправлено на {company.admin_telegram_id}")
+        bot_token = company.telegram_bot_token or settings.TELEGRAM_BOT_TOKEN
+        if not bot_token:
+            logger.error("Токен бота для отправки уведомлений не задан")
+        else:
+            notifier = TelegramNotificationService(bot_token)
+            await notifier.send_activation_notification(
+                telegram_id=company.admin_telegram_id,
+                company_name=company.name,
+                plan_name=plan.name,
+                subscription_end_date=company.subscription_end_date,
+                dashboard_url="http://45.144.67.47/",
+                can_create_bookings=True,
+                login_email=company.email,
+                password=password,
+            )
+            if company.admin_telegram_id:
+                logger.info(f"Telegram уведомление отправлено на {company.admin_telegram_id}")
     except Exception as email_error:
         logger.error(f"Ошибка отправки уведомлений: {email_error}")
 
@@ -512,15 +587,18 @@ async def simulate_payment_success(
     # Отправляем уведомления
     try:
         password = extra_data.get("password", "GeneratedPassword123")
-        await send_welcome_email(
-            company_name=company.name,
-            email=company.email,
-            password=password,
-            dashboard_url=f"http://localhost:3000/company/{company.id:03d}/dashboard",
-            plan_name=plan.name,
-            subscription_end_date=company.subscription_end_date
-        )
-        logger.info(f"Приветственное email отправлено на {company.email}")
+        if settings.EMAIL_NOTIFICATIONS_ENABLED:
+            await send_welcome_email(
+                company_name=company.name,
+                email=company.email,
+                password=password,
+                dashboard_url=f"http://localhost:3000/company/{company.id:03d}/dashboard",
+                plan_name=plan.name,
+                subscription_end_date=company.subscription_end_date
+            )
+            logger.info(f"Приветственное email отправлено на {company.email}")
+        else:
+            logger.info("Email уведомления отключены")
     except Exception as email_error:
         logger.error(f"Ошибка отправки email: {email_error}")
     

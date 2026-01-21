@@ -111,6 +111,77 @@ async def change_booking_status(callback: CallbackQuery, state: FSMContext):
         )
         await callback.answer("✅ Статус изменен")
         
+        # Отправляем уведомление клиенту
+        try:
+            # Получаем данные клиента для уведомления
+            client_result = await session.execute(
+                text('''
+                    SELECT c.user_id, u.telegram_id 
+                    FROM bookings b
+                    JOIN clients c ON b.client_id = c.id
+                    LEFT JOIN users u ON c.user_id = u.id
+                    WHERE b.id = :booking_id
+                '''),
+                {"booking_id": booking_id}
+            )
+            client_row = client_result.fetchone()
+            
+            if client_row and client_row[1]:  # client_row[1] = telegram_id
+                client_telegram_id = client_row[1]
+                
+                # Получаем данные заказа для уведомления
+                booking_data_result = await session.execute(
+                    text('''
+                        SELECT b.booking_number, b.service_date, b.time, s.name as service_name
+                        FROM bookings b
+                        LEFT JOIN services s ON b.service_id = s.id
+                        WHERE b.id = :booking_id
+                    '''),
+                    {"booking_id": booking_id}
+                )
+                booking_data_row = booking_data_result.fetchone()
+                
+                if booking_data_row:
+                    booking_number = booking_data_row[0]
+                    booking_date = booking_data_row[1]
+                    booking_time = booking_data_row[2]
+                    service_name = booking_data_row[3] or "Не указана"
+                    
+                    # Формируем сообщение в зависимости от статуса
+                    status_messages = {
+                        "new": "🆕 Ваша запись создана и ожидает подтверждения.",
+                        "confirmed": "✅ Ваша запись подтверждена!",
+                        "completed": "✔️ Запись завершена. Спасибо за визит!",
+                        "cancelled": "❌ Запись отменена",
+                        "no_show": "⚠️ Вы не явились на запись",
+                    }
+                    
+                    message = status_messages.get(new_status, f"Статус записи изменен: {new_status}")
+                    
+                    client_message = (
+                        f"{message}\n\n"
+                        f"📋 Номер записи: {booking_number}\n"
+                        f"📅 Дата: {booking_date.strftime('%d.%m.%Y')}\n"
+                        f"⏰ Время: {booking_time.strftime('%H:%M')}\n"
+                        f"🛠️ Услуга: {service_name}"
+                    )
+                    
+                    await callback.bot.send_message(
+                        chat_id=client_telegram_id,
+                        text=client_message
+                    )
+                    logger.info(f"✅ [HANDLER] Уведомление отправлено клиенту {client_telegram_id} о смене статуса на {new_status}")
+                else:
+                    logger.warning(
+                        f"⚠️ [HANDLER] Не найдены данные записи для уведомления: booking_id={booking_id}"
+                    )
+            else:
+                logger.warning(
+                    f"⚠️ [HANDLER] У клиента нет telegram_id или запись не найдена: booking_id={booking_id}"
+                )
+        except Exception as e:
+            logger.error(f"❌ [HANDLER] Ошибка отправки уведомления клиенту: {e}", exc_info=True)
+        
         # Обновляем сообщение с деталями заказа
         from bot.handlers.admin.bookings import show_booking_details
         # Вызываем обработчик показа деталей заказа без изменения callback.data (frozen)
@@ -281,7 +352,7 @@ async def edit_booking_datetime(callback: CallbackQuery, state: FSMContext):
         # Показываем календарь
         today = date.today()
         end_date = today + timedelta(days=60)
-        available_dates = await get_available_dates(session, today, end_date)
+        available_dates = await get_available_dates(session, today, end_date, company_id=company_id)
         calendar = generate_calendar(today.year, today.month, available_dates, today)
         
         await callback.message.edit_text(
@@ -339,7 +410,7 @@ async def process_datetime_date_selection(callback: CallbackQuery, state: FSMCon
             # Показываем календарь снова
             today = date.today()
             end_date = today + timedelta(days=60)
-            available_dates = await get_available_dates(session, today, end_date)
+            available_dates = await get_available_dates(session, today, end_date, company_id=company_id)
             calendar = generate_calendar(today.year, today.month, available_dates, today)
             await callback.message.edit_text(
                 f"📅 Изменение даты и времени заказа #{booking_id}\n\n"
@@ -701,7 +772,7 @@ async def admin_select_service(callback: CallbackQuery, state: FSMContext):
         # Показываем календарь
         today = date.today()
         end_date = today + timedelta(days=60)
-        available_dates = await get_available_dates(session, today, end_date)
+        available_dates = await get_available_dates(session, today, end_date, company_id=company_id)
         calendar = generate_calendar(today.year, today.month, available_dates, today)
         
         await callback.message.edit_text(
@@ -757,7 +828,7 @@ async def admin_select_date(callback: CallbackQuery, state: FSMContext):
             # Показываем календарь снова
             today = date.today()
             end_date = today + timedelta(days=60)
-            available_dates = await get_available_dates(session, today, end_date)
+            available_dates = await get_available_dates(session, today, end_date, company_id=company_id)
             calendar = generate_calendar(today.year, today.month, available_dates, today)
             data = await state.get_data()
             service_id = data.get("service_id")
@@ -1370,7 +1441,7 @@ async def edit_datetime_change_month(callback: CallbackQuery, state: FSMContext)
         today = date.today()
         start_date = date(year, month, 1)
         end_date = date(year, month, 28) + timedelta(days=4)  # До конца месяца
-        available_dates = await get_available_dates(session, start_date, end_date)
+        available_dates = await get_available_dates(session, start_date, end_date, company_id=company_id)
 
         calendar = generate_calendar(year, month, available_dates, today)
 
@@ -1431,7 +1502,7 @@ async def admin_change_calendar_month(callback: CallbackQuery, state: FSMContext
         today = date.today()
         start_date = date(year, month, 1)
         end_date = date(year, month, 28) + timedelta(days=4)  # До конца месяца
-        available_dates = await get_available_dates(session, start_date, end_date)
+        available_dates = await get_available_dates(session, start_date, end_date, company_id=company_id)
 
         calendar = generate_calendar(year, month, available_dates, today)
 

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
 from shared.database.models import Booking, BlockedSlot, Post
 from bot.config import WORK_START_TIME, WORK_END_TIME, SLOT_DURATION
+from bot.database.crud import get_setting_value
 
 
 async def generate_time_slots(
@@ -51,14 +52,37 @@ async def generate_time_slots(
     if total_posts == 0:
         return []  # Если нет постов, нет доступных слотов
     
-    # Парсим время начала и конца работы
-    start_hour, start_min = map(int, WORK_START_TIME.split(":"))
-    end_hour, end_min = map(int, WORK_END_TIME.split(":"))
-    
-    work_start = time(start_hour, start_min)
-    work_end = time(end_hour, end_min)
-    
-    slot_duration_minutes = SLOT_DURATION
+    # Получаем настройки времени работы из settings (если есть)
+    work_start_raw = await get_setting_value(session, "work_start_time", company_id=company_id)
+    work_end_raw = await get_setting_value(session, "work_end_time", company_id=company_id)
+    slot_duration_raw = await get_setting_value(session, "slot_duration", company_id=company_id)
+
+    # Фолбэки на переменные окружения
+    work_start_str = (work_start_raw or WORK_START_TIME).strip()
+    work_end_str = (work_end_raw or WORK_END_TIME).strip()
+    slot_duration_str = (slot_duration_raw or str(SLOT_DURATION)).strip()
+
+    try:
+        start_hour, start_min = map(int, work_start_str.split(":"))
+        end_hour, end_min = map(int, work_end_str.split(":"))
+        work_start = time(start_hour, start_min)
+        work_end = time(end_hour, end_min)
+    except Exception:
+        logger.warning("⚠️ Некорректное время работы, используем значения по умолчанию")
+        start_hour, start_min = map(int, WORK_START_TIME.split(":"))
+        end_hour, end_min = map(int, WORK_END_TIME.split(":"))
+        work_start = time(start_hour, start_min)
+        work_end = time(end_hour, end_min)
+
+    try:
+        slot_duration_minutes = int(slot_duration_str)
+    except Exception:
+        slot_duration_minutes = SLOT_DURATION
+
+    logger.info(
+        f"🕒 Время работы: {work_start.strftime('%H:%M')} - {work_end.strftime('%H:%M')}, "
+        f"слот: {slot_duration_minutes} мин"
+    )
     
     # Генерируем слоты
     available_slots = []

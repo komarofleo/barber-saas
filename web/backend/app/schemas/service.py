@@ -11,6 +11,7 @@ class ServiceResponse(BaseModel):
     price: Decimal
     duration: int  # в минутах
     is_active: bool
+    sort_order: int
     created_at: datetime
     
     class Config:
@@ -30,6 +31,7 @@ class ServiceCreateRequest(BaseModel):
     price: Decimal
     duration: int
     is_active: bool = True
+    sort_order: Optional[int] = None
 
 
 class ServiceUpdateRequest(BaseModel):
@@ -38,6 +40,7 @@ class ServiceUpdateRequest(BaseModel):
     price: Optional[Decimal] = None
     duration: Optional[int] = None
     is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
 
 
 

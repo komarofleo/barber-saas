@@ -666,12 +666,31 @@ async def get_available_dates(
     session: AsyncSession,
     start_date: date,
     end_date: date,
+    company_id: Optional[int] = None,
 ) -> Set[date]:
     """Получить доступные даты для записи (проверяет блокировки и наличие свободных слотов)"""
     from sqlalchemy import and_, func
     from shared.database.models import BlockedSlot, Setting, Booking, Post
     from bot.config import WORK_START_TIME, WORK_END_TIME, SLOT_DURATION
+    from sqlalchemy import text
     
+    # Если company_id не указан, пытаемся определить из search_path
+    if not company_id:
+        try:
+            result = await session.execute(text("SHOW search_path"))
+            search_path = result.scalar()
+            if search_path and "tenant_" in search_path:
+                import re
+                match = re.search(r'tenant_(\d+)', search_path)
+                if match:
+                    company_id = int(match.group(1))
+        except Exception:
+            pass
+
+    if company_id:
+        schema_name = f"tenant_{company_id}"
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+
     # Получаем настройки
     result = await session.execute(
         select(Setting).where(Setting.key == "accepting_bookings")
@@ -867,7 +886,11 @@ async def get_services(session: AsyncSession, active_only: bool = True, company_
     query = select(Service)
     if active_only:
         query = query.where(Service.is_active == True)
-    query = query.order_by(Service.name)
+    # Сортировка: сначала по sort_order (если есть), затем по имени
+    if hasattr(Service, 'sort_order'):
+        query = query.order_by(Service.sort_order.asc(), Service.name.asc())
+    else:
+        query = query.order_by(Service.name.asc())
     
     logger.info(f"🔍 Выполняем запрос: {query}")
     result = await session.execute(query)
@@ -1024,6 +1047,31 @@ async def create_booking(
         booking.confirmed_at = None
         booking.completed_at = None
         booking.cancelled_at = None
+        # Автоназначение мастера для записи, если мастер один или совпадает user_id создателя
+        try:
+            master_id_to_assign: Optional[int] = None
+            masters = await get_masters(session, company_id=company_id)
+            if created_by:
+                for master in masters:
+                    if getattr(master, "user_id", None) == created_by:
+                        master_id_to_assign = master.id
+                        break
+            if master_id_to_assign is None and len(masters) == 1:
+                master_id_to_assign = masters[0].id
+            if master_id_to_assign:
+                await session.execute(
+                    text(
+                        f'UPDATE "{schema_name}".bookings '
+                        "SET master_id = :master_id WHERE id = :booking_id"
+                    ),
+                    {"master_id": master_id_to_assign, "booking_id": booking.id},
+                )
+                booking.master_id = master_id_to_assign
+                logger.info(
+                    f"✅ Автоназначен мастер: booking_id={booking.id}, master_id={master_id_to_assign}"
+                )
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось автоназначить мастера: {e}")
         await session.commit()
         logger.info(f"✅ Запись создана: id={booking.id}, booking_number={booking.booking_number}")
         return booking

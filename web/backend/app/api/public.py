@@ -20,13 +20,14 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, text
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import get_db, get_async_session_maker
 from app.schemas.public_schemas import (
     CompanyRegistration,
+    CompanyRegistrationLite,
     RegistrationResponse,
     CompanyCreate,
     PaymentCreate,
@@ -148,6 +149,150 @@ async def get_active_plan(plan_id: int, db: AsyncSession) -> Plan:
     return plan
 
 
+async def get_default_plan(db: AsyncSession) -> Plan:
+    """
+    Получить первый активный тарифный план.
+    
+    Args:
+        db: Сессия БД
+    
+    Returns:
+        Объект плана
+    
+    Raises:
+        HTTPException: Если активные тарифы отсутствуют
+    """
+    result = await db.execute(
+        select(Plan).where(Plan.is_active == True).order_by(Plan.display_order, Plan.id)
+    )
+    plan = result.scalars().first()
+    if not plan:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нет активных тарифных планов для регистрации"
+        )
+    return plan
+
+
+async def ensure_public_registration_integrity(db: AsyncSession) -> None:
+    """
+    Гарантировать корректные типы и sequence в public для регистрации.
+    """
+    await db.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'companies'
+                      AND column_name = 'admin_telegram_id'
+                      AND data_type != 'bigint'
+                ) THEN
+                    ALTER TABLE public.companies
+                    ALTER COLUMN admin_telegram_id TYPE BIGINT;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'companies'
+                      AND column_name = 'telegram_admin_ids'
+                      AND udt_name != '_int8'
+                ) THEN
+                    ALTER TABLE public.companies
+                    ALTER COLUMN telegram_admin_ids TYPE BIGINT[]
+                    USING telegram_admin_ids::BIGINT[];
+                END IF;
+            END $$;
+            """
+        )
+    )
+    await db.execute(
+        text(
+            """
+            CREATE SEQUENCE IF NOT EXISTS public.companies_id_seq AS integer
+            START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1
+            """
+        )
+    )
+    await db.execute(
+        text(
+            """
+            ALTER TABLE public.companies
+            ALTER COLUMN id SET DEFAULT nextval('public.companies_id_seq'::regclass)
+            """
+        )
+    )
+    await db.execute(
+        text(
+            """
+            SELECT setval(
+                'public.companies_id_seq'::regclass,
+                COALESCE((SELECT MAX(id) FROM public.companies), 1)
+            )
+            """
+        )
+    )
+
+    await db.execute(
+        text(
+            """
+            CREATE SEQUENCE IF NOT EXISTS public.payments_id_seq AS integer
+            START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1
+            """
+        )
+    )
+    await db.execute(
+        text(
+            """
+            ALTER TABLE public.payments
+            ALTER COLUMN id SET DEFAULT nextval('public.payments_id_seq'::regclass)
+            """
+        )
+    )
+    await db.execute(
+        text(
+            """
+            SELECT setval(
+                'public.payments_id_seq'::regclass,
+                COALESCE((SELECT MAX(id) FROM public.payments), 1)
+            )
+            """
+        )
+    )
+
+    await db.execute(
+        text(
+            """
+            CREATE SEQUENCE IF NOT EXISTS public.subscriptions_id_seq AS integer
+            START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1
+            """
+        )
+    )
+    await db.execute(
+        text(
+            """
+            ALTER TABLE public.subscriptions
+            ALTER COLUMN id SET DEFAULT nextval('public.subscriptions_id_seq'::regclass)
+            """
+        )
+    )
+    await db.execute(
+        text(
+            """
+            SELECT setval(
+                'public.subscriptions_id_seq'::regclass,
+                COALESCE((SELECT MAX(id) FROM public.subscriptions), 1)
+            )
+            """
+        )
+    )
+
+
 @router.post("/companies/register", response_model=RegistrationResponse, status_code=201)
 async def register_company(
     registration_data: CompanyRegistration,
@@ -197,15 +342,16 @@ async def register_company(
             detail="Название салона красоты должно содержать минимум 3 символа"
         )
     
-    # 2. Проверка токена бота через Telegram API
-    logger.info(f"Валидация токена бота для {registration_data.name}")
-    is_bot_token_valid = await validate_bot_token(registration_data.telegram_bot_token)
-    
-    if not is_bot_token_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Невалидный токен Telegram бота"
-        )
+    # 2. Проверка токена бота через Telegram API (если указан)
+    bot_token = (registration_data.telegram_bot_token or "").strip()
+    if bot_token:
+        logger.info(f"Валидация токена бота для {registration_data.name}")
+        is_bot_token_valid = await validate_bot_token(bot_token)
+        if not is_bot_token_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Невалидный токен Telegram бота"
+            )
     
     # 3. Проверка уникальности email
     logger.info(f"Проверка уникальности email: {registration_data.email}")
@@ -217,15 +363,15 @@ async def register_company(
             detail="Компания с таким email уже зарегистрирована"
         )
     
-    # 4. Проверка уникальности токена бота
-    logger.info(f"Проверка уникальности токена бота")
-    bot_token_exists = await check_bot_token_exists(registration_data.telegram_bot_token, db)
-    
-    if bot_token_exists:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Этот токен бота уже используется"
-        )
+    # 4. Проверка уникальности токена бота (если указан)
+    if bot_token:
+        logger.info("Проверка уникальности токена бота")
+        bot_token_exists = await check_bot_token_exists(bot_token, db)
+        if bot_token_exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Этот токен бота уже используется"
+            )
     
     # 5. Получение тарифного плана
     logger.info(f"Получение тарифного плана: {registration_data.plan_id}")
@@ -237,7 +383,10 @@ async def register_company(
             detail="Тариф с нулевой стоимостью не поддерживается. Выберите платный тариф."
         )
     
-    # 6. Генерация пароля для компании
+    # 6. Предрегистрационный preflight (sequence/типы)
+    await ensure_public_registration_integrity(db)
+
+    # 7. Генерация пароля для компании
     import bcrypt
     password = generate_password(12)
     password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -249,7 +398,7 @@ async def register_company(
         "company_name": registration_data.name,
         "email": registration_data.email,
         "phone": registration_data.phone,
-        "telegram_bot_token": registration_data.telegram_bot_token,
+        "telegram_bot_token": bot_token,
         "admin_telegram_id": registration_data.admin_telegram_id,
         "password": password,  # Сохраняем пароль в открытом виде для отправки на email
         "password_hash": password_hash  # Сохраняем хеш для сохранения в БД
@@ -291,6 +440,96 @@ async def register_company(
     company_id = payment_for_update.company_id if payment_for_update else None
     dashboard_url = f"http://45.144.67.47/company/{company_id}/dashboard" if company_id else None
 
+    return RegistrationResponse(
+        success=True,
+        payment_id=payment.id,
+        confirmation_url=None,
+        message="Компания зарегистрирована. Данные для входа отправлены.",
+        company_id=company_id,
+        dashboard_url=dashboard_url,
+        login_email=registration_data.email,
+        password=password,
+    )
+
+
+@router.post("/companies/register-lite", response_model=RegistrationResponse, status_code=201)
+async def register_company_lite(
+    registration_data: CompanyRegistrationLite,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Упрощенная регистрация компании через Telegram бота.
+    
+    Принимает только email, телефон и Telegram ID администратора.
+    """
+    logger.info("Упрощенная регистрация компании через бот")
+    
+    # Проверка уникальности email
+    email_exists = await check_email_exists(registration_data.email, db)
+    if email_exists:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Компания с таким email уже зарегистрирована"
+        )
+    
+    # Предрегистрационный preflight (sequence/типы)
+    await ensure_public_registration_integrity(db)
+    
+    # Тариф по умолчанию
+    plan = await get_default_plan(db)
+    
+    # Генерация пароля для компании
+    import bcrypt
+    password = generate_password(12)
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    # Имя по умолчанию (можно изменить в настройках)
+    company_name = f"Компания {registration_data.admin_telegram_id}"
+    
+    # Сохранение данных регистрации в extra_data
+    registration_metadata = {
+        "company_name": company_name,
+        "email": registration_data.email,
+        "phone": registration_data.phone,
+        "telegram_bot_token": "",
+        "admin_telegram_id": registration_data.admin_telegram_id,
+        "password": password,
+        "password_hash": password_hash,
+        "registration_source": "barber76_bot",
+    }
+    
+    # Создаем платеж как оплаченный (без Юкассы)
+    payment = Payment(
+        company_id=None,
+        plan_id=plan.id,
+        amount=Decimal(str(plan.price_monthly)),
+        currency="RUB",
+        status="pending",
+        yookassa_payment_id=f"manual_{uuid4().hex}",
+        yookassa_payment_status="succeeded",
+        yookassa_confirmation_url=None,
+        yookassa_return_url=None,
+        description=f"Подписка на тариф {plan.name}",
+        extra_data=registration_metadata,
+    )
+    db.add(payment)
+    await db.commit()
+    await db.refresh(payment)
+    
+    # Создаем компанию и подписку сразу
+    async_session_maker = get_async_session_maker()
+    async with async_session_maker() as sync_session:
+        payment_result = await sync_session.execute(
+            select(Payment).where(Payment.id == payment.id)
+        )
+        payment_for_update = payment_result.scalar_one_or_none()
+        if payment_for_update:
+            await process_successful_payment(payment_for_update, sync_session)
+        await sync_session.refresh(payment_for_update)
+    
+    company_id = payment_for_update.company_id if payment_for_update else None
+    dashboard_url = "http://45.144.67.47/" if company_id else None
+    
     return RegistrationResponse(
         success=True,
         payment_id=payment.id,

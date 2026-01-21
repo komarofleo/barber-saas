@@ -209,8 +209,8 @@ const CompanyRegistrationForm: React.FC = () => {
       })
     }
 
-    // Валидация токена бота
-    if (!formData.telegram_bot_token || formData.telegram_bot_token.trim().length < 40) {
+    // Валидация токена бота (необязательное поле)
+    if (formData.telegram_bot_token && formData.telegram_bot_token.trim().length < 40) {
       newErrors.push({
         field: 'telegram_bot_token',
         message: 'Токен бота должен содержать минимум 40 символов',
@@ -339,7 +339,7 @@ const CompanyRegistrationForm: React.FC = () => {
     try {
       const result = await publicApi.registerCompany(formData)
 
-      if (result.login_email && result.password) {
+      if (result.success && result.login_email && result.password) {
         sessionStorage.setItem(
           'registration_credentials',
           JSON.stringify({
@@ -497,7 +497,7 @@ const CompanyRegistrationForm: React.FC = () => {
                 </div>
                 <div className="additional-form-field">
                   <label className="additional-field-label">
-                    Токен Telegram бота<span className="required-mark">*</span>
+                    Токен Telegram бота
                   </label>
                   <input
                     type="text"
@@ -506,11 +506,12 @@ const CompanyRegistrationForm: React.FC = () => {
                     placeholder="8332803813:AAGOpLJdSj5P6cKqseQPfcOAiypTxgVZSt4"
                     value={formData.telegram_bot_token}
                     onChange={handleInputChange}
-                    required
                     minLength={40}
                     maxLength={500}
                   />
-                  <div className="field-hint">Получите токен через @BotFather в Telegram</div>
+                  <div className="field-hint">
+                    Можно указать позже в настройках. Получите токен через @BotFather в Telegram
+                  </div>
                   {getFieldError('telegram_bot_token') && (
                     <div className="field-error">{getFieldError('telegram_bot_token')}</div>
                   )}
@@ -535,6 +536,7 @@ const CompanyRegistrationForm: React.FC = () => {
                 pattern="[0-9]*"
               />
               <div className="field-hint">Ваш Telegram ID для получения уведомлений</div>
+              <div className="field-hint">Узнать ваш Telegram ID: бот @userinfobot, отправьте /start</div>
               {getFieldError('admin_telegram_id') && (
                 <div className="field-error">{getFieldError('admin_telegram_id')}</div>
               )}

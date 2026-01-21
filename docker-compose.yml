@@ -136,6 +136,7 @@ services:
       PYTHONPATH: /app/web/backend:/app
       TZ: Europe/Moscow
       CONTRACT_BOT_DISABLE_START: "true"
+      CONTRACT_MENU_VARIANT: "barber76"
     depends_on:
       postgres:
         condition: service_healthy

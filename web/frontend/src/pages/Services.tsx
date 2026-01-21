@@ -81,6 +81,38 @@ function Services() {
     }
   }
 
+  const handleMoveUp = async (index: number) => {
+    if (index === 0) return
+    const newServices = [...services]
+    ;[newServices[index - 1], newServices[index]] = [newServices[index], newServices[index - 1]]
+    setServices(newServices)
+    
+    const serviceIds = newServices.map(s => s.id)
+    try {
+      await servicesApi.reorderServices(serviceIds)
+    } catch (error) {
+      console.error('Ошибка обновления порядка:', error)
+      loadServices() // Откатить изменения
+      alert('Не удалось изменить порядок услуг')
+    }
+  }
+
+  const handleMoveDown = async (index: number) => {
+    if (index === services.length - 1) return
+    const newServices = [...services]
+    ;[newServices[index], newServices[index + 1]] = [newServices[index + 1], newServices[index]]
+    setServices(newServices)
+    
+    const serviceIds = newServices.map(s => s.id)
+    try {
+      await servicesApi.reorderServices(serviceIds)
+    } catch (error) {
+      console.error('Ошибка обновления порядка:', error)
+      loadServices() // Откатить изменения
+      alert('Не удалось изменить порядок услуг')
+    }
+  }
+
   const handleEdit = (service: Service) => {
     setEditingService(service)
     setShowEditModal(true)
@@ -142,6 +174,7 @@ function Services() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th>Порядок</th>
                   <th>ID</th>
                   <th>Название</th>
                   <th>Описание</th>
@@ -152,8 +185,36 @@ function Services() {
                 </tr>
               </thead>
               <tbody>
-                {services.map((service) => (
+                {services.map((service, index) => (
                   <tr key={service.id}>
+                    <td>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button 
+                          onClick={() => handleMoveUp(index)} 
+                          disabled={index === 0}
+                          title="Вверх"
+                          style={{ 
+                            padding: '4px 8px', 
+                            cursor: index === 0 ? 'not-allowed' : 'pointer',
+                            opacity: index === 0 ? 0.5 : 1
+                          }}
+                        >
+                          ⬆️
+                        </button>
+                        <button 
+                          onClick={() => handleMoveDown(index)} 
+                          disabled={index === services.length - 1}
+                          title="Вниз"
+                          style={{ 
+                            padding: '4px 8px', 
+                            cursor: index === services.length - 1 ? 'not-allowed' : 'pointer',
+                            opacity: index === services.length - 1 ? 0.5 : 1
+                          }}
+                        >
+                          ⬇️
+                        </button>
+                      </div>
+                    </td>
                     <td>{service.id}</td>
                     <td>{service.name}</td>
                     <td>{service.description || '-'}</td>
