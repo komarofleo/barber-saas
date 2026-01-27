@@ -508,3 +508,38 @@ async def toggle_admin(
         }
     )
 
+
+@router.delete("/{user_id}")
+async def delete_user(
+    user_id: int,
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Удалить пользователя"""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администраторы могут удалять пользователей")
+
+    await _ensure_users_columns(tenant_session)
+
+    company_id = getattr(request.state, "company_id", None)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id не найден")
+    schema_name = f"tenant_{company_id}"
+
+    exists = await tenant_session.execute(
+        text(f'SELECT 1 FROM "{schema_name}".users WHERE id = :id'),
+        {"id": user_id},
+    )
+    if not exists.fetchone():
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    await tenant_session.execute(
+        text(f'DELETE FROM "{schema_name}".users WHERE id = :id'),
+        {"id": user_id},
+    )
+    await tenant_session.commit()
+
+    logger.info(f"🗑️ Удален пользователь: user_id={user_id}, company_id={company_id}")
+    return {"detail": "Пользователь удален"}
+

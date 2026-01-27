@@ -60,5 +60,9 @@ export const usersApi = {
     const response = await apiClient.patch(`/api/users/${userId}`, data)
     return response.data
   },
+
+  deleteUser: async (userId: number): Promise<void> => {
+    await apiClient.delete(`/api/users/${userId}`)
+  },
 }
 
