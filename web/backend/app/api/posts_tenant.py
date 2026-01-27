@@ -177,6 +177,41 @@ async def create_post(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать посты")
+    
+    # Проверяем и создаем sequence для posts, если его нет
+    company_id = getattr(request.state, "company_id", None)
+    if company_id:
+        from sqlalchemy import text
+        schema_name = f"tenant_{company_id}"
+        # Проверяем существование sequence
+        seq_check = await tenant_session.execute(
+            text(
+                f"""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_sequences
+                    WHERE schemaname = :schema_name
+                    AND sequencename = 'posts_id_seq'
+                )
+                """
+            ),
+            {"schema_name": schema_name}
+        )
+        if not seq_check.scalar():
+            # Создаем sequence если его нет
+            await tenant_session.execute(
+                text(
+                    f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".posts_id_seq '
+                    'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                )
+            )
+            await tenant_session.execute(
+                text(
+                    f'ALTER TABLE "{schema_name}".posts '
+                    f'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".posts_id_seq\'::regclass)'
+                )
+            )
+            await tenant_session.commit()
+    
     # Проверяем, существует ли пост с таким номером
     existing_post = await tenant_session.scalar(
         select(Post).where(Post.number == post_data.number)

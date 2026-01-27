@@ -19,6 +19,8 @@ interface PaymentStatus {
   company_id: number | null
   company_name: string | null
   email: string | null
+  login_email?: string | null
+  password?: string | null
   subscription_status?: string
   can_create_bookings?: boolean
 }
@@ -136,7 +138,7 @@ const PaymentSuccess: React.FC = () => {
         
         <p className="success-subtitle">
           {isCompanyCreated 
-            ? 'Ваша компания зарегистрирована в Barber SaaS'
+            ? 'Ваша компания зарегистрирована в Booking SaaS'
             : 'Мы обрабатываем ваш платеж и создаем аккаунт. Это может занять несколько секунд.'}
         </p>
 
@@ -151,6 +153,13 @@ const PaymentSuccess: React.FC = () => {
               <p>
                 <strong>Email:</strong> {paymentStatus.email}
               </p>
+            )}
+            {paymentStatus.login_email && paymentStatus.password && (
+              <div className="credentials-box">
+                <p><strong>Логин (Email):</strong> {paymentStatus.login_email}</p>
+                <p><strong>Пароль:</strong> {paymentStatus.password}</p>
+                <p className="credentials-hint">Сохраните данные и смените пароль после входа.</p>
+              </div>
             )}
           </div>
         ) : (
@@ -201,6 +210,12 @@ const PaymentSuccess: React.FC = () => {
                 onClick={() => navigate('/')}
               >
                 На главную
+              </button>
+              <button
+                className="action-button secondary"
+                onClick={() => navigate('/login')}
+              >
+                Войти в систему
               </button>
             </div>
 

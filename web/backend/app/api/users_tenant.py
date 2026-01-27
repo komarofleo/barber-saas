@@ -23,6 +23,31 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
+async def _ensure_users_columns(tenant_session: AsyncSession) -> None:
+    """
+    Убедиться, что в tenant.users есть все необходимые колонки.
+    
+    Это защита от старых tenant схем, где отсутствуют поля, используемые в API.
+    """
+    try:
+        await tenant_session.execute(
+            text(
+                """
+                ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS full_name VARCHAR(255),
+                    ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'client',
+                    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true,
+                    ADD COLUMN IF NOT EXISTS password_hash TEXT,
+                    ADD COLUMN IF NOT EXISTS telegram_id BIGINT,
+                    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                """
+            )
+        )
+        await tenant_session.commit()
+    except Exception as exc:
+        logger.error(f"❌ Ошибка при проверке колонок users: {exc}", exc_info=True)
+
 
 @router.get("", response_model=UserListResponse)
 async def get_users(
@@ -36,6 +61,8 @@ async def get_users(
     """Получить список пользователей"""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать пользователей")
+
+    await _ensure_users_columns(tenant_session)
 
     # Используем text() для прямых SQL запросов, так как структура таблицы отличается от модели
     # В tenant схеме users имеет: id, username, email, password_hash, full_name, phone, role, telegram_id, is_active, created_at, updated_at
@@ -142,6 +169,8 @@ async def get_user(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать пользователей")
 
+    await _ensure_users_columns(tenant_session)
+
     result = await tenant_session.execute(
         text(
             """
@@ -202,6 +231,8 @@ async def create_user(
     """Создать нового пользователя"""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать пользователей")
+
+    await _ensure_users_columns(tenant_session)
 
     # В tenant таблице users есть NOT NULL password_hash — генерируем служебное значение.
     password_hash = sha256(f"tenant_user:{user_data.telegram_id}:{datetime.utcnow().isoformat()}".encode("utf-8")).hexdigest()
@@ -290,7 +321,17 @@ async def update_user(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять пользователей")
 
-    exists = await tenant_session.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
+    await _ensure_users_columns(tenant_session)
+
+    company_id = getattr(request.state, "company_id", None)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id не найден")
+    schema_name = f"tenant_{company_id}"
+
+    exists = await tenant_session.execute(
+        text(f'SELECT 1 FROM "{schema_name}".users WHERE id = :id'),
+        {"id": user_id},
+    )
     if not exists.fetchone():
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
@@ -323,7 +364,7 @@ async def update_user(
 
     set_parts = ", ".join([f"{k} = :{k}" for k in update_fields.keys()])
     await tenant_session.execute(
-        text(f"UPDATE users SET {set_parts} WHERE id = :id"),
+        text(f'UPDATE "{schema_name}".users SET {set_parts} WHERE id = :id'),
         {"id": user_id, **update_fields},
     )
     await tenant_session.commit()
@@ -331,9 +372,9 @@ async def update_user(
     # Возвращаем актуальную строку
     result = await tenant_session.execute(
         text(
-            """
+            f"""
             SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
-            FROM users
+            FROM "{schema_name}".users
             WHERE id = :user_id
             """
         ),
@@ -359,7 +400,6 @@ async def update_user(
     first_name = name_parts[0] if len(name_parts) > 0 else None
     last_name = name_parts[1] if len(name_parts) > 1 else None
 
-    company_id = getattr(request.state, "company_id", None)
     logger.info(f"✅ Обновлен пользователь: user_id={user_id}, company_id={company_id}")
 
     return UserResponse.model_validate(
@@ -397,23 +437,33 @@ async def toggle_admin(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут менять права пользователей")
-    
-    exists = await tenant_session.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
+
+    await _ensure_users_columns(tenant_session)
+
+    company_id = getattr(request.state, "company_id", None)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id не найден")
+    schema_name = f"tenant_{company_id}"
+
+    exists = await tenant_session.execute(
+        text(f'SELECT 1 FROM "{schema_name}".users WHERE id = :id'),
+        {"id": user_id},
+    )
     if not exists.fetchone():
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     new_role = "admin" if is_admin else "client"
     await tenant_session.execute(
-        text("UPDATE users SET role = :role, updated_at = :updated_at WHERE id = :id"),
+        text(f'UPDATE "{schema_name}".users SET role = :role, updated_at = :updated_at WHERE id = :id'),
         {"role": new_role, "updated_at": datetime.utcnow(), "id": user_id},
     )
     await tenant_session.commit()
     
     result = await tenant_session.execute(
         text(
-            """
+            f"""
             SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
-            FROM users
+            FROM "{schema_name}".users
             WHERE id = :user_id
             """
         ),
@@ -457,4 +507,39 @@ async def toggle_admin(
             "updated_at": updated_at or created_at,
         }
     )
+
+
+@router.delete("/{user_id}")
+async def delete_user(
+    user_id: int,
+    request: Request,
+    tenant_session: AsyncSession = Depends(get_tenant_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Удалить пользователя (мягкое удаление)"""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Только администраторы могут удалять пользователей")
+
+    await _ensure_users_columns(tenant_session)
+
+    company_id = getattr(request.state, "company_id", None)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id не найден")
+    schema_name = f"tenant_{company_id}"
+
+    exists = await tenant_session.execute(
+        text(f'SELECT 1 FROM "{schema_name}".users WHERE id = :id'),
+        {"id": user_id},
+    )
+    if not exists.fetchone():
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    await tenant_session.execute(
+        text(f'UPDATE "{schema_name}".users SET is_active = false, updated_at = :updated_at WHERE id = :id'),
+        {"id": user_id, "updated_at": datetime.utcnow()},
+    )
+    await tenant_session.commit()
+
+    logger.info(f"🗑️ Деактивирован пользователь: user_id={user_id}, company_id={company_id}")
+    return {"detail": "Пользователь деактивирован"}
 

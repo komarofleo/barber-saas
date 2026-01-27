@@ -12,7 +12,7 @@
 
 /* Spacer для компенсации fixed header */
 .header-spacer {
-  height: 130px; /* Высота header'а */
+  height: 100px; /* Высота header'а */
   width: 100%;
 }
 
@@ -43,7 +43,7 @@
   justify-content: space-between;
   gap: 16px;
   margin: 0 !important;
-  padding: 30px 40px;
+  padding: 16px 32px;
   background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%);
   position: fixed !important;
   top: 0 !important;
@@ -139,14 +139,14 @@
 
 /* Отступ для контента после фиксированного header'а */
 .dashboard-content {
-  margin-top: 140px !important; /* Отступ для фиксированного header'а */
+  margin-top: 100px !important; /* Отступ для фиксированного header'а */
 }
 
 /* Состояния загрузки и ошибок */
 .dashboard-loading {
   text-align: center;
   padding: 80px 20px;
-  margin-top: 140px !important; /* Отступ для фиксированного header'а */
+  margin-top: 100px !important; /* Отступ для фиксированного header'а */
 }
 
 .spinner {

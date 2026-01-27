@@ -9,6 +9,8 @@ import logging
 from typing import Optional
 import httpx
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -97,7 +99,9 @@ class TelegramNotificationService:
         plan_name: str,
         subscription_end_date,
         dashboard_url: str,
-        can_create_bookings: bool = True
+        can_create_bookings: bool = True,
+        login_email: Optional[str] = None,
+        password: Optional[str] = None,
     ) -> bool:
         """
         Отправить уведомление об успешной активации компании.
@@ -109,6 +113,8 @@ class TelegramNotificationService:
             subscription_end_date: Дата окончания подписки
             dashboard_url: Ссылка на админ-панель
             can_create_bookings: Можно ли создавать записи
+            login_email: Email для входа (опционально)
+            password: Пароль для входа (опционально)
         
         Returns:
             True если уведомление отправлено, False в противном случае
@@ -124,6 +130,16 @@ class TelegramNotificationService:
         """
         logger.info(f"Отправка уведомления об активации: {company_name}")
         
+        credentials_block = ""
+        if login_email and password:
+            credentials_block = f"""
+<b>🔐 Данные для входа</b>
+<b>Email:</b> {login_email}
+<b>Пароль:</b> <code>{password}</code>
+
+<i>Рекомендуем сменить пароль после первого входа.</i>
+"""
+
         message = f"""
         <b>✅ Ваш салон красоты успешно зарегистрирован!</b>
 
@@ -137,6 +153,8 @@ class TelegramNotificationService:
 
 <b>🔗 Админ-панель:</b>
 <a href="{dashboard_url}">{dashboard_url}</a>
+
+{credentials_block}
 
 <b>ℹ️ Для начала работы:</b>
 1. Перейдите в админ-панель
@@ -280,7 +298,8 @@ def get_telegram_notification_service(bot_token: Optional[str] = None) -> Telegr
     global _telegram_notification_service
     
     if _telegram_notification_service is None:
-        _telegram_notification_service = TelegramNotificationService(bot_token)
+        resolved_token = bot_token or settings.TELEGRAM_BOT_TOKEN
+        _telegram_notification_service = TelegramNotificationService(resolved_token)
     
     return _telegram_notification_service
 
@@ -291,7 +310,9 @@ async def send_activation_notification(
     plan_name: str,
     subscription_end_date,
     dashboard_url: str,
-    can_create_bookings: bool = True
+    can_create_bookings: bool = True,
+    login_email: Optional[str] = None,
+    password: Optional[str] = None,
 ) -> bool:
     """
     Удобная функция для отправки уведомления об активации.
@@ -309,6 +330,13 @@ async def send_activation_notification(
     """
     service = get_telegram_notification_service()
     return await service.send_activation_notification(
-        telegram_id, company_name, plan_name, subscription_end_date, dashboard_url, can_create_bookings
+        telegram_id,
+        company_name,
+        plan_name,
+        subscription_end_date,
+        dashboard_url,
+        can_create_bookings,
+        login_email,
+        password,
     )
 

@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react'
-import { settingsApi, Setting } from '../api/settings'
+import {
+  settingsApi,
+  Setting,
+  CompanyCredentials,
+  CompanyCredentialsUpdateRequest,
+} from '../api/settings'
 import './Settings.css'
 
 function Settings() {
@@ -8,9 +13,19 @@ function Settings() {
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [formValues, setFormValues] = useState<Record<string, string>>({})
+  const [botWelcomeFile, setBotWelcomeFile] = useState<File | null>(null)
+  const [botAboutFile, setBotAboutFile] = useState<File | null>(null)
+  const [companyCredentials, setCompanyCredentials] = useState<CompanyCredentials | null>(null)
+  const [companyCredentialsForm, setCompanyCredentialsForm] = useState({
+    email: '',
+    name: '',
+    admin_telegram_id: '',
+    telegram_bot_token: '',
+  })
 
   useEffect(() => {
     loadSettings()
+    loadCompanyCredentials()
   }, [])
 
   const loadSettings = async () => {
@@ -32,6 +47,26 @@ function Settings() {
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadCompanyCredentials = async () => {
+    try {
+      const data = await settingsApi.getCompanyCredentials()
+      setCompanyCredentials(data)
+      setCompanyCredentialsForm({
+        email: data.email || '',
+        name: data.name || '',
+        admin_telegram_id: data.admin_telegram_id ? String(data.admin_telegram_id) : '',
+        telegram_bot_token: data.telegram_bot_token || '',
+      })
+    } catch (error: any) {
+      console.error('Ошибка загрузки данных компании:', error)
+      if (error.response?.status === 401) {
+        window.location.href = '/login'
+      } else {
+        setError(error.response?.data?.detail || 'Не удалось загрузить данные компании')
+      }
     }
   }
 
@@ -121,6 +156,115 @@ function Settings() {
       console.error('Ошибка сохранения данных компании:', error)
       setError(error.response?.data?.detail || 'Не удалось сохранить данные компании')
       alert('Не удалось сохранить данные компании')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const getFileNameFromPath = (value: string) => {
+    if (!value) return ''
+    const parts = value.split('/')
+    return parts[parts.length - 1]
+  }
+
+  const handleBotSave = async () => {
+    try {
+      setSaving('bot_form')
+      setError(null)
+      await settingsApi.updateSetting('bot_welcome_text', { value: formValues['bot_welcome_text'] || '' })
+      await settingsApi.updateSetting('bot_about_text', { value: formValues['bot_about_text'] || '' })
+      if (botWelcomeFile) {
+        await settingsApi.uploadSettingFile('bot_welcome_photo', botWelcomeFile)
+      }
+      if (botAboutFile) {
+        await settingsApi.uploadSettingFile('bot_about_photo', botAboutFile)
+      }
+      await loadSettings()
+      setBotWelcomeFile(null)
+      setBotAboutFile(null)
+      alert('Настройки бота сохранены')
+    } catch (error: any) {
+      console.error('Ошибка сохранения настроек бота:', error)
+      setError(error.response?.data?.detail || 'Не удалось сохранить настройки бота')
+      alert('Не удалось сохранить настройки бота')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const handleMasterSpecializationsSave = async () => {
+    try {
+      setSaving('master_specializations')
+      setError(null)
+      const value = formValues['master_specializations'] ?? ''
+      await settingsApi.updateSetting('master_specializations', { value })
+      await loadSettings()
+      alert('Список специализаций сохранен')
+    } catch (error: any) {
+      console.error('Ошибка сохранения специализаций:', error)
+      setError(error.response?.data?.detail || 'Не удалось сохранить специализации')
+      alert('Не удалось сохранить специализации')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const handleCompanyCredentialsSave = async () => {
+    try {
+      setSaving('company_credentials')
+      setError(null)
+      const payload: CompanyCredentialsUpdateRequest = {}
+      const name = companyCredentialsForm.name.trim()
+      if (name && name !== companyCredentials?.name) {
+        payload.name = name
+      }
+      const adminTelegramRaw = companyCredentialsForm.admin_telegram_id.trim()
+      if (adminTelegramRaw) {
+        const parsed = Number(adminTelegramRaw)
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          setError('Некорректный Telegram ID администратора')
+          return
+        }
+        if (!companyCredentials || parsed !== companyCredentials.admin_telegram_id) {
+          payload.admin_telegram_id = parsed
+        }
+      }
+      const token = companyCredentialsForm.telegram_bot_token.trim()
+      if (token && token !== companyCredentials?.telegram_bot_token) {
+        payload.telegram_bot_token = token
+      }
+      if (Object.keys(payload).length === 0) {
+        alert('Нет изменений для сохранения')
+        return
+      }
+      const updated = await settingsApi.updateCompanyCredentials(payload)
+      setCompanyCredentials(updated)
+      setCompanyCredentialsForm({
+        email: updated.email || '',
+        name: updated.name || '',
+        admin_telegram_id: updated.admin_telegram_id ? String(updated.admin_telegram_id) : '',
+        telegram_bot_token: updated.telegram_bot_token || '',
+      })
+      alert('Данные компании обновлены')
+    } catch (error: any) {
+      console.error('Ошибка обновления данных компании:', error)
+      setError(error.response?.data?.detail || 'Не удалось обновить данные компании')
+      alert('Не удалось обновить данные компании')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const handleSendCredentials = async () => {
+    try {
+      setSaving('company_credentials_send')
+      setError(null)
+      const response = await settingsApi.sendCompanyCredentials()
+      alert(response.message)
+    } catch (error: any) {
+      console.error('Ошибка отправки данных доступа:', error)
+      setError(error.response?.data?.detail || 'Не удалось отправить данные доступа')
+      alert('Не удалось отправить данные доступа')
     } finally {
       setSaving(null)
     }
@@ -302,6 +446,211 @@ function Settings() {
                 <span>Включено</span>
               </label>
             </div>
+          </div>
+        </div>
+
+        {/* Мастера */}
+        <div className="settings-section">
+          <h2>👤 Мастера</h2>
+          <div className="settings-grid">
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Список специализаций</span>
+                <span className="setting-description">По одной специализации в строке</span>
+              </label>
+              <textarea
+                value={getSettingValue('master_specializations')}
+                onChange={(e) => handleTextChange('master_specializations', e.target.value)}
+                className="setting-input"
+                rows={6}
+                disabled={saving === 'master_specializations'}
+              />
+            </div>
+          </div>
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleMasterSpecializationsSave}
+              disabled={saving === 'master_specializations'}
+            >
+              {saving === 'master_specializations' ? 'Сохранение...' : 'Сохранить'}
+            </button>
+          </div>
+        </div>
+
+        {/* Настройки бота */}
+        <div className="settings-section">
+          <h2>🤖 Бот: приветствие и О нас</h2>
+          <div className="settings-grid">
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Текст приветствия</span>
+                <span className="setting-description">Сообщение при /start</span>
+              </label>
+              <textarea
+                value={getSettingValue('bot_welcome_text')}
+                onChange={(e) => handleTextChange('bot_welcome_text', e.target.value)}
+                className="setting-input"
+                rows={4}
+                disabled={saving === 'bot_form'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Картинка приветствия</span>
+                <span className="setting-description">PNG/JPG/WEBP</span>
+              </label>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(e) => setBotWelcomeFile(e.target.files?.[0] || null)}
+                className="setting-input"
+                disabled={saving === 'bot_form'}
+              />
+              {getSettingValue('bot_welcome_photo') && (
+                <div className="setting-description">
+                  Текущий файл: {getFileNameFromPath(getSettingValue('bot_welcome_photo'))}
+                </div>
+              )}
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Текст «О нас»</span>
+                <span className="setting-description">Сообщение по кнопке «О нас»</span>
+              </label>
+              <textarea
+                value={getSettingValue('bot_about_text')}
+                onChange={(e) => handleTextChange('bot_about_text', e.target.value)}
+                className="setting-input"
+                rows={4}
+                disabled={saving === 'bot_form'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Картинка «О нас»</span>
+                <span className="setting-description">PNG/JPG/WEBP</span>
+              </label>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(e) => setBotAboutFile(e.target.files?.[0] || null)}
+                className="setting-input"
+                disabled={saving === 'bot_form'}
+              />
+              {getSettingValue('bot_about_photo') && (
+                <div className="setting-description">
+                  Текущий файл: {getFileNameFromPath(getSettingValue('bot_about_photo'))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleBotSave}
+              disabled={saving === 'bot_form'}
+            >
+              {saving === 'bot_form' ? 'Сохранение...' : 'Сохранить'}
+            </button>
+          </div>
+        </div>
+
+        {/* Доступ и Telegram */}
+        <div className="settings-section">
+          <h2>🔑 Доступ и Telegram</h2>
+          <div className="settings-grid">
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Логин (Email)</span>
+                <span className="setting-description">Email для входа в систему</span>
+              </label>
+              <input
+                type="email"
+                value={companyCredentialsForm.email}
+                className="setting-input"
+                disabled
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Telegram ID администратора</span>
+                <span className="setting-description">ID для получения уведомлений</span>
+              </label>
+              <input
+                type="text"
+                value={companyCredentialsForm.admin_telegram_id}
+                onChange={(e) =>
+                  setCompanyCredentialsForm((prev) => ({
+                    ...prev,
+                    admin_telegram_id: e.target.value,
+                  }))
+                }
+                className="setting-input"
+                disabled={saving === 'company_credentials'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">API токен Telegram бота</span>
+                <span className="setting-description">Токен из @BotFather</span>
+              </label>
+              <input
+                type="text"
+                value={companyCredentialsForm.telegram_bot_token}
+                onChange={(e) =>
+                  setCompanyCredentialsForm((prev) => ({
+                    ...prev,
+                    telegram_bot_token: e.target.value,
+                  }))
+                }
+                className="setting-input"
+                disabled={saving === 'company_credentials'}
+              />
+            </div>
+            <div className="setting-item">
+              <label>
+                <span className="setting-label">Название компании (системное)</span>
+                <span className="setting-description">Отображается в системе</span>
+              </label>
+              <input
+                type="text"
+                value={companyCredentialsForm.name}
+                onChange={(e) =>
+                  setCompanyCredentialsForm((prev) => ({
+                    ...prev,
+                    name: e.target.value,
+                  }))
+                }
+                className="setting-input"
+                disabled={saving === 'company_credentials'}
+              />
+            </div>
+          </div>
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleCompanyCredentialsSave}
+              disabled={saving === 'company_credentials'}
+            >
+              {saving === 'company_credentials' ? 'Сохранение...' : 'Сохранить'}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleSendCredentials}
+              disabled={saving === 'company_credentials_send'}
+            >
+              {saving === 'company_credentials_send'
+                ? 'Отправка...'
+                : 'Сбросить пароль и отправить в Telegram'}
+            </button>
+          </div>
+          <div className="settings-hint">
+            При нажатии кнопки пароль будет сброшен, а новые данные отправлены в Telegram.
           </div>
         </div>
 

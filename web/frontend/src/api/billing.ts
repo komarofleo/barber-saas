@@ -25,6 +25,12 @@ export interface CreatePaymentResponse {
   confirmation_url: string
 }
 
+export interface PaymentStatusResponse {
+  payment_id: number
+  status: string
+  yookassa_payment_status: string | null
+}
+
 export const billingApi = {
   getPlans: async (): Promise<Plan[]> => {
     const response = await apiClient.get('/api/public/plans')
@@ -38,6 +44,11 @@ export const billingApi = {
 
   createPayment: async (data: CreatePaymentRequest): Promise<CreatePaymentResponse> => {
     const response = await apiClient.post('/api/subscription/payments', data)
+    return response.data
+  },
+
+  getPaymentStatus: async (paymentId: string | number): Promise<PaymentStatusResponse> => {
+    const response = await apiClient.get(`/api/public/payments/${paymentId}/status`)
     return response.data
   },
 }

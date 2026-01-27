@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { mastersApi, Master, MasterCreateRequest } from '../api/masters'
+import { settingsApi } from '../api/settings'
 import { bookingsApi } from '../api/bookings'
 import './Masters.css'
 
@@ -406,6 +407,25 @@ function MasterModal({ master, onClose, onSave }: MasterModalProps) {
     specialization: initialSpecialization || undefined,
     is_universal: master?.is_universal ?? false,
   })
+  const [specializationOptions, setSpecializationOptions] = useState<string[]>([])
+
+  useEffect(() => {
+    const loadSpecializations = async () => {
+      try {
+        const setting = await settingsApi.getSetting('master_specializations')
+        const options = setting.value
+          .split('\n')
+          .map((item) => item.trim())
+          .filter(Boolean)
+        setSpecializationOptions(options)
+      } catch (error) {
+        console.error('Ошибка загрузки специализаций:', error)
+        setSpecializationOptions([])
+      }
+    }
+
+    loadSpecializations()
+  }, [])
 
   const handleSpecializationChange = (value: string) => {
     const isUniversal = value === 'Универсальный мастер'
@@ -479,17 +499,9 @@ function MasterModal({ master, onClose, onSave }: MasterModalProps) {
             >
               <option value="">Не выбрана</option>
               <option value="Универсальный мастер">Универсальный мастер</option>
-              <option value="Парикмахер">Парикмахер</option>
-              <option value="Визажист">Визажист</option>
-              <option value="Ногтевой мастер">Ногтевой мастер</option>
-              <option value="Косметолог">Косметолог</option>
-              <option value="Барбер">Барбер</option>
-              <option value="Колорист">Колорист</option>
-              <option value="Стилист">Стилист</option>
-              <option value="Массажист">Массажист</option>
-              <option value="Лэшмейкер">Лэшмейкер</option>
-              <option value="Бровист">Бровист</option>
-              <option value="другое">Другое</option>
+              {specializationOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
             </select>
           </div>
           

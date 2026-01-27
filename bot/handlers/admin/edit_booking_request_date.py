@@ -60,7 +60,7 @@ async def edit_request_date_start(callback: CallbackQuery, state: FSMContext):
         # Получаем доступные даты (на 2 месяца вперед)
         today = date.today()
         end_date = today + timedelta(days=60)
-        available_dates = await get_available_dates(session, today, end_date)
+        available_dates = await get_available_dates(session, today, end_date, company_id=company_id)
         
         # Показываем клавиатуру для редактирования
         current_request_date = booking.request_date.strftime('%d.%m.%Y') if booking.request_date else 'Не задана'

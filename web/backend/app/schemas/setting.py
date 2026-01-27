@@ -16,6 +16,24 @@ class SettingUpdateRequest(BaseModel):
     value: str
 
 
+class CompanyCredentialsResponse(BaseModel):
+    email: str
+    name: str
+    admin_telegram_id: Optional[int] = None
+    telegram_bot_token: Optional[str] = None
+
+
+class CompanyCredentialsUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    admin_telegram_id: Optional[int] = None
+    telegram_bot_token: Optional[str] = None
+
+
+class CompanyCredentialsSendResponse(BaseModel):
+    success: bool
+    message: str
+
+
 
 
 

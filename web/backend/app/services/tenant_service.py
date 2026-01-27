@@ -30,6 +30,7 @@ class TenantService:
         """Инициализация сервиса."""
         self._engine: Optional[AsyncEngine] = None
         self._async_session_maker: Optional[async_sessionmaker] = None
+        self._initialized_companies: set[int] = set()
     
     async def _get_engine(self) -> AsyncEngine:
         """
@@ -146,30 +147,272 @@ class TenantService:
         try:
             async_session_maker = await self._get_async_session_maker()
             async with async_session_maker() as session:
-                # Удаляем таблицу в tenant схеме, если она существует
+                # Создаем таблицу в tenant схеме без копирования данных
                 await session.execute(
-                    text(f'DROP TABLE IF EXISTS "{schema_name}"."{table_name}" CASCADE')
+                    text(
+                        f'CREATE TABLE IF NOT EXISTS "{schema_name}"."{table_name}" '
+                        f'AS SELECT * FROM public."{table_name}" WHERE false'
+                    )
                 )
                 
-                # Клонируем таблицу из public в tenant схему
-                await session.execute(
-                    text(f'CREATE TABLE "{schema_name}"."{table_name}" AS SELECT * FROM public."{table_name}"')
-                )
+                if table_name == "users":
+                    # Добавляем колонки, которые использует бот (совместимость с tenant-схемой)
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}"."{table_name}" '
+                            'ADD COLUMN IF NOT EXISTS full_name VARCHAR(255), '
+                            'ADD COLUMN IF NOT EXISTS role VARCHAR(50), '
+                            'ADD COLUMN IF NOT EXISTS is_active BOOLEAN, '
+                            'ADD COLUMN IF NOT EXISTS password_hash TEXT'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".users_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".users '
+                            f'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".users_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'users_pkey'
+                                    AND conrelid = '{schema_name}.users'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".users
+                                    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+                                END IF;
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'users_telegram_id_key'
+                                    AND conrelid = '{schema_name}.users'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".users
+                                    ADD CONSTRAINT users_telegram_id_key UNIQUE (telegram_id);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
+                if table_name == "services":
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".services_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".services '
+                            f'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".services_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'services_pkey'
+                                    AND conrelid = '{schema_name}.services'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".services
+                                    ADD CONSTRAINT services_pkey PRIMARY KEY (id);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
+                if table_name == "masters":
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".masters_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".masters '
+                            f'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".masters_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'masters_pkey'
+                                    AND conrelid = '{schema_name}.masters'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".masters
+                                    ADD CONSTRAINT masters_pkey PRIMARY KEY (id);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
+                if table_name == "bookings":
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".bookings_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".bookings '
+                            f'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".bookings_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'bookings_pkey'
+                                    AND conrelid = '{schema_name}.bookings'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".bookings
+                                    ADD CONSTRAINT bookings_pkey PRIMARY KEY (id);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
+                if table_name == "clients":
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".clients_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".clients '
+                            f'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".clients_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'clients_pkey'
+                                    AND conrelid = '{schema_name}.clients'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".clients
+                                    ADD CONSTRAINT clients_pkey PRIMARY KEY (id);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
+                if table_name == "posts":
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".posts_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".posts '
+                            f'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".posts_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'posts_pkey'
+                                    AND conrelid = '{schema_name}.posts'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".posts
+                                    ADD CONSTRAINT posts_pkey PRIMARY KEY (id);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
+                if table_name == "settings":
+                    await session.execute(
+                        text(
+                            f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".settings_id_seq '
+                            'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f'ALTER TABLE "{schema_name}".settings '
+                            f'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".settings_id_seq\'::regclass)'
+                        )
+                    )
+                    await session.execute(
+                        text(
+                            f"""
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'settings_pkey'
+                                    AND conrelid = '{schema_name}.settings'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".settings
+                                    ADD CONSTRAINT settings_pkey PRIMARY KEY (id);
+                                END IF;
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'settings_key_key'
+                                    AND conrelid = '{schema_name}.settings'::regclass
+                                ) THEN
+                                    ALTER TABLE "{schema_name}".settings
+                                    ADD CONSTRAINT settings_key_key UNIQUE (key);
+                                END IF;
+                            END $$;
+                            """
+                        )
+                    )
                 
                 # Восстанавливаем последовательности (если есть)
                 # Проверяем существование последовательности перед setval
                 await session.execute(
-                    text(f"""
+                    text(
+                        f"""
                         DO $$
-                            DECLARE seq_name TEXT;
                             BEGIN
-                                SELECT 'tenant_{company_id}.' || :table_name || '_id_seq' INTO seq_name;
-                                IF EXISTS (SELECT 1 FROM pg_sequences WHERE sequencename = seq_name) THEN
-                                    PERFORM setval(seq_name::regclass, COALESCE((SELECT MAX(id) FROM "{schema_name}"."{table_name}"), 1));
+                                IF EXISTS (
+                                    SELECT 1
+                                    FROM pg_sequences
+                                    WHERE schemaname = '{schema_name}'
+                                      AND sequencename = '{table_name}_id_seq'
+                                ) THEN
+                                    PERFORM setval(
+                                        '"{schema_name}".{table_name}_id_seq'::regclass,
+                                        COALESCE((SELECT MAX(id) FROM "{schema_name}"."{table_name}"), 1)
+                                    );
                                 END IF;
                             END $$;
-                        """),
-                    {"table_name": table_name, "company_id": company_id}
+                        """
+                    )
                 )
                 
                 await session.commit()
@@ -178,6 +421,100 @@ class TenantService:
             return True
         except Exception as e:
             logger.error(f"Ошибка при клонировании таблицы '{table_name}' в '{schema_name}': {e}")
+            return False
+    
+    async def ensure_all_sequences_exist(self, company_id: int) -> bool:
+        """
+        Убедиться, что для всех таблиц с колонкой id созданы sequence.
+        
+        Args:
+            company_id: ID компании
+            
+        Returns:
+            True, если все sequence созданы, иначе False
+        """
+        schema_name = f"tenant_{company_id}"
+        logger.info(f"Проверка sequence для всех таблиц в схеме {schema_name}")
+        
+        try:
+            async_session_maker = await self._get_async_session_maker()
+            async with async_session_maker() as session:
+                # Получаем список всех таблиц с колонкой id
+                tables_result = await session.execute(
+                    text(f"""
+                        SELECT DISTINCT table_name
+                        FROM information_schema.columns
+                        WHERE table_schema = :schema_name
+                          AND column_name = 'id'
+                          AND data_type = 'integer'
+                        ORDER BY table_name
+                    """),
+                    {"schema_name": schema_name}
+                )
+                tables = [row[0] for row in tables_result.fetchall()]
+                
+                logger.info(f"Найдено таблиц с id: {len(tables)}")
+                
+                for table_name in tables:
+                    # Проверяем, существует ли sequence
+                    seq_check = await session.execute(
+                        text(f"""
+                            SELECT EXISTS (
+                                SELECT 1 FROM pg_sequences
+                                WHERE schemaname = :schema_name
+                                AND sequencename = :seq_name
+                            )
+                        """),
+                        {"schema_name": schema_name, "seq_name": f"{table_name}_id_seq"}
+                    )
+                    
+                    if not seq_check.scalar():
+                        logger.info(f"Создание sequence для {table_name}...")
+                        # Создаем sequence
+                        await session.execute(
+                            text(
+                                f'CREATE SEQUENCE IF NOT EXISTS "{schema_name}".{table_name}_id_seq '
+                                'AS integer START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1'
+                            )
+                        )
+                        # Устанавливаем DEFAULT
+                        await session.execute(
+                            text(
+                                f'ALTER TABLE "{schema_name}".{table_name} '
+                                f'ALTER COLUMN id SET DEFAULT nextval(\'"{schema_name}".{table_name}_id_seq\'::regclass)'
+                            )
+                        )
+                        # Синхронизируем sequence с текущим MAX(id)
+                        await session.execute(
+                            text(
+                                f"""
+                                SELECT setval(
+                                    '"{schema_name}".{table_name}_id_seq'::regclass,
+                                    COALESCE((SELECT MAX(id) FROM "{schema_name}"."{table_name}"), 1)
+                                )
+                                """
+                            )
+                        )
+                        logger.info(f"✅ Sequence для {table_name} создан")
+                    else:
+                        # Синхронизируем существующий sequence
+                        await session.execute(
+                            text(
+                                f"""
+                                SELECT setval(
+                                    '"{schema_name}".{table_name}_id_seq'::regclass,
+                                    COALESCE((SELECT MAX(id) FROM "{schema_name}"."{table_name}"), 1),
+                                    true
+                                )
+                                """
+                            )
+                        )
+                
+                await session.commit()
+                logger.info(f"✅ Все sequence проверены для схемы {schema_name}")
+                return True
+        except Exception as e:
+            logger.error(f"Ошибка при проверке sequence для {schema_name}: {e}", exc_info=True)
             return False
     
     async def initialize_tenant_for_company(self, company_id: int) -> bool:
@@ -196,13 +533,14 @@ class TenantService:
             "users",
             "services",
             "masters",
-            # "bookings",  # Временно закомментировано для MVP (таблицы еще не созданы)
+            "bookings",
             "clients",
             "posts",
-            "slots",
+            "timeslots",
             "notifications",
             "settings",
-            "blocks",
+            "broadcasts",
+            "blocked_slots",
             "promocodes",
             "promotions",
         ]
@@ -221,6 +559,9 @@ class TenantService:
                     logger.error(f"Не удалось склонировать таблицу '{table_name}'")
             
             logger.info(f"Инициализация tenant схемы завершена: {success_count}/{len(tables_to_clone)} таблиц склонировано")
+            # Убеждаемся, что все sequence созданы для всех таблиц
+            logger.info(f"Проверка sequence для всех таблиц в tenant_{company_id}...")
+            await self.ensure_all_sequences_exist(company_id)
             return True
             
         except Exception as e:
@@ -270,6 +611,10 @@ class TenantService:
         schema_name = f"tenant_{company_id}"
         logger.info(f"Получение tenant сессии для компании {company_id} (схема: {schema_name})")
         
+        if company_id not in self._initialized_companies:
+            if await self._ensure_tenant_tables(company_id):
+                self._initialized_companies.add(company_id)
+        
         async_session_maker = await self._get_async_session_maker()
         
         async with async_session_maker() as session:
@@ -284,6 +629,60 @@ class TenantService:
                     await session.execute(text('SET search_path TO public'))
                 except Exception as e:
                     logger.warning(f"Не удалось сбросить search_path в public для {schema_name}: {e}")
+
+    async def _ensure_tenant_tables(self, company_id: int) -> bool:
+        """
+        Убедиться, что tenant схема содержит все необходимые таблицы.
+        
+        Создает отсутствующие таблицы по структуре public схемы без копирования данных.
+        """
+        schema_name = f"tenant_{company_id}"
+        tables_to_clone = [
+            "users",
+            "services",
+            "masters",
+            "bookings",
+            "clients",
+            "posts",
+            "timeslots",
+            "notifications",
+            "settings",
+            "broadcasts",
+            "blocked_slots",
+            "promocodes",
+            "promotions",
+        ]
+        
+        try:
+            async_session_maker = await self._get_async_session_maker()
+            async with async_session_maker() as session:
+                result = await session.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = :schema_name"
+                    ),
+                    {"schema_name": schema_name},
+                )
+                existing = {row[0] for row in result.fetchall()}
+                missing_tables = [table for table in tables_to_clone if table not in existing]
+                if not missing_tables:
+                    return True
+                
+                logger.info(
+                    f"Tenant {schema_name}: создаем отсутствующие таблицы: {', '.join(missing_tables)}"
+                )
+                for table_name in missing_tables:
+                    await session.execute(
+                        text(
+                            f'CREATE TABLE IF NOT EXISTS "{schema_name}"."{table_name}" '
+                            f'AS SELECT * FROM public."{table_name}" WHERE false'
+                        )
+                    )
+                await session.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Ошибка при создании таблиц tenant схемы {schema_name}: {e}")
+            return False
 
 
 _tenant_service: Optional[TenantService] = None

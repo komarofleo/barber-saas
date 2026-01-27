@@ -209,8 +209,8 @@ const CompanyRegistrationForm: React.FC = () => {
       })
     }
 
-    // Валидация токена бота
-    if (!formData.telegram_bot_token || formData.telegram_bot_token.trim().length < 40) {
+    // Валидация токена бота (необязательное поле)
+    if (formData.telegram_bot_token && formData.telegram_bot_token.trim().length < 40) {
       newErrors.push({
         field: 'telegram_bot_token',
         message: 'Токен бота должен содержать минимум 40 символов',
@@ -266,9 +266,10 @@ const CompanyRegistrationForm: React.FC = () => {
       return
     }
 
-    // Конвертация admin_telegram_id в число
+    // Конвертация admin_telegram_id в число (разрешаем вставку из буфера)
     if (name === 'admin_telegram_id') {
-      const numValue = value === '' ? 0 : parseInt(value, 10)
+      const digitsOnly = value.replace(/\D/g, '')
+      const numValue = digitsOnly === '' ? 0 : parseInt(digitsOnly, 10)
       setFormData({ ...formData, [name]: numValue })
       return
     }
@@ -338,15 +339,33 @@ const CompanyRegistrationForm: React.FC = () => {
     try {
       const result = await publicApi.registerCompany(formData)
 
-      // Успешная регистрация - перенаправление на оплату
+      if (result.success && result.login_email && result.password) {
+        sessionStorage.setItem(
+          'registration_credentials',
+          JSON.stringify({
+            login_email: result.login_email,
+            password: result.password,
+            company_id: result.company_id || null,
+            dashboard_url: result.dashboard_url || null,
+          })
+        )
+        setSuccessMessage('Регистрация успешна! Переходим к данным для входа...')
+        setTimeout(() => {
+          navigate('/register/success')
+        }, 1000)
+        return
+      }
+
+      // Фолбэк на оплату, если возвращена ссылка
       if (result.confirmation_url) {
         setSuccessMessage('Регистрация успешна! Перенаправление на оплату...')
         setTimeout(() => {
-          window.location.href = result.confirmation_url
+          window.location.href = result.confirmation_url as string
         }, 2000)
-      } else {
-        setErrors([{ field: 'general', message: result.message || 'Неизвестная ошибка' }])
+        return
       }
+
+      setErrors([{ field: 'general', message: result.message || 'Неизвестная ошибка' }])
     } catch (error: any) {
       console.error('Ошибка регистрации:', error)
       setErrors([{ 
@@ -478,7 +497,7 @@ const CompanyRegistrationForm: React.FC = () => {
                 </div>
                 <div className="additional-form-field">
                   <label className="additional-field-label">
-                    Токен Telegram бота<span className="required-mark">*</span>
+                    Токен Telegram бота
                   </label>
                   <input
                     type="text"
@@ -487,11 +506,12 @@ const CompanyRegistrationForm: React.FC = () => {
                     placeholder="8332803813:AAGOpLJdSj5P6cKqseQPfcOAiypTxgVZSt4"
                     value={formData.telegram_bot_token}
                     onChange={handleInputChange}
-                    required
                     minLength={40}
                     maxLength={500}
                   />
-                  <div className="field-hint">Получите токен через @BotFather в Telegram</div>
+                  <div className="field-hint">
+                    Можно указать позже в настройках. Получите токен через @BotFather в Telegram
+                  </div>
                   {getFieldError('telegram_bot_token') && (
                     <div className="field-error">{getFieldError('telegram_bot_token')}</div>
                   )}
@@ -505,16 +525,18 @@ const CompanyRegistrationForm: React.FC = () => {
                 Telegram ID владельца<span className="required-mark">*</span>
               </label>
               <input
-                type="number"
+                type="text"
                 name="admin_telegram_id"
                 className={`additional-field-input ${getFieldError('admin_telegram_id') ? 'error' : ''}`}
                 placeholder="329621295"
-                value={formData.admin_telegram_id}
+                value={formData.admin_telegram_id ? String(formData.admin_telegram_id) : ''}
                 onChange={handleInputChange}
                 required
-                min={1}
+                inputMode="numeric"
+                pattern="[0-9]*"
               />
               <div className="field-hint">Ваш Telegram ID для получения уведомлений</div>
+              <div className="field-hint">Узнать ваш Telegram ID: бот @userinfobot, отправьте /start</div>
               {getFieldError('admin_telegram_id') && (
                 <div className="field-error">{getFieldError('admin_telegram_id')}</div>
               )}

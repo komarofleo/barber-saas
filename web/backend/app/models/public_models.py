@@ -11,7 +11,7 @@
 
 from datetime import date
 from typing import Optional
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Date, Numeric, Text, ARRAY, func
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Date, Numeric, Text, ARRAY, func, BigInteger
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import MetaData
 from sqlalchemy.dialects.postgresql import JSONB
@@ -61,8 +61,8 @@ class Company(Base):
     phone = Column(String(20), nullable=True)
     telegram_bot_token = Column(String(500), nullable=False, unique=True)
     telegram_bot_username = Column(String(100), nullable=True)
-    admin_telegram_id = Column(Integer, nullable=True)
-    telegram_admin_ids = Column(ARRAY(Integer), nullable=True)
+    admin_telegram_id = Column(BigInteger, nullable=True)
+    telegram_admin_ids = Column(ARRAY(BigInteger), nullable=True)
     plan_id = Column(Integer, ForeignKey("public.plans.id"), nullable=True, index=True)
     subscription_status = Column(String(20), default="pending", index=True)  # Исправлено: String вместо SQLEnum
     subscription_end_date = Column(Date, nullable=True, index=True)

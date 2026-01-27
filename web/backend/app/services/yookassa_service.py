@@ -10,7 +10,7 @@ import hmac
 import logging
 import httpx
 from typing import Optional, Dict, Any
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 
 from app.config import settings
@@ -68,12 +68,13 @@ class YooKassaService:
             ...     return_url="https://mysite.com/success"
             ... )
         """
-        logger.info(f"Создание платежа: {description}, сумма: {amount} RUB")
+        normalized_amount = Decimal(amount).quantize(Decimal("0.00"), rounding=ROUND_HALF_UP)
+        logger.info(f"Создание платежа: {description}, сумма: {normalized_amount} RUB")
         
         # Формируем данные для запроса
         payment_data = {
             "amount": {
-                "value": str(amount),
+                "value": f"{normalized_amount:.2f}",
                 "currency": "RUB"
             },
             "description": description,

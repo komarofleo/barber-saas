@@ -78,6 +78,7 @@ export const bookingsApi = {
       status?: string
       start_date?: string
       end_date?: string
+      use_request_date?: boolean
       master_id?: number
       service_id?: number
       post_id?: number
@@ -89,6 +90,7 @@ export const bookingsApi = {
       if (filters.status) url += `&status=${filters.status}`
       if (filters.start_date) url += `&start_date=${filters.start_date}`
       if (filters.end_date) url += `&end_date=${filters.end_date}`
+      if (filters.use_request_date) url += `&use_request_date=true`
       if (filters.master_id) url += `&master_id=${filters.master_id}`
       if (filters.service_id) url += `&service_id=${filters.service_id}`
       if (filters.post_id) url += `&post_id=${filters.post_id}`

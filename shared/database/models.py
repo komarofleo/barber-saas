@@ -119,6 +119,7 @@ class Service(Base):
     duration = Column(Integer, nullable=False)  # в минутах
     price = Column(Numeric(10, 2), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
+    sort_order = Column(Integer, default=0, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

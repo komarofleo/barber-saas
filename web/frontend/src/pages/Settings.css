@@ -114,6 +114,12 @@
   border: 1px solid #f5c6cb;
 }
 
+.settings-hint {
+  margin-top: 12px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
 .loading {
   text-align: center;
   padding: 40px;

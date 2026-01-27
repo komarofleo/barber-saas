@@ -424,6 +424,7 @@ async def get_bookings(
     status: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
+    use_request_date: bool = Query(False, description="Фильтровать по request_date вместо service_date"),
     master_id: Optional[int] = None,
     service_id: Optional[int] = None,
     post_id: Optional[int] = None,
@@ -497,10 +498,11 @@ async def get_bookings(
     conditions = []
     if status:
         conditions.append(Booking.status == status)
+    date_field = Booking.request_date if use_request_date else Booking.service_date
     if start_date:
-        conditions.append(Booking.service_date >= start_date)
+        conditions.append(date_field >= start_date)
     if end_date:
-        conditions.append(Booking.service_date <= end_date)
+        conditions.append(date_field <= end_date)
     if master_id:
         conditions.append(Booking.master_id == master_id)
     if service_id:
@@ -548,7 +550,7 @@ async def get_bookings(
     query = query.offset((page - 1) * page_size).limit(page_size)
     
     result = await tenant_session.execute(query)
-    bookings = result.scalars().all()
+    bookings = [booking for booking in result.scalars().all() if booking is not None]
     
     logger.info(f"✅ Получено записей: {len(bookings)}")
     if len(bookings) > 0:
@@ -618,6 +620,8 @@ async def get_bookings(
             booking_dict["client_car_model"] = None
         if booking.service:
             booking_dict["service_name"] = booking.service.name
+        elif booking.service_id is None and booking.comment:
+            booking_dict["service_name"] = "Другое"
         if booking.master:
             booking_dict["master_name"] = booking.master.full_name
         if booking.post:
@@ -720,6 +724,8 @@ async def get_available_slots(
             
             is_available = True
             for booking in booked:
+                if not booking or not booking.service_date or not booking.time or not booking.end_time:
+                    continue
                 if booking.post_id == post_id:
                     booking_start = datetime.combine(booking.service_date, booking.time)
                     booking_end = datetime.combine(booking.service_date, booking.end_time)
@@ -756,6 +762,8 @@ async def get_available_slots(
         bookings_without_post = 0
         
         for booking in booked:
+            if not booking or not booking.service_date or not booking.time or not booking.end_time:
+                continue
             booking_start = datetime.combine(booking.service_date, booking.time)
             booking_end = datetime.combine(booking.service_date, booking.end_time)
             
@@ -882,8 +890,10 @@ async def get_booking(
         # Для салона красоты нет car_brand и car_model
         booking_dict["client_car_brand"] = None
         booking_dict["client_car_model"] = None
-    if booking.service:
-        booking_dict["service_name"] = booking.service.name
+        if booking.service:
+            booking_dict["service_name"] = booking.service.name
+        elif booking.service_id is None and booking.comment:
+            booking_dict["service_name"] = "Другое"
     if booking.master:
         booking_dict["master_name"] = booking.master.full_name
     if booking.post:
@@ -1042,8 +1052,10 @@ async def create_booking(
         # Для салона красоты нет car_brand и car_model
         booking_dict["client_car_brand"] = None
         booking_dict["client_car_model"] = None
-    if booking.service:
-        booking_dict["service_name"] = booking.service.name
+        if booking.service:
+            booking_dict["service_name"] = booking.service.name
+        elif booking.service_id is None and booking.comment:
+            booking_dict["service_name"] = "Другое"
     if booking.master:
         booking_dict["master_name"] = booking.master.full_name
     if booking.post:
@@ -1255,8 +1267,10 @@ async def update_booking(
         # Для салона красоты нет car_brand и car_model
         booking_dict["client_car_brand"] = None
         booking_dict["client_car_model"] = None
-    if booking.service:
-        booking_dict["service_name"] = booking.service.name
+        if booking.service:
+            booking_dict["service_name"] = booking.service.name
+        elif booking.service_id is None and booking.comment:
+            booking_dict["service_name"] = "Другое"
     if booking.master:
         booking_dict["master_name"] = booking.master.full_name
     if booking.post:

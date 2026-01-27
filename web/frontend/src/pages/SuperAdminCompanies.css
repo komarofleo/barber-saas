@@ -14,7 +14,7 @@
 
 /* Spacer для компенсации fixed header */
 .header-spacer {
-  height: 130px; /* Высота header'а */
+  height: 120px; /* Высота header'а */
   width: 100%;
 }
 
@@ -44,7 +44,7 @@
   gap: 16px;
   margin: 0 !important;
   margin-top: 0 !important;
-  padding: 30px 40px;
+  padding: 22px 36px;
   background: linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%);
   position: fixed !important;
   top: 0 !important;

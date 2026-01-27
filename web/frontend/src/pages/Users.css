@@ -190,6 +190,16 @@
   color: white;
 }
 
+.btn-delete {
+  color: #dc3545;
+  border-color: #dc3545;
+}
+
+.btn-delete:hover {
+  background: #dc3545;
+  color: white;
+}
+
 /* Modal styles */
 .modal-overlay {
   position: fixed;
@@ -326,6 +336,22 @@
 
 .btn-secondary:hover {
   background: #e9ecef;
+}
+
+.btn-danger {
+  padding: 10px 20px;
+  background: #dc3545;
+  color: white;
+  border: 1px solid #dc3545;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-danger:hover {
+  background: #c82333;
+  border-color: #c82333;
 }
 
 .form-checkbox {

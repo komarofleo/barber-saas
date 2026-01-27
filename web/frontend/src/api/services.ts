@@ -7,6 +7,7 @@ export interface Service {
   price: number
   duration: number
   is_active: boolean
+  sort_order: number
   created_at: string
 }
 
@@ -63,6 +64,10 @@ export const servicesApi = {
 
   deleteService: async (serviceId: number): Promise<void> => {
     await apiClient.delete(`/api/services/${serviceId}`)
+  },
+
+  reorderServices: async (serviceIds: number[]): Promise<void> => {
+    await apiClient.patch('/api/services/reorder', serviceIds)
   },
 }
 

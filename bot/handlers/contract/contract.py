@@ -13,7 +13,12 @@ from sqlalchemy.exc import IntegrityError
 from app.database import async_session_maker
 from app.models.public_models import ContractRequest
 
-from bot.keyboards.contract import get_contract_main_keyboard, get_skip_keyboard, get_confirm_keyboard
+from bot.handlers.client.company_contract import _get_main_keyboard
+from bot.keyboards.contract import (
+    get_skip_keyboard,
+    get_confirm_keyboard,
+    get_contract_term_keyboard,
+)
 from bot.services.contract_service import (
     parse_amount,
     build_contract_payload,
@@ -49,11 +54,13 @@ def _build_summary_text(data: Dict[str, str]) -> str:
 @router.message(F.text == "/start")
 async def start_contract_bot(message: Message, state: FSMContext) -> None:
     """Старт бота генерации договора."""
+    if os.getenv("CONTRACT_BOT_DISABLE_START", "false").lower() == "true":
+        return
     await state.clear()
     await message.answer(
         "👋 Добро пожаловать!\n\n"
         "Здесь можно сгенерировать договор по шаблону.",
-        reply_markup=get_contract_main_keyboard(),
+        reply_markup=_get_main_keyboard(),
     )
 
 
@@ -113,14 +120,25 @@ async def handle_action_basis(message: Message, state: FSMContext) -> None:
     data["ОСНОВАНИЕ_ДЕЙСТВИЯ"] = message.text.strip()
     await state.update_data(contract_data=data)
     await state.set_state(ContractStates.contract_term)
-    await message.answer("Введите срок действия договора (например, 3 месяца или 31.12.2026):")
+    await message.answer(
+        "Выберите срок действия договора:",
+        reply_markup=get_contract_term_keyboard(),
+    )
 
 
 @router.message(ContractStates.contract_term)
 async def handle_contract_term(message: Message, state: FSMContext) -> None:
     """Сохранить срок действия."""
+    allowed_terms = {"1 мес", "3 мес", "6 мес", "9 мес", "12 мес"}
+    term_value = message.text.strip()
+    if term_value not in allowed_terms:
+        await message.answer(
+            "❌ Можно выбрать только 1, 3, 6, 9 или 12 месяцев.",
+            reply_markup=get_contract_term_keyboard(),
+        )
+        return
     data = _get_contract_data(await state.get_data())
-    data["СРОК_ДЕЙСТВИЯ"] = message.text.strip()
+    data["СРОК_ДЕЙСТВИЯ"] = term_value
     await state.update_data(contract_data=data)
     await state.set_state(ContractStates.price_amount)
     await message.answer("Введите стоимость цифрами (например, 10000.00):")
@@ -163,7 +181,7 @@ async def handle_customer_bank_requisites(message: Message, state: FSMContext) -
     
     await state.update_data(contract_data=data)
     await state.set_state(ContractStates.signer_name)
-    await message.answer("Введите ФИО подписанта:", reply_markup=get_contract_main_keyboard())
+    await message.answer("Введите ФИО подписанта:", reply_markup=_get_main_keyboard())
 
 
 @router.message(ContractStates.signer_name)
@@ -181,7 +199,7 @@ async def cancel_contract(callback: CallbackQuery, state: FSMContext) -> None:
     """Отменить генерацию договора."""
     await state.clear()
     await callback.message.edit_text("❌ Генерация договора отменена.")
-    await callback.message.answer("Выберите действие:", reply_markup=get_contract_main_keyboard())
+    await callback.message.answer("Выберите действие:", reply_markup=_get_main_keyboard())
     await callback.answer()
 
 
@@ -237,7 +255,7 @@ async def confirm_contract(callback: CallbackQuery, state: FSMContext) -> None:
             "Файл отправлен ниже."
         )
         await callback.message.answer_document(FSInputFile(str(file_path)))
-        await callback.message.answer("Готово. Можно сгенерировать новый договор.", reply_markup=get_contract_main_keyboard())
+        await callback.message.answer("Готово. Можно сгенерировать новый договор.", reply_markup=_get_main_keyboard())
         await state.clear()
     except IntegrityError:
         logger.warning("Конфликт номера договора, пробуем снова")

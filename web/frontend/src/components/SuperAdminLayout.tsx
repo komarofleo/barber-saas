@@ -100,7 +100,7 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         {/* Логотип */}
         <div className="sidebar-logo">
           <div className="logo-icon">🚀</div>
-          <div className="logo-text">Barber</div>
+          <div className="logo-text">Booking</div>
         </div>
 
         {/* Навигация */}
@@ -154,7 +154,7 @@ const SuperAdminLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         {/* Footer */}
         <footer className="main-footer">
           <p className="footer-text">
-            © 2026 Barber SaaS. Все права защищены.
+            © 2026 Booking SaaS. Все права защищены.
           </p>
           <p className="footer-links">
             <a href="/docs" className="footer-link">

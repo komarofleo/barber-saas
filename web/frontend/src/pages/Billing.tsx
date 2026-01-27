@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { Plan } from '../api/public'
 import { billingApi, BillingPayment, BillingPeriod } from '../api/billing'
@@ -8,12 +9,15 @@ import './Billing.css'
 
 function Billing() {
   const { subscription, subscriptionLoading, refreshSubscription } = useAuth()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [payments, setPayments] = useState<BillingPayment[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null)
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
   const [paymentLoading, setPaymentLoading] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(null)
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -22,6 +26,32 @@ function Billing() {
     loadPayments()
     loadPlans()
   }, [])
+
+  useEffect(() => {
+    const paymentId = searchParams.get('payment_id')
+    if (!paymentId) {
+      return
+    }
+    const syncPayment = async () => {
+      try {
+        setPaymentNotice('Проверяем статус платежа...')
+        const status = await billingApi.getPaymentStatus(paymentId)
+        if (status.yookassa_payment_status === 'succeeded' || status.status === 'succeeded') {
+          setPaymentNotice('✅ Платеж успешно подтвержден. Подписка обновлена.')
+          await refreshSubscription()
+          await loadPayments()
+        } else {
+          setPaymentNotice('⏳ Платеж обрабатывается. Обновите страницу через минуту.')
+        }
+      } catch (err: any) {
+        setPaymentNotice(null)
+        setPaymentError(err.response?.data?.detail || err.message || 'Ошибка проверки платежа')
+      } finally {
+        navigate('/billing', { replace: true })
+      }
+    }
+    syncPayment()
+  }, [searchParams, navigate, refreshSubscription])
 
   const loadPayments = async () => {
     try {
@@ -183,7 +213,13 @@ function Billing() {
       {/* Текущая подписка */}
       <div className="billing-section">
         <h2>Текущая подписка</h2>
-        {subscription ? (
+      {paymentNotice && (
+        <div className="payment-notice">
+          {paymentNotice}
+        </div>
+      )}
+
+      {subscription ? (
           <div className="subscription-card">
             <div className="subscription-card-header">
               <div>

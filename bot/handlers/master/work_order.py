@@ -1,16 +1,17 @@
 """Обработчики лист-наряда для мастеров"""
 import logging
 from calendar import monthrange
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import Command
 from sqlalchemy import select, and_, text, or_
+from sqlalchemy.orm import selectinload, load_only
 
 from bot.database.connection import get_session, async_session_maker, AsyncSession
 from bot.database.crud import get_user_by_telegram_id
-from shared.database.models import Master, Booking
+from shared.database.models import Master, Booking, Client, User
 from bot.keyboards.master import get_work_order_keyboard, get_booking_actions_keyboard, get_master_main_keyboard
 from bot.utils.calendar import generate_calendar
 
@@ -40,16 +41,61 @@ async def get_master_for_telegram(
     schema_name = f"tenant_{company_id}"
     await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
 
-    user = await get_user_by_telegram_id(session, telegram_id, company_id=company_id)
-
-    conditions = [Master.telegram_id == telegram_id]
-    if user:
-        conditions.append(Master.user_id == user.id)
-
+    # Сначала пытаемся найти мастера по telegram_id
     result = await session.execute(
-        select(Master).where(or_(*conditions))
+        text(
+            """
+            SELECT id, user_id, full_name, phone, telegram_id, specialization, is_universal
+            FROM masters
+            WHERE telegram_id = :telegram_id
+            LIMIT 1
+            """
+        ),
+        {"telegram_id": telegram_id},
     )
-    return result.scalar_one_or_none()
+    row = result.fetchone()
+    
+    if row:
+        master = type('Master', (), {})()
+        master.id = row[0]
+        master.user_id = row[1]
+        master.full_name = row[2]
+        master.phone = row[3]
+        master.telegram_id = row[4]
+        master.specialization = row[5]
+        master.is_universal = row[6] if row[6] is not None else True
+        logger.info(f"✅ Мастер найден по telegram_id: id={master.id}, user_id={master.user_id}")
+        return master
+    
+    # Если не нашли по telegram_id, ищем по user_id
+    user = await get_user_by_telegram_id(session, telegram_id, company_id=company_id)
+    if user:
+        result = await session.execute(
+            text(
+                """
+                SELECT id, user_id, full_name, phone, telegram_id, specialization, is_universal
+                FROM masters
+                WHERE user_id = :user_id
+                LIMIT 1
+                """
+            ),
+            {"user_id": user.id},
+        )
+        row = result.fetchone()
+        if row:
+            master = type('Master', (), {})()
+            master.id = row[0]
+            master.user_id = row[1]
+            master.full_name = row[2]
+            master.phone = row[3]
+            master.telegram_id = row[4]
+            master.specialization = row[5]
+            master.is_universal = row[6] if row[6] is not None else True
+            logger.info(f"✅ Мастер найден по user_id: id={master.id}, user_id={master.user_id}")
+            return master
+    
+    logger.warning(f"⚠️ Мастер не найден для telegram_id={telegram_id}, company_id={company_id}")
+    return None
 
 
 @router.message(Command("master"))
@@ -93,7 +139,8 @@ async def show_work_order_today(message: Message):
             await message.answer("❌ Вы не зарегистрированы как мастер")
             return
 
-        await show_work_order(message, master.id, date.today(), company_id)
+        logger.info(f"Мастер найден: id={master.id}, user_id={master.user_id}, telegram_id={message.from_user.id}, company_id={company_id}")
+        await show_work_order(message, master.id, date.today(), company_id, master.user_id)
 
 
 async def _get_master_work_orders(
@@ -101,10 +148,20 @@ async def _get_master_work_orders(
     company_id: int,
     master_id: int,
     work_date: date,
+    master_user_id: Optional[int] = None,
 ) -> list[dict]:
     """Получить лист-наряд мастера на дату (без ORM-связей)."""
     schema_name = f"tenant_{company_id}"
     await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+    
+    logger.info(f"Поиск записей: schema={schema_name}, master_id={master_id}, master_user_id={master_user_id}, date={work_date}")
+    
+    params = {"master_id": master_id, "work_date": work_date}
+    
+    # Если есть user_id мастера, логируем для отладки
+    if master_user_id:
+        logger.info(f"Мастер имеет user_id={master_user_id}, поиск идет по master_id={master_id}")
+    
     result = await session.execute(
         text(
             """
@@ -116,6 +173,8 @@ async def _get_master_work_orders(
                 b.end_time,
                 b.status,
                 b.comment,
+                b.confirmed_at,
+                b.completed_at,
                 c.full_name AS client_name,
                 c.phone AS client_phone,
                 s.name AS service_name,
@@ -126,13 +185,14 @@ async def _get_master_work_orders(
             LEFT JOIN posts p ON p.id = b.post_id
             WHERE b.master_id = :master_id
               AND b.service_date = :work_date
-              AND b.status IN ('confirmed', 'new')
+              AND b.status IN ('confirmed', 'new', 'completed')
             ORDER BY b.time ASC
             """
         ),
-        {"master_id": master_id, "work_date": work_date},
+        params,
     )
     rows = result.fetchall()
+    logger.info(f"Найдено записей: {len(rows)} для master_id={master_id}, date={work_date}")
     bookings: list[dict] = []
     for row in rows:
         bookings.append(
@@ -144,19 +204,23 @@ async def _get_master_work_orders(
                 "end_time": row[4],
                 "status": row[5],
                 "comment": row[6],
-                "client_name": row[7],
-                "client_phone": row[8],
-                "service_name": row[9],
-                "post_name": row[10],
+                "confirmed_at": row[7],
+                "completed_at": row[8],
+                "client_name": row[9],
+                "client_phone": row[10],
+                "service_name": row[11],
+                "post_name": row[12],
             }
         )
     return bookings
 
 
-async def show_work_order(message: Message, master_id: int, work_date: date, company_id: int):
+async def show_work_order(message: Message, master_id: int, work_date: date, company_id: int, master_user_id: Optional[int] = None):
     """Показать лист-наряд мастера на дату"""
     async for session in get_session():
-        bookings = await _get_master_work_orders(session, company_id, master_id, work_date)
+        bookings = await _get_master_work_orders(session, company_id, master_id, work_date, master_user_id)
+        
+        logger.info(f"Записи для мастера: master_id={master_id}, date={work_date}, company_id={company_id}, найдено={len(bookings)}")
 
         if not bookings:
             await message.answer(
@@ -179,7 +243,19 @@ async def show_work_order(message: Message, master_id: int, work_date: date, com
                 message_text += f"   📞 {booking['client_phone']}\n"
             if booking["post_name"]:
                 message_text += f"   🏢 {booking['post_name']}\n"
-            message_text += f"   📊 Статус: {booking['status']}\n"
+            
+            # Статус с информацией о явке
+            status_text = booking['status']
+            if booking.get("confirmed_at"):
+                confirmed_dt = booking["confirmed_at"]
+                if isinstance(confirmed_dt, datetime):
+                    status_text += f" ✅ Явка: {confirmed_dt.strftime('%H:%M')}"
+            if booking.get("completed_at"):
+                completed_dt = booking["completed_at"]
+                if isinstance(completed_dt, datetime):
+                    status_text += f" 🏁 Завершено: {completed_dt.strftime('%H:%M')}"
+            
+            message_text += f"   📊 Статус: {status_text}\n"
             if booking["comment"]:
                 message_text += f"   💬 {booking['comment']}\n"
             message_text += "\n"
@@ -192,24 +268,34 @@ async def show_work_order(message: Message, master_id: int, work_date: date, com
 
 async def get_master_busy_dates(
     session: AsyncSession,
+    company_id: int,
     master_id: int,
     start_date: date,
     end_date: date,
 ) -> set[date]:
     """Получить даты с записями для мастера в заданном диапазоне."""
+    schema_name = f"tenant_{company_id}"
+    await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
     result = await session.execute(
-        select(Booking.service_date)
-        .where(
-            and_(
-                Booking.master_id == master_id,
-                Booking.service_date >= start_date,
-                Booking.service_date <= end_date,
-                Booking.status.in_(["confirmed", "new"]),
-            )
-        )
-        .distinct()
+        text(
+            """
+            SELECT DISTINCT b.service_date
+            FROM bookings b
+            WHERE b.master_id = :master_id
+              AND b.service_date >= :start_date
+              AND b.service_date <= :end_date
+              AND b.status IN ('confirmed', 'new', 'completed')
+            ORDER BY b.service_date ASC
+            """
+        ),
+        {
+            "master_id": master_id,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
     )
-    return {row[0] for row in result.fetchall() if row[0]}
+    rows = result.fetchall()
+    return {row[0] for row in rows if row[0]}
 
 
 async def build_master_calendar(
@@ -230,7 +316,7 @@ async def build_master_calendar(
     last_day = monthrange(year, month)[1]
     end_date = date(year, month, last_day)
 
-    available_dates = await get_master_busy_dates(session, master_id, start_date, end_date)
+    available_dates = await get_master_busy_dates(session, company_id, master_id, start_date, end_date)
     calendar = generate_calendar(
         year,
         month,
@@ -339,7 +425,7 @@ async def select_master_calendar_date(callback: CallbackQuery):
             await callback.answer("❌ Мастер не найден", show_alert=True)
             return
 
-        await show_work_order(callback.message, master.id, selected_date, company_id)
+        await show_work_order(callback.message, master.id, selected_date, company_id, master.user_id)
         await callback.answer()
 
 
@@ -376,6 +462,8 @@ async def show_booking_for_master(callback: CallbackQuery):
                     b.end_time,
                     b.status,
                     b.comment,
+                    b.confirmed_at,
+                    b.completed_at,
                     c.full_name AS client_name,
                     c.phone AS client_phone,
                     s.name AS service_name,
@@ -396,17 +484,30 @@ async def show_booking_for_master(callback: CallbackQuery):
 
         text = f"📋 Запись #{row[1]}\n\n"
         text += f"⏰ Время: {row[2].strftime('%H:%M')} - {row[3].strftime('%H:%M')}\n"
-        text += f"🛠️ Услуга: {row[8] or 'Не указана'}\n"
-        text += f"👤 Клиент: {row[6] or 'Неизвестно'}\n"
-        if row[7]:
-            text += f"📞 Телефон: {row[7]}\n"
+        text += f"🛠️ Услуга: {row[10] or 'Не указана'}\n"
+        text += f"👤 Клиент: {row[8] or 'Неизвестно'}\n"
         if row[9]:
-            text += f"🏢 Рабочее место: {row[9]}\n"
+            text += f"📞 Телефон: {row[9]}\n"
+        if row[11]:
+            text += f"🏢 Рабочее место: {row[11]}\n"
         text += f"📊 Статус: {row[4]}\n"
+        
+        # Информация о явке
+        if row[6]:  # confirmed_at
+            confirmed_dt = row[6] if isinstance(row[6], datetime) else None
+            if confirmed_dt:
+                text += f"✅ Явка подтверждена: {confirmed_dt.strftime('%d.%m.%Y %H:%M')}\n"
+        
+        # Информация о завершении
+        if row[7]:  # completed_at
+            completed_dt = row[7] if isinstance(row[7], datetime) else None
+            if completed_dt:
+                text += f"🏁 Завершено: {completed_dt.strftime('%d.%m.%Y %H:%M')}\n"
+        
         if row[5]:
             text += f"\n💬 Комментарий: {row[5]}\n"
 
-        # Показываем кнопки действий только для подтвержденных записей
+        # Показываем кнопки действий только для подтвержденных записей (не завершенных)
         if row[4] == "confirmed":
             await callback.message.edit_text(
                 text,
@@ -465,7 +566,7 @@ async def refresh_work_order(callback: CallbackQuery):
             await callback.answer("❌ Мастер не найден", show_alert=True)
             return
 
-        await show_work_order(callback.message, master.id, date.today(), company_id)
+        await show_work_order(callback.message, master.id, date.today(), company_id, master.user_id)
         await callback.answer("🔄 Лист-наряд обновлен")
 
 
@@ -484,63 +585,50 @@ async def back_to_work_order(callback: CallbackQuery):
             await callback.answer("❌ Мастер не найден", show_alert=True)
             return
 
-        schema_name = f"tenant_{company_id}"
-        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
-
-        # Получаем записи на сегодня
-        result = await session.execute(
-            select(Booking)
-            .where(
-                and_(
-                    Booking.master_id == master.id,
-                    Booking.service_date == date.today(),
-                    Booking.status.in_(["confirmed", "new"])
-                )
-            )
-            .order_by(Booking.time.asc())
-            .options(
-                selectinload(Booking.client)
-                .options(load_only(Client.id, Client.full_name, Client.phone, Client.user_id))
-                .selectinload(Client.user)
-                .options(
-                    load_only(
-                        User.id,
-                        User.telegram_id,
-                        User.username,
-                        User.phone,
-                        User.is_admin,
-                        User.is_master,
-                        User.is_blocked,
-                    )
-                ),
-                selectinload(Booking.service),
-                selectinload(Booking.post),
-            )
-        )
-        bookings = list(result.scalars().all())
+        # Используем ту же функцию, что и для обычного лист-наряда
+        work_date = date.today()
+        bookings = await _get_master_work_orders(session, company_id, master.id, work_date)
 
         if not bookings:
             await callback.message.edit_text(
-                f"📋 Лист-наряд на {date.today().strftime('%d.%m.%Y')}\n\n"
-                f"✅ На сегодня записей нет"
+                f"📋 Лист-наряд на {work_date.strftime('%d.%m.%Y')}\n\n"
+                f"✅ На этот день записей нет",
+                reply_markup=get_work_order_keyboard([], work_date)
             )
         else:
-            message_text = f"📋 Лист-наряд на {date.today().strftime('%d.%m.%Y')}\n\n"
+            # Формируем текст лист-наряда
+            message_text = f"📋 Лист-наряд на {work_date.strftime('%d.%m.%Y')}\n\n"
+            
             for i, booking in enumerate(bookings, 1):
-                client = booking.client
-                service = booking.service
-                post = booking.post
+                message_text += (
+                    f"{i}. ⏰ {booking['time'].strftime('%H:%M')} - {booking['end_time'].strftime('%H:%M')}\n"
+                )
+                message_text += f"   🛠️ {booking['service_name'] or 'Не указана'}\n"
+                message_text += f"   👤 {booking['client_name'] or 'Неизвестно'}\n"
+                if booking["client_phone"]:
+                    message_text += f"   📞 {booking['client_phone']}\n"
+                if booking["post_name"]:
+                    message_text += f"   🏢 {booking['post_name']}\n"
                 
-                message_text += f"{i}. ⏰ {booking.time.strftime('%H:%M')} - {booking.end_time.strftime('%H:%M')}\n"
-                message_text += f"   🛠️ {service.name if service else 'Не указана'}\n"
-                message_text += f"   👤 {client.full_name if client else 'Неизвестно'}\n"
-                if post:
-                    message_text += f"   🏢 {post.name}\n"
+                # Статус с информацией о явке
+                status_text = booking['status']
+                if booking.get("confirmed_at"):
+                    confirmed_dt = booking["confirmed_at"]
+                    if isinstance(confirmed_dt, datetime):
+                        status_text += f" ✅ Явка: {confirmed_dt.strftime('%H:%M')}"
+                if booking.get("completed_at"):
+                    completed_dt = booking["completed_at"]
+                    if isinstance(completed_dt, datetime):
+                        status_text += f" 🏁 Завершено: {completed_dt.strftime('%H:%M')}"
+                
+                message_text += f"   📊 Статус: {status_text}\n"
+                if booking["comment"]:
+                    message_text += f"   💬 {booking['comment']}\n"
                 message_text += "\n"
 
             await callback.message.edit_text(
                 message_text,
-                reply_markup=get_work_order_keyboard(bookings, date.today())
+                reply_markup=get_work_order_keyboard(bookings, work_date)
             )
         
         await callback.answer()

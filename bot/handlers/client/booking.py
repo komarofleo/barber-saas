@@ -11,7 +11,7 @@ from sqlalchemy import select, and_
 from bot.database.connection import get_session
 from bot.database.crud import (
     get_services, get_service_by_id, get_client_by_user_id,
-    create_booking, get_user_by_telegram_id, get_available_dates
+    create_booking, get_user_by_telegram_id, get_available_dates, get_setting_value
 )
 from bot.keyboards.client import get_client_main_keyboard, get_services_keyboard, get_cancel_keyboard
 from bot.states.client_states import BookingStates
@@ -91,7 +91,7 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
             # Загружаем запись с клиентом через прямой SQL
             booking_result = await session.execute(
                 text(f"""
-                    SELECT b.id, b.booking_number, b.service_date, b.time, b.client_id, b.service_id
+                    SELECT b.id, b.booking_number, b.service_date, b.time, b.client_id, b.service_id, b.comment
                     FROM "{schema_name}".bookings b
                     WHERE b.id = :booking_id
                 """),
@@ -174,7 +174,8 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
             
             client_name = client_row[2] if client_row[2] else "Неизвестно"  # full_name
             client_phone = client_row[3] if client_row[3] else "Не указан"  # phone
-            service_name = service_row[1] if service_row else (service.name if service else "Не указана")  # name
+            service_name = service_row[1] if service_row else (service.name if service else "Другое")  # name
+            comment_text = booking_row[6]
             
             logger.info(f"📋 [NOTIFY_ADMIN] Данные записи: booking_number={booking_row[1]}, client_name={client_name}, client_phone={client_phone}, service_name={service_name}")
             
@@ -184,6 +185,8 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
             message_text += f"   📞 {client_phone}\n"
             message_text += f"   📅 {date_str} в {time_str}\n"
             message_text += f"   🛠️ {service_name}\n"
+            if comment_text:
+                message_text += f"   📝 {comment_text}\n"
             
             # Отправляем уведомление всем администраторам
             logger.info(f"📤 [NOTIFY_ADMIN] === ОТПРАВКА УВЕДОМЛЕНИЙ АДМИНИСТРАТОРАМ ===")
@@ -309,6 +312,15 @@ async def start_booking(message: Message, state: FSMContext):
 async def process_service(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора услуги - показываем календарь"""
     logger.info(f"Получен callback: {callback.data}")
+    if callback.data == "service_other":
+        await state.update_data(service_id=None, service_name="Другое")
+        await state.set_state(BookingStates.adding_comment)
+        await callback.message.edit_text(
+            "✍️ Опишите вашу услугу произвольным текстом.\n"
+            "Этот текст увидит администратор."
+        )
+        await callback.answer()
+        return
     try:
         service_id = int(callback.data.split("_")[1])
         logger.info(f"Выбрана услуга с ID: {service_id}")
@@ -349,7 +361,7 @@ async def process_service(callback: CallbackQuery, state: FSMContext):
             # Получаем доступные даты (на 2 месяца вперед)
             today = date.today()
             end_date = today + timedelta(days=60)
-            available_dates = await get_available_dates(session, today, end_date)
+            available_dates = await get_available_dates(session, today, end_date, company_id=company_id)
 
             # Показываем календарь текущего месяца
             calendar = generate_calendar(
@@ -371,6 +383,61 @@ async def process_service(callback: CallbackQuery, state: FSMContext):
             await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
+@router.message(BookingStates.adding_comment)
+async def handle_custom_service_comment(message: Message, state: FSMContext):
+    """Принять комментарий для услуги 'Другое'."""
+    comment_text = (message.text or "").strip()
+    if not comment_text:
+        await message.answer("❌ Текст не должен быть пустым. Попробуйте ещё раз.")
+        return
+
+    # Получаем company_id из токена бота
+    company_id = None
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = message.bot.token
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token}
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+    except Exception as e:
+        logger.error(f"Ошибка получения company_id из токена: {e}")
+
+    async for session in get_session():
+        slot_duration = await get_setting_value(session, "slot_duration", company_id=company_id)
+        try:
+            service_duration = int(slot_duration) if slot_duration else 60
+        except Exception:
+            service_duration = 60
+
+        await state.update_data(
+            service_comment=comment_text,
+            service_duration=service_duration,
+        )
+        await state.set_state(BookingStates.choosing_date)
+
+        today = date.today()
+        end_date = today + timedelta(days=60)
+        available_dates = await get_available_dates(session, today, end_date, company_id=company_id)
+        calendar = generate_calendar(
+            today.year,
+            today.month,
+            available_dates,
+            today
+        )
+        await message.answer(
+            "🛠️ Услуга: Другое\n"
+            f"⏱️ Длительность: {service_duration} мин\n\n"
+            "📅 Выберите дату:",
+            reply_markup=calendar
+        )
+
+
 @router.callback_query(F.data.startswith("time_"), BookingStates.choosing_time)
 async def process_time_selection(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора времени - переходим к вводу марки автомобиля"""
@@ -390,9 +457,10 @@ async def process_time_selection(callback: CallbackQuery, state: FSMContext):
     # Получаем данные из состояния
     data = await state.get_data()
     service_id = data.get("service_id")
+    service_name = data.get("service_name")
     booking_date = data.get("booking_date")
 
-    if not service_id or not booking_date:
+    if not booking_date or (service_id is None and not service_name):
         await callback.answer("❌ Ошибка данных", show_alert=True)
         return
 
@@ -410,11 +478,12 @@ async def finalize_booking(callback, state: FSMContext):
     # Получаем данные из состояния
     data = await state.get_data()
     service_id = data.get("service_id")
+    service_name = data.get("service_name")
     service_duration = data.get("service_duration", 60)
     booking_date = data.get("booking_date")
     booking_time = data.get("booking_time")
 
-    if not service_id or not booking_date or not booking_time:
+    if booking_date is None or booking_time is None or (service_id is None and not service_name):
         if hasattr(callback, 'answer'):
             await callback.answer("❌ Ошибка данных", show_alert=True)
         return
@@ -452,11 +521,13 @@ async def finalize_booking(callback, state: FSMContext):
     
     async for session in get_session():
         try:
-            service = await get_service_by_id(session, service_id, company_id=company_id)
-            if not service:
-                if hasattr(callback, 'answer'):
-                    await callback.answer("❌ Услуга не найдена", show_alert=True)
-                return
+            service = None
+            if service_id is not None:
+                service = await get_service_by_id(session, service_id, company_id=company_id)
+                if not service:
+                    if hasattr(callback, 'answer'):
+                        await callback.answer("❌ Услуга не найдена", show_alert=True)
+                    return
 
             # Вычисляем время окончания
             end_time = (datetime.combine(date.min, booking_time) + timedelta(minutes=service_duration)).time()
@@ -473,9 +544,8 @@ async def finalize_booking(callback, state: FSMContext):
                     await callback.answer("❌ Клиент не найден. Пройдите регистрацию через /start", show_alert=True)
                 return
 
-            # Убрано поле марки автомобиля - comment всегда None
-            comment = None
-            logger.info(f"Создание заявки без марки автомобиля")
+            comment = data.get("service_comment")
+            logger.info("Создание заявки с комментарием клиента")
 
             # Создаем запись
             booking = await create_booking(
@@ -484,13 +554,15 @@ async def finalize_booking(callback, state: FSMContext):
                 service_id=service_id,
                 booking_date=booking_date,
                 booking_time=booking_time,
-                duration=service.duration,
+                duration=service_duration,
                 end_time=end_time,
                 comment=comment,
                 created_by=user.id,
                 company_id=company_id,
             )
-            logger.info(f"Заявка создана: ID={booking.id}, booking_number={booking.booking_number}, comment={comment}")
+            logger.info(
+                f"Заявка создана: ID={booking.id}, booking_number={booking.booking_number}, comment={comment}"
+            )
 
             # Отправляем уведомление администраторам о новой записи
             try:
@@ -502,15 +574,19 @@ async def finalize_booking(callback, state: FSMContext):
                 # Если не удалось - просто логируем ошибку
 
             # Отправляем подтверждение пользователю
+            service_title = service.name if service else (service_name or "Другое")
+            price_text = f"{service.price}₽" if service else "По согласованию"
             confirmation_text = (
                 f"✅ Запись создана!\n\n"
                 f"📅 Дата: {booking.service_date.strftime('%d.%m.%Y')}\n"
                 f"⏰ Время: {booking.time.strftime('%H:%M')}\n"
-                f"🛠️ Услуга: {service.name}\n"
-                f"💰 Цена: {service.price}₽\n\n"
+                f"🛠️ Услуга: {service_title}\n"
+                f"💰 Цена: {price_text}\n\n"
                 f"Номер записи: {booking.booking_number}\n\n"
                 f"Ожидайте подтверждения администратора."
             )
+            if comment:
+                confirmation_text += f"\n\n📝 Комментарий: {comment}"
             
             if hasattr(callback, 'message') and hasattr(callback.message, 'edit_text'):
                 await callback.message.edit_text(confirmation_text)

@@ -26,6 +26,7 @@ def get_services_keyboard(services) -> InlineKeyboardMarkup:
                 callback_data=f"service_{service.id}"
             )
         ])
+    buttons.append([InlineKeyboardButton(text="❓ Другое", callback_data="service_other")])
     buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

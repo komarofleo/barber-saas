@@ -10,6 +10,7 @@
 """
 
 import asyncio
+import importlib
 import logging
 import signal
 from typing import Dict, Optional
@@ -32,17 +33,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Регистрируем роутеры
-from bot.handlers.client.start import router as start_router
-from bot.handlers.client.booking import router as booking_router
-from bot.handlers.client.calendar import router as calendar_router
-from bot.handlers.client.my_bookings import router as my_bookings_router
-from bot.handlers.client.profile import router as profile_router
-from bot.handlers.admin.menu import router as admin_menu_router
-from bot.handlers.admin.bookings import router as admin_bookings_router
-from bot.handlers.admin.bookings_edit import router as admin_bookings_edit_router
-from bot.handlers.master.work_order import router as master_router
-
 # Импортируем middleware
 from bot.middleware.subscription import SubscriptionMiddleware
 from aiogram import F
@@ -58,8 +48,20 @@ def get_dispatcher_by_token(token: str) -> Optional[Dispatcher]:
     """Получить диспетчер по токену бота"""
     return _dispatchers_by_token.get(token)
 
+
+def load_router(module_path: str):
+    """
+    Загрузить новый экземпляр router из модуля.
+    
+    Важно для мульти-бот системы: один router нельзя подключать к разным Dispatcher.
+    """
+    module = importlib.import_module(module_path)
+    module = importlib.reload(module)
+    return getattr(module, "router")
+
 # Глобальный словарь для хранения активных ботов
 active_bots: Dict[int, Dict[str, any]] = {}
+periodic_task: Optional[asyncio.Task] = None
 
 # Флаг graceful shutdown
 shutdown_event = asyncio.Event()
@@ -181,31 +183,34 @@ async def run_bot_for_company(company: Company) -> Optional[Dict[str, any]]:
         
         logger.info(f"SubscriptionMiddleware применен для компании '{company.name}'")
         
-        # Регистрируем роутеры
+        # Регистрируем роутеры (создаем отдельные экземпляры для каждого бота)
         # ВАЖНО: Admin роутеры регистрируем ПЕРВЫМИ, чтобы они имели приоритет
         # bookings_edit_router должен быть ПЕРЕД bookings_router, чтобы обработчики с состояниями имели приоритет
-        dp.include_router(admin_menu_router)
-        dp.include_router(admin_bookings_edit_router)  # Более специфичные обработчики с состояниями - первыми
-        dp.include_router(admin_bookings_router)
-        dp.include_router(master_router)
+        dp.include_router(load_router("bot.handlers.admin.menu"))
+        dp.include_router(load_router("bot.handlers.admin.bookings_edit"))  # Более специфичные обработчики с состояниями - первыми
+        dp.include_router(load_router("bot.handlers.admin.bookings"))
+        dp.include_router(load_router("bot.handlers.master.work_order"))
         # Client роутеры регистрируем после admin, чтобы не перехватывали админские кнопки
-        dp.include_router(start_router)
-        dp.include_router(booking_router)
-        dp.include_router(calendar_router)
-        dp.include_router(my_bookings_router)
-        dp.include_router(profile_router)
+        dp.include_router(load_router("bot.handlers.client.start"))
+        dp.include_router(load_router("bot.handlers.client.booking"))
+        dp.include_router(load_router("bot.handlers.client.calendar"))
+        dp.include_router(load_router("bot.handlers.client.my_bookings"))
+        dp.include_router(load_router("bot.handlers.client.profile"))
 
         # Фоллбек и явный логгер убираем, чтобы не перехватывать валидные callback'и.
         
         # Убеждаемся, что диспетчер сохранен перед запуском polling
         logger.info(f"🔍 Проверка перед polling: диспетчеров в словаре={len(_dispatchers_by_token)}, bot._dispatcher установлен={hasattr(bot, '_dispatcher')}")
         
-        # Запускаем polling с обработкой ошибок
-        try:
-            await dp.start_polling(bot, skip_updates=True)
-            logger.info(f"Бот для компании '{company.name}' остановлен")
-        except Exception as e:
-            logger.error(f"Ошибка в боте компании '{company.name}': {e}", exc_info=True)
+        # Запускаем polling в отдельной задаче
+        async def polling_task():
+            try:
+                await dp.start_polling(bot, skip_updates=True)
+                logger.info(f"Бот для компании '{company.name}' остановлен")
+            except Exception as e:
+                logger.error(f"Ошибка в боте компании '{company.name}': {e}", exc_info=True)
+        
+        task = asyncio.create_task(polling_task(), name=f"bot_polling_{company.id}")
         
         # Возвращаем информацию о боте
         return {
@@ -213,6 +218,7 @@ async def run_bot_for_company(company: Company) -> Optional[Dict[str, any]]:
             'company_name': company.name,
             'bot': bot,
             'dispatcher': dp,
+            'task': task,
         }
         
     except Exception as e:
@@ -229,15 +235,13 @@ async def stop_bot_for_company(bot_info: Dict[str, any]) -> None:
     """
     try:
         bot = bot_info['bot']
-        dispatcher = bot_info['dispatcher']
+        task = bot_info.get('task')
         
         logger.info(f"Остановка бота для компании '{bot_info['company_name']}'")
         
-        # Отменяем все текущие задачи
-        for task in asyncio.all_tasks():
+        if task and not task.done():
             task.cancel()
         
-        # Закрываем сессию бота
         await bot.session.close()
         
         logger.info(f"Бот для компании '{bot_info['company_name']}' остановлен")
@@ -281,6 +285,13 @@ async def check_and_update_companies() -> None:
             and company.telegram_bot_token
         }
         
+        # Логируем текущее состояние
+        logger.info(
+            "Проверка компаний: активные боты=%s, требуемые компании=%s",
+            sorted(active_company_ids),
+            sorted(required_company_ids),
+        )
+
         # Боты для остановки (компании деактивированы или без подписки)
         bots_to_stop = active_company_ids - required_company_ids
         
@@ -300,8 +311,11 @@ async def check_and_update_companies() -> None:
             if company:
                 bot_info = await run_bot_for_company(company)
                 if bot_info:
-                    active_bots[bot_id] = company.id
+                    active_bots[bot_id] = bot_info
                     logger.info(f"Бот компании {bot_id} запущен (новая или реактивированная компания)")
+        
+        if not bots_to_start and not bots_to_stop:
+            logger.info("Изменений нет, все боты актуальны")
         
     except Exception as e:
         logger.error(f"Ошибка при проверке компаний: {e}", exc_info=True)
@@ -324,25 +338,19 @@ async def start_all_bots():
             logger.warning("Нет активных компаний для запуска ботов")
             return
         
-        # Запускаем ботов для каждой компании в параллельных задачах
-        tasks = []
         for company in companies:
-            task = asyncio.create_task(run_bot_for_company(company))
-            tasks.append((company.id, task))
-        
-        # Ждем запуска всех ботов
-        for company_id, task in tasks:
             try:
-                bot_info = await task
+                bot_info = await run_bot_for_company(company)
                 if bot_info:
-                    active_bots[company_id] = bot_info
+                    active_bots[company.id] = bot_info
             except Exception as e:
-                logger.error(f"Ошибка запуска бота для компании {company_id}: {e}")
+                logger.error(f"Ошибка запуска бота для компании {company.id}: {e}")
         
         logger.info(f"Запущено {len(active_bots)} ботов для {len(companies)} компаний")
         
         # Создаем задачу для периодической проверки компаний
-        asyncio.create_task(periodic_company_check())
+        global periodic_task
+        periodic_task = asyncio.create_task(periodic_company_check(), name="periodic_company_check")
         
     except Exception as e:
         logger.error(f"Критическая ошибка при запуске ботов: {e}", exc_info=True)
@@ -361,7 +369,7 @@ async def periodic_company_check():
     
     while not shutdown_event.is_set():
         try:
-            await asyncio.sleep(300)  # 5 минут
+            await asyncio.sleep(60)  # 1 минута
             await check_and_update_companies()
         except asyncio.CancelledError:
             logger.info("Периодическая проверка компаний остановлена")

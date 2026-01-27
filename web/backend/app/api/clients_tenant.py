@@ -27,6 +27,30 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
 
+async def _ensure_users_columns(tenant_session: AsyncSession) -> None:
+    """
+    Убедиться, что в tenant.users есть колонки, нужные для связки клиента с пользователем.
+    """
+    try:
+        await tenant_session.execute(
+            text(
+                """
+                ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS full_name VARCHAR(255),
+                    ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'client',
+                    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true,
+                    ADD COLUMN IF NOT EXISTS password_hash TEXT,
+                    ADD COLUMN IF NOT EXISTS telegram_id BIGINT,
+                    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                """
+            )
+        )
+        await tenant_session.commit()
+    except Exception as exc:
+        logger.error(f"❌ Ошибка при проверке колонок users: {exc}", exc_info=True)
+
+
 @router.get("", response_model=ClientListResponse)
 async def get_clients(
     request: Request,
@@ -184,7 +208,6 @@ async def get_clients(
             "user_telegram_id": None,
             "user_first_name": None,
             "user_last_name": None,
-            "user_is_admin": None,
         }
         
         # Преобразуем total_amount в float, если это Decimal
@@ -205,7 +228,6 @@ async def get_clients(
                     name_parts = user_full_name.split(maxsplit=1) if user_full_name else ['', '']
                     client_dict["user_first_name"] = name_parts[0] if len(name_parts) > 0 else None
                     client_dict["user_last_name"] = name_parts[1] if len(name_parts) > 1 else None
-                    client_dict["user_is_admin"] = (user_row[2] == "admin") if user_row[2] else False
             except Exception as e:
                 logger.warning(f"Ошибка при получении данных пользователя для клиента {client.id}: {e}")
         
@@ -267,7 +289,6 @@ async def get_client(
     user_telegram_id = None
     user_first_name = None
     user_last_name = None
-    user_is_admin = None
     if user_id:
         user_result = await tenant_session.execute(
             text("SELECT telegram_id, full_name, role FROM users WHERE id = :user_id"),
@@ -280,7 +301,6 @@ async def get_client(
             parts = user_full_name.split(maxsplit=1) if user_full_name else ["", ""]
             user_first_name = parts[0] if len(parts) > 0 else None
             user_last_name = parts[1] if len(parts) > 1 else None
-            user_is_admin = (user_row[2] == "admin") if user_row[2] else False
 
     company_id = getattr(request.state, "company_id", None)
     logger.info(f"🔍 Запрос клиента: client_id={client_id}, company_id={company_id}")
@@ -301,7 +321,6 @@ async def get_client(
             "user_telegram_id": user_telegram_id,
             "user_first_name": user_first_name,
             "user_last_name": user_last_name,
-            "user_is_admin": user_is_admin,
         }
     )
 
@@ -329,15 +348,60 @@ async def create_client(
     logger.info(f"Создание клиента: company_id={company_id}, user_id={current_user.id}, client_name={client_data.full_name}")
 
     now = datetime.utcnow()
+
+    # Гарантируем наличие нужных колонок в users
+    await _ensure_users_columns(tenant_session)
+
+    # Ищем существующего пользователя по ФИО и телефону
+    existing_user_result = await tenant_session.execute(
+        text(
+            """
+            SELECT id
+            FROM users
+            WHERE full_name = :full_name AND phone = :phone
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        ),
+        {"full_name": client_data.full_name, "phone": client_data.phone},
+    )
+    existing_user_id = existing_user_result.scalar()
+
+    if existing_user_id:
+        user_id = int(existing_user_id)
+    else:
+        user_insert_result = await tenant_session.execute(
+            text(
+                """
+                INSERT INTO users (full_name, phone, role, is_active, created_at, updated_at)
+                VALUES (:full_name, :phone, 'client', true, :created_at, :updated_at)
+                RETURNING id
+                """
+            ),
+            {
+                "full_name": client_data.full_name,
+                "phone": client_data.phone,
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+        user_id = int(user_insert_result.scalar_one())
+
     insert_result = await tenant_session.execute(
         text(
             """
-            INSERT INTO clients (full_name, phone, created_at, updated_at)
-            VALUES (:full_name, :phone, :created_at, :updated_at)
+            INSERT INTO clients (user_id, full_name, phone, created_at, updated_at)
+            VALUES (:user_id, :full_name, :phone, :created_at, :updated_at)
             RETURNING id
             """
         ),
-        {"full_name": client_data.full_name, "phone": client_data.phone, "created_at": now, "updated_at": now},
+        {
+            "user_id": user_id,
+            "full_name": client_data.full_name,
+            "phone": client_data.phone,
+            "created_at": now,
+            "updated_at": now,
+        },
     )
     await tenant_session.commit()
     new_id = insert_result.scalar_one()
@@ -347,7 +411,7 @@ async def create_client(
     return ClientResponse.model_validate(
         {
             "id": new_id,
-            "user_id": 0,
+            "user_id": user_id,
             "full_name": client_data.full_name,
             "phone": client_data.phone,
             "car_brand": None,
@@ -360,7 +424,6 @@ async def create_client(
             "user_telegram_id": None,
             "user_first_name": None,
             "user_last_name": None,
-            "user_is_admin": None,
         }
     )
 
@@ -444,7 +507,6 @@ async def update_client(
             "user_telegram_id": None,
             "user_first_name": None,
             "user_last_name": None,
-            "user_is_admin": None,
         }
     )
 

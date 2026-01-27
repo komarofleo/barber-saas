@@ -95,6 +95,32 @@ function Users() {
     }
   }
 
+  const handleDelete = async (user: User) => {
+    const confirmed = window.confirm(
+      `Удалить пользователя ${user.first_name || user.last_name || `ID ${user.id}`}?\n` +
+      'Пользователь будет деактивирован, его данные сохранятся.'
+    )
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      await usersApi.deleteUser(user.id)
+      if (viewingUser?.id === user.id) {
+        setShowViewModal(false)
+        setViewingUser(null)
+      }
+      if (editingUser?.id === user.id) {
+        setShowEditModal(false)
+        setEditingUser(null)
+      }
+      loadUsers()
+    } catch (error: any) {
+      console.error('Ошибка удаления пользователя:', error)
+      alert(error.response?.data?.detail || 'Не удалось удалить пользователя')
+    }
+  }
+
   const totalPages = Math.ceil(total / pageSize)
 
   return (
@@ -137,6 +163,7 @@ function Users() {
             setShowViewModal(false)
             handleEdit(viewingUser)
           }}
+          onDelete={() => handleDelete(viewingUser)}
         />
       )}
 
@@ -208,6 +235,9 @@ function Users() {
                         </button>
                         <button className="btn-sm btn-edit" onClick={() => handleEdit(user)}>
                           ✏️ Редактировать
+                        </button>
+                        <button className="btn-sm btn-delete" onClick={() => handleDelete(user)}>
+                          🗑️ Удалить (архив)
                         </button>
                       </div>
                     </td>
@@ -383,9 +413,10 @@ interface ViewUserModalProps {
   user: User
   onClose: () => void
   onEdit: () => void
+  onDelete: () => void
 }
 
-function ViewUserModal({ user, onClose, onEdit }: ViewUserModalProps) {
+function ViewUserModal({ user, onClose, onEdit, onDelete }: ViewUserModalProps) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
@@ -484,6 +515,9 @@ function ViewUserModal({ user, onClose, onEdit }: ViewUserModalProps) {
         <div className="modal-footer">
           <button type="button" className="btn-secondary" onClick={onClose}>
             Закрыть
+          </button>
+          <button type="button" className="btn-danger" onClick={onDelete}>
+            🗑️ Удалить (архив)
           </button>
           <button type="button" className="btn-primary" onClick={onEdit}>
             ✏️ Редактировать
