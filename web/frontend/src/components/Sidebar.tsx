@@ -4,7 +4,12 @@ import { useState, useEffect } from 'react'
 import { settingsApi } from '../api/settings'
 import './Sidebar.css'
 
-function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean
+  onClose?: () => void
+}
+
+function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const location = useLocation()
   const { user, logout, subscription, subscriptionLoading, canCreateBookings } = useAuth()
   const [showSubscriptionWarning, setShowSubscriptionWarning] = useState(false)
@@ -104,7 +109,7 @@ function Sidebar() {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`tenant-sidebar ${isOpen ? 'tenant-sidebar--open' : 'tenant-sidebar--closed'}`}>
       <nav className="sidebar-nav">
         <ul className="nav-list">
           <li className="nav-section">
@@ -187,6 +192,7 @@ function Sidebar() {
                       className={`nav-link ${
                         location.pathname === item.path ? 'active' : ''
                       }`}
+                      onClick={onClose}
                     >
                       <span className="nav-icon">{item.icon}</span>
                       <span className="nav-label">{item.label}</span>
@@ -206,6 +212,7 @@ function Sidebar() {
               className={`nav-link ${
                 location.pathname === '/billing' ? 'active' : ''
               }`}
+              onClick={onClose}
             >
               <span className="nav-icon">💳</span>
               <span className="nav-label">Биллинг</span>
@@ -215,7 +222,13 @@ function Sidebar() {
           <li className="nav-divider"></li>
 
           <li className="nav-section">
-            <button onClick={logout} className="logout-btn">
+            <button
+              onClick={() => {
+                logout()
+                onClose?.()
+              }}
+              className="logout-btn"
+            >
               <span>🚪</span>
               <span>Выход</span>
             </button>

@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, useState } from 'react'
 import Sidebar from './Sidebar'
 import './Layout.css'
 
@@ -8,15 +8,24 @@ interface LayoutProps {
 }
 
 function Layout({ children, showMenuToggle = true }: LayoutProps) {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+  const handleToggle = () => {
+    setIsSidebarOpen((prev) => !prev)
+  }
+
+  const handleClose = () => {
+    setIsSidebarOpen(false)
+  }
+
   return (
     <div className="layout">
-      <Sidebar />
+      <Sidebar isOpen={isSidebarOpen} onClose={handleClose} />
+      {isSidebarOpen && <div className="sidebar-backdrop" onClick={handleClose}></div>}
       <main className="main-content">
-        {showMenuToggle && (
-          <button className="menu-toggle" onClick={() => alert('Меню')}>
-            <span className="menu-icon">☰</span>
-          </button>
-        )}
+        <button className="menu-toggle" onClick={handleToggle}>
+          <span className="menu-icon">☰</span>
+        </button>
         {children}
       </main>
     </div>

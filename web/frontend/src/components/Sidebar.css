@@ -1,4 +1,4 @@
-.sidebar {
+.tenant-sidebar {
   width: 250px;
   height: 100vh;
   background: linear-gradient(180deg, #1e3a5f 0%, #2d4a6b 100%);
@@ -9,6 +9,7 @@
   box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
   z-index: 1000;
   overflow-y: auto;
+  transition: transform 0.25s ease;
 }
 
 .sidebar-header {
@@ -188,6 +189,20 @@
 
 .nav-list li {
   margin: 0;
+}
+
+@media (max-width: 768px) {
+  .tenant-sidebar {
+    transform: translateX(-100%);
+  }
+
+  .tenant-sidebar.tenant-sidebar--open {
+    transform: translateX(0);
+  }
+
+  .tenant-sidebar.tenant-sidebar--closed {
+    transform: translateX(-100%);
+  }
 }
 
 .nav-link {
