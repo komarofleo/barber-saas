@@ -179,6 +179,10 @@ async def check_slot_availability(
     bookings_without_post = 0  # Счетчик записей без поста (автоматический статус)
     
     for booking in existing_bookings:
+        if not booking:
+            # Защита от неожиданных None в результатах запроса
+            logger.warning("⚠️ Найдена пустая запись бронирования при проверке слотов")
+            continue
         if booking.post_id:
             occupied_posts.add(booking.post_id)
         else:

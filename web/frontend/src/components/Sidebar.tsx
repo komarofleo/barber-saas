@@ -1,12 +1,14 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useState, useEffect } from 'react'
+import { settingsApi } from '../api/settings'
 import './Sidebar.css'
 
 function Sidebar() {
   const location = useLocation()
   const { user, logout, subscription, subscriptionLoading, canCreateBookings } = useAuth()
   const [showSubscriptionWarning, setShowSubscriptionWarning] = useState(false)
+  const [companyName, setCompanyName] = useState('')
 
   // Показываем предупреждение при истекшей подписке
   useEffect(() => {
@@ -16,6 +18,22 @@ function Sidebar() {
       setShowSubscriptionWarning(false)
     }
   }, [subscription, subscriptionLoading, canCreateBookings])
+
+  useEffect(() => {
+    const loadCompanyName = async () => {
+      try {
+        const setting = await settingsApi.getSetting('company_name')
+        const value = setting?.value?.trim()
+        if (value) {
+          setCompanyName(value)
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки названия компании:', error)
+      }
+    }
+
+    loadCompanyName()
+  }, [])
 
   const menuItems = [
     { path: '/', icon: '📊', label: 'Дашборд' },
@@ -87,56 +105,60 @@ function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <h2>Booking</h2>
-        <div className="user-info">
-          <span className="user-name">{user?.first_name || user?.telegram_id}</span>
-          {user?.is_admin && <span className="user-role">Администратор</span>}
-        </div>
-      </div>
-
-      {/* Информация о подписке */}
-      {subscription && !subscriptionLoading && (
-        <div className="subscription-info">
-          <div className="subscription-header">
-            <span className="subscription-label">Подписка</span>
-            <span
-              className="subscription-status"
-              style={{ color: getSubscriptionStatusColor(subscription.status) }}
-            >
-              {getSubscriptionStatusText(subscription.status)}
-            </span>
-          </div>
-          <div className="subscription-details">
-            <div className="subscription-plan">{subscription.plan_name}</div>
-            <div className="subscription-date">{getSubscriptionDateInfo()}</div>
-          </div>
-          {subscription.status === 'expired' && (
-            <a href="/register" className="subscription-renew-link">
-              Продлить подписку
-            </a>
-          )}
-        </div>
-      )}
-
-      {/* Предупреждение об истекшей подписке */}
-      {showSubscriptionWarning && (
-        <div className="subscription-warning">
-          <div className="warning-content">
-            <span className="warning-icon">⚠️</span>
-            <div className="warning-text">
-              <strong>Подписка неактивна</strong>
-              <p>Невозможно создавать записи</p>
-            </div>
-          </div>
-          <a href="/register" className="warning-action">
-            Продлить подписку
-          </a>
-        </div>
-      )}
-
       <nav className="sidebar-nav">
         <ul className="nav-list">
+          <li className="nav-section">
+            <div className="sidebar-header">
+              <h2>Booking</h2>
+              <div className="user-info">
+                <span className="user-name">
+                  {companyName || user?.first_name || user?.telegram_id}
+                </span>
+                {user?.is_admin && <span className="user-role">Администратор</span>}
+              </div>
+            </div>
+
+            {/* Информация о подписке */}
+            {subscription && !subscriptionLoading && (
+              <div className="subscription-info">
+                <div className="subscription-header">
+                  <span className="subscription-label">Подписка</span>
+                  <div className="subscription-summary">
+                    <span
+                      className="subscription-status"
+                      style={{ color: getSubscriptionStatusColor(subscription.status) }}
+                    >
+                      {getSubscriptionStatusText(subscription.status)}
+                    </span>
+                    <div className="subscription-plan">{subscription.plan_name}</div>
+                    <div className="subscription-date">{getSubscriptionDateInfo()}</div>
+                  </div>
+                </div>
+                {subscription.status === 'expired' && (
+                  <a href="/register" className="subscription-renew-link">
+                    Продлить подписку
+                  </a>
+                )}
+              </div>
+            )}
+
+            {/* Предупреждение об истекшей подписке */}
+            {showSubscriptionWarning && (
+              <div className="subscription-warning">
+                <div className="warning-content">
+                  <span className="warning-icon">⚠️</span>
+                  <div className="warning-text">
+                    <strong>Подписка неактивна</strong>
+                    <p>Невозможно создавать записи</p>
+                  </div>
+                </div>
+                <a href="/register" className="warning-action">
+                  Продлить подписку
+                </a>
+              </div>
+            )}
+          </li>
+
           {menuItems
             .filter((item) => {
               if (item.adminOnly && !user?.is_admin) return false
@@ -189,15 +211,17 @@ function Sidebar() {
               <span className="nav-label">Биллинг</span>
             </Link>
           </li>
+
+          <li className="nav-divider"></li>
+
+          <li className="nav-section">
+            <button onClick={logout} className="logout-btn">
+              <span>🚪</span>
+              <span>Выход</span>
+            </button>
+          </li>
         </ul>
       </nav>
-
-      <div className="sidebar-footer">
-        <button onClick={logout} className="logout-btn">
-          <span>🚪</span>
-          <span>Выход</span>
-        </button>
-      </div>
     </aside>
   )
 }

@@ -109,13 +109,21 @@ function Dashboard() {
         setTodayBookingsTotal(todayBookingsList.length)
         console.log('📊 Загружено записей на сегодня:', todayBookingsList.length)
         
+        // Загружаем заявки, созданные сегодня (по request_date)
+        const todayRequestsData = await bookingsApi.getBookings(1, 1000, {
+          start_date: today,
+          end_date: today,
+          use_request_date: true
+        })
+        const todayRequestsList = todayRequestsData.items || []
+        
         // Подсчитываем статистику на сегодня
         const stats = {
-          total: todayBookingsList.length,
-          new: todayBookingsList.filter(b => b.status === 'new').length,
-          confirmed: todayBookingsList.filter(b => b.status === 'confirmed').length,
-          completed: todayBookingsList.filter(b => b.status === 'completed').length,
-          revenue: todayBookingsList
+          total: todayRequestsList.length,
+          new: todayRequestsList.filter(b => b.status === 'new').length,
+          confirmed: todayRequestsList.filter(b => b.status === 'confirmed').length,
+          completed: todayRequestsList.filter(b => b.status === 'completed').length,
+          revenue: todayRequestsList
             .filter(b => b.status === 'completed' && b.is_paid && b.amount)
             .reduce((sum, b) => sum + (b.amount || 0), 0)
         }

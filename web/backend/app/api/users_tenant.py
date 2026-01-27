@@ -516,7 +516,7 @@ async def delete_user(
     tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Удалить пользователя"""
+    """Удалить пользователя (мягкое удаление)"""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут удалять пользователей")
 
@@ -535,11 +535,11 @@ async def delete_user(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     await tenant_session.execute(
-        text(f'DELETE FROM "{schema_name}".users WHERE id = :id'),
-        {"id": user_id},
+        text(f'UPDATE "{schema_name}".users SET is_active = false, updated_at = :updated_at WHERE id = :id'),
+        {"id": user_id, "updated_at": datetime.utcnow()},
     )
     await tenant_session.commit()
 
-    logger.info(f"🗑️ Удален пользователь: user_id={user_id}, company_id={company_id}")
-    return {"detail": "Пользователь удален"}
+    logger.info(f"🗑️ Деактивирован пользователь: user_id={user_id}, company_id={company_id}")
+    return {"detail": "Пользователь деактивирован"}
 

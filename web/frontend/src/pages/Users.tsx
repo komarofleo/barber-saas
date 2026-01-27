@@ -97,7 +97,8 @@ function Users() {
 
   const handleDelete = async (user: User) => {
     const confirmed = window.confirm(
-      `Удалить пользователя ${user.first_name || user.last_name || `ID ${user.id}`}?`
+      `Удалить пользователя ${user.first_name || user.last_name || `ID ${user.id}`}?\n` +
+      'Пользователь будет деактивирован, его данные сохранятся.'
     )
     if (!confirmed) {
       return
@@ -236,7 +237,7 @@ function Users() {
                           ✏️ Редактировать
                         </button>
                         <button className="btn-sm btn-delete" onClick={() => handleDelete(user)}>
-                          🗑️ Удалить
+                          🗑️ Удалить (архив)
                         </button>
                       </div>
                     </td>
@@ -516,7 +517,7 @@ function ViewUserModal({ user, onClose, onEdit, onDelete }: ViewUserModalProps) 
             Закрыть
           </button>
           <button type="button" className="btn-danger" onClick={onDelete}>
-            🗑️ Удалить
+            🗑️ Удалить (архив)
           </button>
           <button type="button" className="btn-primary" onClick={onEdit}>
             ✏️ Редактировать
