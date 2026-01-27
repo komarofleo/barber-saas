@@ -247,6 +247,96 @@ async def cancel_registration(message: Message, state: FSMContext):
     )
 
 
+@router.message(F.text)
+async def recover_registration_flow(message: Message, state: FSMContext) -> None:
+    """
+    Восстановить регистрацию, если состояние FSM потеряно.
+
+    Сценарий: пользователь ввел ФИО, но состояние сбросилось, и бот снова просит /start.
+    """
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+
+    text_value = (message.text or "").strip()
+    if not text_value:
+        return
+
+    # Игнорируем команды и кнопки меню
+    ignored_texts = {
+        "📅 Записаться",
+        "📋 Мои записи",
+        "👤 Профиль",
+        "ℹ️ О нас",
+        "📋 Новые заказы",
+        "🚪 Выход из админ-панели",
+        "➕ Создать заказ",
+        "❌ Отмена",
+    }
+    if text_value.startswith("/") or text_value in ignored_texts:
+        return
+
+    # Получаем company_id из токена бота
+    company_id = None
+    try:
+        from sqlalchemy import text
+        from bot.database.connection import async_session_maker
+        bot_token = message.bot.token
+        async with async_session_maker() as temp_session:
+            result = await temp_session.execute(
+                text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
+                {"token": bot_token},
+            )
+            row = result.fetchone()
+            if row:
+                company_id = row[0]
+    except Exception:
+        company_id = None
+
+    if not company_id:
+        await message.answer("❌ Ошибка конфигурации бота. Обратитесь к администратору.")
+        return
+
+    async for session in get_session():
+        from sqlalchemy import text
+        schema_name = f"tenant_{company_id}"
+        await session.execute(text(f'SET LOCAL search_path TO "{schema_name}", public'))
+
+        # Если клиент уже зарегистрирован, ничего не делаем
+        from bot.database.crud import get_client_by_user_id
+        from bot.database.crud import get_user_by_telegram_id
+
+        user = await get_user_by_telegram_id(session, message.from_user.id, company_id=company_id)
+        if not user:
+            user = await get_or_create_user(
+                session,
+                telegram_id=message.from_user.id,
+                username=message.from_user.username,
+                first_name=message.from_user.first_name,
+                last_name=message.from_user.last_name,
+                company_id=company_id,
+            )
+
+        if user:
+            client = await get_client_by_user_id(session, user.id, company_id=company_id)
+            if client:
+                return
+
+    # Считаем введенный текст ФИО и продолжаем регистрацию
+    if len(text_value) < 3:
+        await state.set_state(RegistrationStates.waiting_full_name)
+        await message.answer("❌ ФИО должно содержать минимум 3 символа. Попробуйте еще раз:")
+        return
+
+    await state.update_data(full_name=text_value)
+    await state.set_state(RegistrationStates.waiting_phone)
+    await message.answer(
+        "📞 Введите ваш номер телефона:\n"
+        "(Например: +79991234567 или 89991234567)",
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
 
 
 

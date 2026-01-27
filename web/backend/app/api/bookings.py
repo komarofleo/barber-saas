@@ -618,6 +618,8 @@ async def get_bookings(
             booking_dict["client_car_model"] = None
         if booking.service:
             booking_dict["service_name"] = booking.service.name
+        elif booking.service_id is None and booking.comment:
+            booking_dict["service_name"] = "Другое"
         if booking.master:
             booking_dict["master_name"] = booking.master.full_name
         if booking.post:
@@ -886,8 +888,10 @@ async def get_booking(
         # Для салона красоты нет car_brand и car_model
         booking_dict["client_car_brand"] = None
         booking_dict["client_car_model"] = None
-    if booking.service:
-        booking_dict["service_name"] = booking.service.name
+        if booking.service:
+            booking_dict["service_name"] = booking.service.name
+        elif booking.service_id is None and booking.comment:
+            booking_dict["service_name"] = "Другое"
     if booking.master:
         booking_dict["master_name"] = booking.master.full_name
     if booking.post:
@@ -1046,8 +1050,10 @@ async def create_booking(
         # Для салона красоты нет car_brand и car_model
         booking_dict["client_car_brand"] = None
         booking_dict["client_car_model"] = None
-    if booking.service:
-        booking_dict["service_name"] = booking.service.name
+        if booking.service:
+            booking_dict["service_name"] = booking.service.name
+        elif booking.service_id is None and booking.comment:
+            booking_dict["service_name"] = "Другое"
     if booking.master:
         booking_dict["master_name"] = booking.master.full_name
     if booking.post:
@@ -1259,8 +1265,10 @@ async def update_booking(
         # Для салона красоты нет car_brand и car_model
         booking_dict["client_car_brand"] = None
         booking_dict["client_car_model"] = None
-    if booking.service:
-        booking_dict["service_name"] = booking.service.name
+        if booking.service:
+            booking_dict["service_name"] = booking.service.name
+        elif booking.service_id is None and booking.comment:
+            booking_dict["service_name"] = "Другое"
     if booking.master:
         booking_dict["master_name"] = booking.master.full_name
     if booking.post:
