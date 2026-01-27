@@ -23,6 +23,31 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
+async def _ensure_users_columns(tenant_session: AsyncSession) -> None:
+    """
+    Убедиться, что в tenant.users есть все необходимые колонки.
+    
+    Это защита от старых tenant схем, где отсутствуют поля, используемые в API.
+    """
+    try:
+        await tenant_session.execute(
+            text(
+                """
+                ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS full_name VARCHAR(255),
+                    ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'client',
+                    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true,
+                    ADD COLUMN IF NOT EXISTS password_hash TEXT,
+                    ADD COLUMN IF NOT EXISTS telegram_id BIGINT,
+                    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                """
+            )
+        )
+        await tenant_session.commit()
+    except Exception as exc:
+        logger.error(f"❌ Ошибка при проверке колонок users: {exc}", exc_info=True)
+
 
 @router.get("", response_model=UserListResponse)
 async def get_users(
@@ -36,6 +61,8 @@ async def get_users(
     """Получить список пользователей"""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать пользователей")
+
+    await _ensure_users_columns(tenant_session)
 
     # Используем text() для прямых SQL запросов, так как структура таблицы отличается от модели
     # В tenant схеме users имеет: id, username, email, password_hash, full_name, phone, role, telegram_id, is_active, created_at, updated_at
@@ -142,6 +169,8 @@ async def get_user(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать пользователей")
 
+    await _ensure_users_columns(tenant_session)
+
     result = await tenant_session.execute(
         text(
             """
@@ -202,6 +231,8 @@ async def create_user(
     """Создать нового пользователя"""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать пользователей")
+
+    await _ensure_users_columns(tenant_session)
 
     # В tenant таблице users есть NOT NULL password_hash — генерируем служебное значение.
     password_hash = sha256(f"tenant_user:{user_data.telegram_id}:{datetime.utcnow().isoformat()}".encode("utf-8")).hexdigest()
@@ -289,6 +320,8 @@ async def update_user(
     """Обновить информацию о пользователе"""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять пользователей")
+
+    await _ensure_users_columns(tenant_session)
 
     company_id = getattr(request.state, "company_id", None)
     if not company_id:
@@ -404,6 +437,8 @@ async def toggle_admin(
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут менять права пользователей")
+
+    await _ensure_users_columns(tenant_session)
 
     company_id = getattr(request.state, "company_id", None)
     if not company_id:
