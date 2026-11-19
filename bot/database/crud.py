@@ -828,8 +828,9 @@ async def create_booking(
     comment: Optional[str] = None,
     created_by: Optional[int] = None,
     company_id: Optional[int] = None,
+    amount: Optional[float] = None,
 ) -> Booking:
-    """Создать запись"""
+    """Создать запись (для любой tenant-схемы SaaS)."""
     import logging
     logger = logging.getLogger(__name__)
     from datetime import datetime
@@ -889,19 +890,26 @@ async def create_booking(
         f"📝 [CRUD] Вставка записи: booking_number={booking_number}, service_date={booking_date}, "
         f"time={booking_time}, duration={duration}, end_time={end_time}, request_date={today}"
     )
+    # Явно задаём NOT NULL поля без DEFAULT в tenant-схемах (is_paid, discount_amount),
+    # чтобы запись из бота работала у любой SaaS-компании без ручных правок БД.
     result = await session.execute(
-        text(f"""
+        text(
+            f"""
             INSERT INTO "{schema_name}".bookings (
                 booking_number, client_id, service_id, service_date, time, duration, end_time,
-                request_date, comment, created_by, status, created_at, updated_at
+                request_date, comment, created_by, status, amount, is_paid, discount_amount,
+                created_at, updated_at
             )
             VALUES (
                 :booking_number, :client_id, :service_id, :service_date, :time, :duration, :end_time,
-                :request_date, :comment, :created_by, :status, :created_at, :updated_at
+                :request_date, :comment, :created_by, :status, :amount, :is_paid, :discount_amount,
+                :created_at, :updated_at
             )
             RETURNING id, booking_number, client_id, service_id, service_date, time, duration, end_time,
-                      request_date, comment, created_by, status, created_at, updated_at
-        """),
+                      request_date, comment, created_by, status, amount, is_paid, discount_amount,
+                      created_at, updated_at
+            """
+        ),
         {
             "booking_number": booking_number,
             "client_id": client_id,
@@ -910,23 +918,25 @@ async def create_booking(
             "time": booking_time,
             "duration": duration,
             "end_time": end_time,
-            "request_date": today,  # Дата заявки
+            "request_date": today,
             "comment": comment,
             "created_by": created_by,
             "status": "new",
+            "amount": amount,
+            "is_paid": False,
+            "discount_amount": 0,
             "created_at": now,
             "updated_at": now,
-        }
+        },
     )
     row = result.fetchone()
     if row:
-        # Создаем объект Booking с правильными полями
-        booking = type('Booking', (), {})()
+        booking = type("Booking", (), {})()
         booking.id = row[0]
         booking.booking_number = row[1]
         booking.client_id = row[2]
         booking.service_id = row[3]
-        booking.service_date = row[4]  # Было booking.date, переименовано
+        booking.service_date = row[4]
         booking.time = row[5]
         booking.duration = row[6]
         booking.end_time = row[7]
@@ -934,26 +944,25 @@ async def create_booking(
         booking.comment = row[9]
         booking.created_by = row[10]
         booking.status = row[11]
-        booking.created_at = row[12]
-        booking.updated_at = row[13]
-        # Добавляем совместимые атрибуты для старого кода
+        booking.amount = row[12]
+        booking.is_paid = bool(row[13]) if row[13] is not None else False
+        booking.discount_amount = row[14] if row[14] is not None else 0
+        booking.created_at = row[15]
+        booking.updated_at = row[16]
         booking.master_id = None
         booking.post_id = None
-        booking.amount = None
-        booking.is_paid = False
         booking.payment_method = None
         booking.promocode_id = None
-        booking.discount_amount = 0
         booking.admin_comment = None
         booking.confirmed_at = None
         booking.completed_at = None
         booking.cancelled_at = None
         await session.commit()
-        logger.info(f"✅ Запись создана: id={booking.id}, booking_number={booking.booking_number}")
+        logger.info(f"Запись создана: id={booking.id}, booking_number={booking.booking_number}")
         return booking
-    else:
-        await session.rollback()
-        raise Exception("Не удалось создать запись")
+
+    await session.rollback()
+    raise Exception("Не удалось создать запись")
 
 
 async def get_bookings_by_client(session: AsyncSession, client_id: int) -> List[Booking]:

@@ -191,11 +191,14 @@ class Booking(Base):
     status = Column(String(50), default="new", nullable=False, index=True)  # new, confirmed, completed, cancelled, no_show, priority
 
     amount = Column(Numeric(10, 2), nullable=True)
-    is_paid = Column(Boolean, default=False, nullable=False)
+    # server_default — защита для всех tenant-схем SaaS, если INSERT забыли поле
+    is_paid = Column(Boolean, default=False, server_default="false", nullable=False)
     payment_method = Column(String(50), nullable=True)  # cash, card, qr
 
     promocode_id = Column(Integer, ForeignKey("promocodes.id", ondelete="SET NULL"), nullable=True)
-    discount_amount = Column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
+    discount_amount = Column(
+        Numeric(10, 2), default=Decimal("0.00"), server_default="0", nullable=False
+    )
 
     comment = Column(Text, nullable=True)
     admin_comment = Column(Text, nullable=True)

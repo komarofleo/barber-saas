@@ -955,7 +955,7 @@ async def create_booking(
     booking_datetime = datetime.combine(booking_data.service_date, booking_time)
     end_time = (booking_datetime + timedelta(minutes=duration_minutes)).time()
     
-    # Создаем запись
+    # Создаём запись: явно задаём NOT NULL поля (на случай отсутствия DEFAULT в tenant-схеме)
     booking = Booking(
         booking_number=booking_number,
         client_id=booking_data.client_id,
@@ -969,8 +969,10 @@ async def create_booking(
         end_time=end_time,
         status=booking_data.status or "new",
         amount=booking_data.amount,
+        is_paid=False,
+        discount_amount=0,
         comment=booking_data.comment,
-        created_by=current_user.id
+        created_by=current_user.id,
     )
     
     tenant_session.add(booking)
