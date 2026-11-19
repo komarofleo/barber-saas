@@ -622,13 +622,21 @@ async def send_single_reminder_day_before(company_id: int, booking_id: int):
                     WHERE b.id = :booking_id
                       AND b.status = 'confirmed'
                       AND u.telegram_id IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM "{schema_name}".notifications n
+                          WHERE n.booking_id = b.id
+                            AND n.notification_type = 'reminder_day'
+                            AND n.is_sent = true
+                      )
                 """),
                 {"booking_id": booking_id}
             )
             booking_row = booking_result.fetchone()
             
             if not booking_row:
-                print(f"❌ Запись {booking_id} не найдена, уже отменена или напоминание уже отправлено")
+                print(
+                    f"❌ Запись {booking_id}: не найдена, отменена или reminder_day уже отправлен"
+                )
                 return
             
             booking_id_db = booking_row[0]
@@ -729,13 +737,21 @@ async def send_single_reminder_3_hours_before(company_id: int, booking_id: int):
                     WHERE b.id = :booking_id
                       AND b.status = 'confirmed'
                       AND u.telegram_id IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM "{schema_name}".notifications n
+                          WHERE n.booking_id = b.id
+                            AND n.notification_type = 'reminder_hour'
+                            AND n.is_sent = true
+                      )
                 """),
                 {"booking_id": booking_id}
             )
             booking_row = booking_result.fetchone()
             
             if not booking_row:
-                print(f"❌ Запись {booking_id} не найдена, уже отменена или напоминание уже отправлено")
+                print(
+                    f"❌ Запись {booking_id}: не найдена, отменена или reminder_hour уже отправлен"
+                )
                 return
             
             booking_id_db = booking_row[0]
