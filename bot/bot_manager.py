@@ -80,7 +80,7 @@ class BotManager:
             companies = result.scalars().all()
         
         logger.info(f"Загружено {len(companies)} активных компаний")
-            return companies
+        return companies
     
     async def create_bot_instance(self, company: Company) -> BotInstance:
         """

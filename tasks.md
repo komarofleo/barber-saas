@@ -231,6 +231,10 @@
 - [x] Frontend: http://89.127.216.83/  API health: http://89.127.216.83/api/health
 - [x] Боты: `@barber76_1_bot` (tenant) + `@barber76_bot` (super-admin) polling
 - [x] Аудит 2026-11-19: сверка md ↔ сервер; починены `/api/users`, `/api/export/*`, count услуг
+- [x] Smoke ботов 2026-11-19: `scripts/bot_smoke_test.py` → OK=40 FAIL=0
+  - Починены: CRUD users (`first_name`/`is_admin`), `create_client` (`total_visits`/`total_amount`),
+    импорты edit_booking_* (клавиатуры в `keyboards/admin.py`), парсинг callback_data
+  - Примечание: исходящие сообщения `@barber76_1_bot` → tg `329621295` требуют `/start` у бота компании
 - [ ] Contract-bot (договоры) — не в prod compose
 - [ ] Celery worker/beat (напоминания подписок / лист-наряды) — нет в prod
 - [ ] Перенести данные со старого `45.144.67.47` (нет SSH-доступа)
