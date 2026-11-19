@@ -83,6 +83,30 @@ services:
       - barber_network
     restart: unless-stopped
 
+
+  bot:
+    build:
+      context: .
+      dockerfile: ./bot/Dockerfile
+    container_name: barber_bot
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      PYTHONPATH: /app/web/backend:/app
+      TZ: Europe/Moscow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    networks:
+      - barber_network
+    restart: unless-stopped
+
   super-admin-bot:
     build:
       context: .
