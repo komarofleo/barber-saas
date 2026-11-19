@@ -4,6 +4,7 @@
 - [x] Glass UI через 21st inspiration (minimal metrics / glass cards)
 - [x] Обновлены Layout / Sidebar / Dashboard
 - [x] Super-admin login: компактный glass-card на 100dvh (умещается на ноутбуке)
+- [x] Демо-данные на ноябрь 2026 для тестовой орг. (`scripts/seed_november_demo_tenant1.sql`, залито в tenant_1)
 - [ ] При желании распространить glass-токены на остальные страницы
 
 # 📌 Финальный TODO проекта Barber SaaS (Multi‑Tenant)
