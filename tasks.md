@@ -235,6 +235,7 @@
   - Починены: CRUD users (`first_name`/`is_admin`), `create_client` (`total_visits`/`total_amount`),
     импорты edit_booking_* (клавиатуры в `keyboards/admin.py`), парсинг callback_data
   - Примечание: исходящие сообщения `@barber76_1_bot` → tg `329621295` требуют `/start` у бота компании
+- [x] Дашборд: переключение «Сегодня/Завтра» для свободных слотов (карточки + слоты, локальные даты)
 - [ ] Contract-bot (договоры) — не в prod compose
 - [ ] Celery worker/beat (напоминания подписок / лист-наряды) — нет в prod
 - [ ] Перенести данные со старого `45.144.67.47` (нет SSH-доступа)

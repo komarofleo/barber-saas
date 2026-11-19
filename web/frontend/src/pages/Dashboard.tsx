@@ -10,6 +10,20 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { formatMoney } from '../utils/money'
 import './Dashboard.css'
 
+/** Локальная дата YYYY-MM-DD (без UTC-сдвига toISOString). */
+const formatLocalDate = (value: Date = new Date()): string => {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const addLocalDays = (value: Date, days: number): Date => {
+  const next = new Date(value.getFullYear(), value.getMonth(), value.getDate())
+  next.setDate(next.getDate() + days)
+  return next
+}
+
 function Dashboard() {
   const navigate = useNavigate()
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -94,7 +108,7 @@ function Dashboard() {
   const loadTodayData = async () => {
     try {
       setLoadingMasters(true)
-      const today = new Date().toISOString().split('T')[0]
+      const today = formatLocalDate()
       
       // Загружаем записи на сегодня
       try {
@@ -135,12 +149,12 @@ function Dashboard() {
       // Загружаем мастеров с их нарядами на сегодня
       try {
         const mastersData = await mastersApi.getMasters(1, 100)
-        const today = new Date().toISOString().split('T')[0]
+        const todayForMasters = formatLocalDate()
         
         const mastersWithBookings = await Promise.all(
           mastersData.items.map(async (master) => {
             try {
-              const schedule = await mastersApi.getMasterSchedule(master.id, today)
+              const schedule = await mastersApi.getMasterSchedule(master.id, todayForMasters)
               const bookings = schedule.bookings || []
               
               // Находим ближайшую запись
@@ -198,9 +212,7 @@ function Dashboard() {
       }
       
       // Загружаем записи на завтра (отдельный try-catch, чтобы не влиять на данные на сегодня)
-      const tomorrow = new Date()
-      tomorrow.setDate(tomorrow.getDate() + 1)
-      const tomorrowStr = tomorrow.toISOString().split('T')[0]
+      const tomorrowStr = formatLocalDate(addLocalDays(new Date(), 1))
       
       try {
         const tomorrowData = await bookingsApi.getBookings(1, 1000, {
@@ -238,85 +250,39 @@ function Dashboard() {
   const loadAvailableSlots = async () => {
     try {
       setLoadingSlots(true)
-      // Используем локальное время для правильного определения сегодня/завтра
-      const now = new Date()
-      // Получаем дату в локальном времени, а не UTC
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-      
-      const tomorrow = new Date(today)
-      tomorrow.setDate(tomorrow.getDate() + 1)
-      const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
-      
-      console.log('🔄 Загрузка слотов для:', { todayStr, tomorrowStr, timestamp: new Date().toISOString() })
-      
-      // Добавляем timestamp к запросам, чтобы избежать кэширования
-      const timestamp = Date.now()
+      const todayStr = formatLocalDate()
+      const tomorrowStr = formatLocalDate(addLocalDays(new Date(), 1))
+
       const [todaySlotsResult, tomorrowSlotsResult] = await Promise.all([
-        bookingsApi.getAvailableSlots(todayStr, undefined, undefined, undefined).catch(err => {
-          console.error('❌ Ошибка загрузки слотов на сегодня:', err)
-          console.error('Response:', err.response?.data)
-          console.error('Response detail:', JSON.stringify(err.response?.data))
-          console.error('Status:', err.response?.status)
-          console.error('URL:', err.config?.url)
-          return []
+        bookingsApi.getAvailableSlots(todayStr).catch((err) => {
+          console.error('Ошибка загрузки слотов на сегодня:', err)
+          return [] as string[]
         }),
-        bookingsApi.getAvailableSlots(tomorrowStr, undefined, undefined, undefined).catch(err => {
-          console.error('❌ Ошибка загрузки слотов на завтра:', err)
-          console.error('Response:', err.response?.data)
-          console.error('Response detail:', JSON.stringify(err.response?.data))
-          console.error('Status:', err.response?.status)
-          console.error('URL:', err.config?.url)
-          return []
-        })
+        bookingsApi.getAvailableSlots(tomorrowStr).catch((err) => {
+          console.error('Ошибка загрузки слотов на завтра:', err)
+          return [] as string[]
+        }),
       ])
-      
-      console.log('✅ Полученные слоты:', { 
-        today: todaySlotsResult, 
-        todayCount: todaySlotsResult?.length || 0,
-        tomorrow: tomorrowSlotsResult,
-        tomorrowCount: tomorrowSlotsResult?.length || 0,
-        timestamp: new Date().toISOString()
-      })
-      console.log('ℹ️ ВАЖНО: Количество слотов (временных интервалов) не зависит от количества рабочих мест!')
-      console.log('ℹ️ Слоты - это просто время: 9:00, 9:30, 10:00 и т.д.')
-      console.log('ℹ️ Количество рабочих мест влияет на то, сколько ЗАПИСЕЙ можно принять на одно время')
-      
-      // Фильтруем прошедшие слоты для сегодня
-      // Создаем текущее время заново для точного сравнения
+
+      // Для сегодня скрываем уже прошедшие слоты (по локальному времени)
       const currentTime = new Date()
-      const currentDateStr = currentTime.toISOString().split('T')[0]
-      
-      const todayFiltered = (todaySlotsResult || []).filter(slot => {
-        // Если это не сегодня, показываем все слоты
+      const currentDateStr = formatLocalDate(currentTime)
+      const currentMinutesTotal = currentTime.getHours() * 60 + currentTime.getMinutes()
+
+      const todayFiltered = (todaySlotsResult || []).filter((slot) => {
         if (currentDateStr !== todayStr) {
           return true
         }
-        
-        // Для сегодня фильтруем прошедшие слоты
         const [hours, minutes] = slot.split(':').map(Number)
-        const currentHours = currentTime.getHours()
-        const currentMinutes = currentTime.getMinutes()
-        
-        // Сравниваем время: если часы больше или (часы равны и минуты больше/равны), то слот в будущем
-        if (hours > currentHours) {
-          return true
-        }
-        if (hours === currentHours && minutes > currentMinutes) {
-          return true
-        }
-        
-        // Слот в прошлом
-        return false
+        return hours * 60 + minutes > currentMinutesTotal
       })
-      
+
       setAvailableSlots({
-        today: todayFiltered, // Показываем все доступные слоты, не ограничиваем
-        tomorrow: (tomorrowSlotsResult || [])
+        today: todayFiltered,
+        tomorrow: tomorrowSlotsResult || [],
       })
     } catch (error: any) {
       console.error('Ошибка загрузки свободных слотов:', error)
-      console.error('Детали ошибки:', error.response?.data)
       setAvailableSlots({ today: [], tomorrow: [] })
     } finally {
       setLoadingSlots(false)
@@ -390,39 +356,51 @@ function Dashboard() {
   }
 
   // Расчет доступных записей с учетом занятых рабочих мест по слотам
-  const todayDate = new Date().toISOString().split('T')[0]
-  const tomorrowDate = new Date()
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1)
-  const tomorrowDateStr = tomorrowDate.toISOString().split('T')[0]
-  
+  const todayDate = formatLocalDate()
+  const tomorrowDateStr = formatLocalDate(addLocalDays(new Date(), 1))
+
   // Рассчитываем доступные записи только если есть слоты и рабочие места
-  const todayAvailableBookings = (availableSlots.today.length > 0 && activePostsCount > 0)
-    ? calculateAvailableBookings(
-        availableSlots.today,
-        todayBookingsList,
-        activePostsCount,
-        todayDate
-      )
-    : 0
-  
-  const tomorrowAvailableBookings = (availableSlots.tomorrow.length > 0 && activePostsCount > 0)
-    ? calculateAvailableBookings(
-        availableSlots.tomorrow,
-        tomorrowBookingsList,
-        activePostsCount,
-        tomorrowDateStr
-      )
-    : 0
-  
+  const todayAvailableBookings =
+    availableSlots.today.length > 0 && activePostsCount > 0
+      ? calculateAvailableBookings(
+          availableSlots.today,
+          todayBookingsList,
+          activePostsCount,
+          todayDate
+        )
+      : 0
+
+  const tomorrowAvailableBookings =
+    availableSlots.tomorrow.length > 0 && activePostsCount > 0
+      ? calculateAvailableBookings(
+          availableSlots.tomorrow,
+          tomorrowBookingsList,
+          activePostsCount,
+          tomorrowDateStr
+        )
+      : 0
+
   // Для отображения используем общее количество записей, если расчетное количество = 0
   // но есть записи (это означает, что все слоты заняты или нет свободных слотов)
-  const displayTodayAvailable = todayAvailableBookings > 0 
-    ? todayAvailableBookings 
-    : (todayBookingsTotal > 0 ? todayBookingsTotal : 0)
-  
-  const displayTomorrowAvailable = tomorrowAvailableBookings > 0
-    ? tomorrowAvailableBookings
-    : (tomorrowBookingsTotal > 0 ? tomorrowBookingsTotal : 0)
+  const displayTodayAvailable =
+    todayAvailableBookings > 0 ? todayAvailableBookings : todayBookingsTotal > 0 ? todayBookingsTotal : 0
+
+  const displayTomorrowAvailable =
+    tomorrowAvailableBookings > 0
+      ? tomorrowAvailableBookings
+      : tomorrowBookingsTotal > 0
+        ? tomorrowBookingsTotal
+        : 0
+
+  const selectedSlots = slotsDate === 'today' ? availableSlots.today : availableSlots.tomorrow
+  const selectedDateStr = slotsDate === 'today' ? todayDate : tomorrowDateStr
+  const selectedAvailableValue =
+    slotsDate === 'today' ? displayTodayAvailable : displayTomorrowAvailable
+  const selectedAvailableBookings =
+    slotsDate === 'today' ? todayAvailableBookings : tomorrowAvailableBookings
+  const selectedBookingsTotal = slotsDate === 'today' ? todayBookingsTotal : tomorrowBookingsTotal
+  const selectedBookingsCount = slotsDate === 'today' ? todayBookingsCount : tomorrowBookingsCount
+  const selectedDayLabel = slotsDate === 'today' ? 'сегодня' : 'завтра'
 
   const totalBookings = bookings.length
   const newBookings = bookings.filter(b => b.status === 'new').length
@@ -552,24 +530,30 @@ function Dashboard() {
       <div className="dashboard-section">
         <div className="section-header">
           <h2>Свободные слоты и доступные записи</h2>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <button 
+          <div className="slots-toolbar">
+            <button
+              type="button"
               className="btn-sm"
               onClick={loadAvailableSlots}
               disabled={loadingSlots}
               title="Обновить слоты"
-              style={{ padding: '6px 12px', fontSize: '12px' }}
             >
-              {loadingSlots ? '⏳' : '🔄'}
+              {loadingSlots ? 'Обновление…' : 'Обновить'}
             </button>
-            <div className="date-toggle">
-              <button 
+            <div className="date-toggle" role="tablist" aria-label="Выбор дня">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={slotsDate === 'today'}
                 className={`toggle-btn ${slotsDate === 'today' ? 'active' : ''}`}
                 onClick={() => setSlotsDate('today')}
               >
                 Сегодня
               </button>
-              <button 
+              <button
+                type="button"
+                role="tab"
+                aria-selected={slotsDate === 'tomorrow'}
                 className={`toggle-btn ${slotsDate === 'tomorrow' ? 'active' : ''}`}
                 onClick={() => setSlotsDate('tomorrow')}
               >
@@ -578,69 +562,93 @@ function Dashboard() {
             </div>
           </div>
         </div>
-        
+
         {loadingSlots ? (
           <div className="loading">Загрузка слотов...</div>
         ) : (
           <>
             <div className="availability-grid">
-              <div className="availability-card today">
-                <div className="availability-label">📊 Сегодня</div>
+              <button
+                type="button"
+                className={`availability-card today ${slotsDate === 'today' ? 'is-selected' : ''}`}
+                onClick={() => setSlotsDate('today')}
+              >
+                <div className="availability-label">Сегодня · {todayDate}</div>
                 <div className="availability-value">{displayTodayAvailable}</div>
                 <div className="availability-hint">
                   {todayAvailableBookings > 0 ? 'доступных записей' : 'всего записей'}
                 </div>
                 <div className="availability-meta">
-                  • Всего записей: <strong>{todayBookingsTotal}</strong><br/>
-                  • Доступных (new/confirmed): {todayBookingsCount}<br/>
-                  • Слотов: {availableSlots.today.length}<br/>
+                  • Всего записей: <strong>{todayBookingsTotal}</strong>
+                  <br />
+                  • Активных (new/confirmed): {todayBookingsCount}
+                  <br />
+                  • Свободных слотов: {availableSlots.today.length}
+                  <br />
                   • Рабочих мест: {activePostsCount}
                 </div>
-              </div>
-              
-              <div className="availability-card tomorrow">
-                <div className="availability-label">📊 Завтра</div>
+              </button>
+
+              <button
+                type="button"
+                className={`availability-card tomorrow ${slotsDate === 'tomorrow' ? 'is-selected' : ''}`}
+                onClick={() => setSlotsDate('tomorrow')}
+              >
+                <div className="availability-label">Завтра · {tomorrowDateStr}</div>
                 <div className="availability-value">{displayTomorrowAvailable}</div>
                 <div className="availability-hint">
                   {tomorrowAvailableBookings > 0 ? 'доступных записей' : 'всего записей'}
                 </div>
                 <div className="availability-meta">
-                  • Всего записей: <strong>{tomorrowBookingsTotal}</strong><br/>
-                  • Доступных (new/confirmed): {tomorrowBookingsCount}<br/>
-                  • Слотов: {availableSlots.tomorrow.length}<br/>
+                  • Всего записей: <strong>{tomorrowBookingsTotal}</strong>
+                  <br />
+                  • Активных (new/confirmed): {tomorrowBookingsCount}
+                  <br />
+                  • Свободных слотов: {availableSlots.tomorrow.length}
+                  <br />
                   • Рабочих мест: {activePostsCount}
                 </div>
-              </div>
+              </button>
             </div>
-            
-            <div className="slots-grid">
-              {(slotsDate === 'today' ? availableSlots.today : availableSlots.tomorrow).map((slot) => {
-                const selectedDate = slotsDate === 'today' 
-                  ? new Date().toISOString().split('T')[0]
-                  : new Date(Date.now() + 86400000).toISOString().split('T')[0]
-                
-                return (
-                  <div 
-                    key={slot} 
-                    className="slot-chip"
-                    onClick={() => handleSlotClick(selectedDate, slot)}
-                    title="Нажмите для создания записи"
-                  >
-                    {slot}
-                  </div>
-                )
-              })}
+
+            <div className="slots-day-heading">
+              Слоты на {selectedDayLabel}
+              <span className="slots-day-date">{selectedDateStr}</span>
+              <span className="slots-day-meta">
+                {selectedAvailableValue}{' '}
+                {selectedAvailableBookings > 0 ? 'доступных записей' : 'записей'} ·{' '}
+                {selectedBookingsTotal} всего · {selectedBookingsCount} активных
+              </span>
             </div>
-            
-            {(slotsDate === 'today' ? availableSlots.today : availableSlots.tomorrow).length === 0 && (
+
+            <div className="slots-grid" key={slotsDate}>
+              {selectedSlots.map((slot) => (
+                <button
+                  type="button"
+                  key={`${slotsDate}-${slot}`}
+                  className="slot-chip"
+                  onClick={() => handleSlotClick(selectedDateStr, slot)}
+                  title={`Создать запись на ${selectedDateStr} ${slot}`}
+                >
+                  {slot}
+                </button>
+              ))}
+            </div>
+
+            {selectedSlots.length === 0 && (
               <div className="empty-state">
-                <p>Нет свободных слотов на {slotsDate === 'today' ? 'сегодня' : 'завтра'}</p>
+                <p>Нет свободных слотов на {selectedDayLabel}</p>
               </div>
             )}
-            
-            {(slotsDate === 'today' ? availableSlots.today : availableSlots.tomorrow).length > 0 && (
+
+            {selectedSlots.length > 0 && (
               <div className="slots-info">
-                Всего свободно: {(slotsDate === 'today' ? availableSlots.today : availableSlots.tomorrow).length} {((slotsDate === 'today' ? availableSlots.today : availableSlots.tomorrow).length === 1 ? 'слот' : (slotsDate === 'today' ? availableSlots.today : availableSlots.tomorrow).length < 5 ? 'слота' : 'слотов')}
+                Всего свободно: {selectedSlots.length}{' '}
+                {selectedSlots.length === 1
+                  ? 'слот'
+                  : selectedSlots.length < 5
+                    ? 'слота'
+                    : 'слотов'}
               </div>
             )}
           </>

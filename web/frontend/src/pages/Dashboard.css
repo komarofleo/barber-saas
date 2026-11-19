@@ -367,6 +367,29 @@
   padding: 10px 0;
 }
 
+.slots-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.slots-toolbar .btn-sm {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 650;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(248, 250, 252, 0.9);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.slots-toolbar .btn-sm:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .date-toggle {
   display: flex;
   gap: 6px;
@@ -374,6 +397,8 @@
   padding: 4px;
   border-radius: 12px;
   border: 1px solid rgba(15, 23, 42, 0.06);
+  position: relative;
+  z-index: 2;
 }
 
 .toggle-btn {
@@ -386,6 +411,8 @@
   cursor: pointer;
   border-radius: 9px;
   transition: all 0.2s var(--ease-out);
+  position: relative;
+  z-index: 2;
 }
 
 .toggle-btn:hover {
@@ -399,11 +426,38 @@
   box-shadow: 0 6px 16px rgba(13, 148, 136, 0.25);
 }
 
+.slots-day-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+  margin: 4px 0 14px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.slots-day-date {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.slots-day-meta {
+  margin-left: auto;
+  font-family: var(--font-body, inherit);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
 .slots-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 14px;
+  min-height: 48px;
 }
 
 .slot-chip {
@@ -420,6 +474,7 @@
   box-shadow: 0 8px 18px rgba(13, 148, 136, 0.22);
   user-select: none;
   border: 1px solid rgba(255, 255, 255, 0.22);
+  font-family: inherit;
 }
 
 .slot-chip:hover {
@@ -450,6 +505,14 @@
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  opacity: 0.72;
+  transform: scale(0.985);
+  transition: opacity 0.2s var(--ease-out), transform 0.2s var(--ease-out),
+    box-shadow 0.2s var(--ease-out), outline-color 0.2s var(--ease-out);
 }
 
 .availability-card.today {
@@ -458,6 +521,22 @@
 
 .availability-card.tomorrow {
   background: linear-gradient(145deg, rgba(5, 150, 105, 0.92), rgba(13, 148, 136, 0.9));
+}
+
+.availability-card.is-selected {
+  opacity: 1;
+  transform: scale(1);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);
+  outline: 2px solid rgba(255, 255, 255, 0.75);
+  outline-offset: 2px;
+}
+
+.availability-card:hover {
+  opacity: 0.92;
+}
+
+.availability-card.is-selected:hover {
+  opacity: 1;
 }
 
 .availability-card::before {
