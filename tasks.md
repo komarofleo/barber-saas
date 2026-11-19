@@ -224,11 +224,14 @@
 
 ## 🚀 Деплой на новый VDS (2026-11-19)
 - [x] Поднят `89.127.216.83` (Ubuntu 24.04, 2CPU/2GB/20GB, swap 2GB)
-- [x] Docker + `docker-compose.prod.yml` (postgres/redis/web/frontend, без Celery/ботов)
+- [x] Docker + `docker-compose.prod.yml` (postgres/redis/web/frontend/bot/super-admin-bot; Celery и contract-bot пока нет)
 - [x] Frontend: http://89.127.216.83/  API health: http://89.127.216.83/api/health
-- [ ] Добавить токены Telegram ботов в `.env` и запустить bot/super-admin-bot/contract-bot
+- [x] Боты: `@barber76_1_bot` (tenant) + `@barber76_bot` (super-admin) polling
+- [x] Аудит 2026-11-19: сверка md ↔ сервер; починены `/api/users`, `/api/export/*`, count услуг
+- [ ] Contract-bot (договоры) — не в prod compose
+- [ ] Celery worker/beat (напоминания подписок / лист-наряды) — нет в prod
 - [ ] Перенести данные со старого `45.144.67.47` (нет SSH-доступа)
-- [ ] SSL/домен
+- [ ] SSL/домен + бэкапы по cron
 
 ## 🚀 Этап 12: Деплой
 - [ ] Подготовить `.env.production` и шаблоны конфигов.

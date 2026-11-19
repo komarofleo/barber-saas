@@ -46,23 +46,20 @@ async def get_services(
         search: строка для поиска
         is_active: фильтр по активности
     """
-    query = select(Service)
-    
-    # Фильтры
+    filters = []
     if search:
-        search_term = f"%{search}%"
-        query = query.where(Service.name.ilike(search_term))
-    
+        filters.append(Service.name.ilike(f"%{search}%"))
     if is_active is not None:
-        query = query.where(Service.is_active == is_active)
-    
-    # Подсчет общего количества
-    count_query = select(func.count(Service.id)).select_from(query)
+        filters.append(Service.is_active == is_active)
+
+    count_query = select(func.count(Service.id))
+    list_query = select(Service)
+    if filters:
+        count_query = count_query.where(*filters)
+        list_query = list_query.where(*filters)
+
     total = await tenant_session.scalar(count_query) or 0
-    
-    # Пагинация
-    query = query.offset((page - 1) * page_size).limit(page_size)
-    query = query.order_by(Service.name)
+    query = list_query.order_by(Service.name).offset((page - 1) * page_size).limit(page_size)
     
     result = await tenant_session.execute(query)
     services = result.scalars().all()

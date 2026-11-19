@@ -1,27 +1,48 @@
 """
-API для работы с пользователями (МУЛЬТИ-ТЕНАНТНАЯ ВЕРСИЯ).
+API для работы с пользователями (tenant-схема).
 
-Обеспечивает мульти-тенантность:
-- Поддержка company_id для переключения на tenant схемы
-- Использование get_tenant_session() для работы с tenant сессиями
-- Изоляция данных между компаниями
+Схема users соответствует shared.database.models.User:
+telegram_id, username, first_name, last_name, phone,
+is_admin, is_master, is_blocked, created_at, updated_at.
 """
-from datetime import datetime
-from hashlib import sha256
-import logging
-from typing import Optional
-from fastapi import APIRouter, Depends, Query, HTTPException, Body, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 
-from app.deps.tenant import get_tenant_db
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+from typing import Optional
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from sqlalchemy import String, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.auth import get_current_user
-from app.schemas.user import UserResponse, UserListResponse, UserCreateRequest
+from app.deps.tenant import get_tenant_db
+from app.schemas.user import UserCreateRequest, UserListResponse, UserResponse
 from shared.database.models import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+
+def _to_response(user: User) -> UserResponse:
+    """Собрать UserResponse из ORM-модели."""
+    return UserResponse.model_validate(
+        {
+            "id": user.id,
+            "telegram_id": user.telegram_id or 0,
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "phone": user.phone,
+            "is_admin": bool(user.is_admin),
+            "is_master": bool(user.is_master),
+            "is_blocked": bool(user.is_blocked),
+            "created_at": user.created_at,
+            "updated_at": user.updated_at or user.created_at,
+        }
+    )
 
 
 @router.get("", response_model=UserListResponse)
@@ -33,101 +54,48 @@ async def get_users(
     tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Получить список пользователей"""
+    """Получить список пользователей."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать пользователей")
 
-    # Используем text() для прямых SQL запросов, так как структура таблицы отличается от модели
-    # В tenant схеме users имеет: id, username, email, password_hash, full_name, phone, role, telegram_id, is_active, created_at, updated_at
-    
-    # Подсчет общего количества
+    filters = []
     if search:
-        search_term = f"%{search}%"
-        count_query = text("""
-            SELECT COUNT(*) FROM users
-            WHERE username ILIKE :search
-               OR phone ILIKE :search
-               OR CAST(telegram_id AS TEXT) ILIKE :search
-               OR full_name ILIKE :search
-        """)
-        count_result = await tenant_session.execute(count_query, {"search": search_term})
-        total = count_result.scalar() or 0
-    else:
-        count_result = await tenant_session.execute(text('SELECT COUNT(*) FROM users'))
-        total = count_result.scalar() or 0
-    
-    # Получаем пользователей с пагинацией
+        term = f"%{search.strip()}%"
+        filters.append(
+            or_(
+                User.username.ilike(term),
+                User.phone.ilike(term),
+                User.first_name.ilike(term),
+                User.last_name.ilike(term),
+                func.cast(User.telegram_id, String).ilike(term),
+            )
+        )
+
+    count_query = select(func.count()).select_from(User)
+    list_query = select(User).order_by(User.created_at.desc())
+    if filters:
+        count_query = count_query.where(*filters)
+        list_query = list_query.where(*filters)
+
+    total = (await tenant_session.execute(count_query)).scalar() or 0
     offset = (page - 1) * page_size
-    if search:
-        search_term = f"%{search}%"
-        users_query = text("""
-            SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
-            FROM users
-            WHERE username ILIKE :search
-               OR phone ILIKE :search
-               OR CAST(telegram_id AS TEXT) ILIKE :search
-               OR full_name ILIKE :search
-            ORDER BY created_at DESC
-            LIMIT :limit OFFSET :offset
-        """)
-        result = await tenant_session.execute(
-            users_query,
-            {"search": search_term, "limit": page_size, "offset": offset}
-        )
-    else:
-        users_query = text("""
-            SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
-            FROM users
-            ORDER BY created_at DESC
-            LIMIT :limit OFFSET :offset
-        """)
-        result = await tenant_session.execute(
-            users_query,
-            {"limit": page_size, "offset": offset}
-        )
-    
-    users_rows = result.fetchall()
-    
+    result = await tenant_session.execute(list_query.offset(offset).limit(page_size))
+    users = result.scalars().all()
+
     company_id = getattr(request.state, "company_id", None)
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info(f"📊 Запрос пользователей: total={total}, page={page}, page_size={page_size}, company_id={company_id}")
-    
-    # Формируем ответы с дополнительными данными
-    items = []
-    for row in users_rows:
-        user_id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at = row
-        
-        # Разбиваем full_name на first_name и last_name
-        name_parts = (full_name or '').split(maxsplit=1) if full_name else ['', '']
-        first_name = name_parts[0] if len(name_parts) > 0 else None
-        last_name = name_parts[1] if len(name_parts) > 1 else None
-        
-        # Определяем is_admin и is_master из role
-        is_admin = role == 'admin'
-        is_master = role == 'master'
-        
-        user_dict = {
-            "id": user_id,
-            "telegram_id": telegram_id or 0,
-            "username": username,
-            "first_name": first_name,
-            "last_name": last_name,
-            "phone": phone,
-            "is_admin": is_admin,
-            "is_master": is_master,
-            "is_blocked": not is_active,
-            "created_at": created_at,
-            "updated_at": updated_at or created_at,
-        }
-        
-        items.append(UserResponse.model_validate(user_dict))
-    
+    logger.info(
+        "Запрос пользователей: total=%s, page=%s, page_size=%s, company_id=%s",
+        total,
+        page,
+        page_size,
+        company_id,
+    )
+
     return {
-        "items": items,
+        "items": [_to_response(user) for user in users],
         "total": total,
         "page": page,
-        "page_size": page_size
+        "page_size": page_size,
     }
 
 
@@ -138,58 +106,18 @@ async def get_user(
     tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Получить информацию о пользователе"""
+    """Получить информацию о пользователе."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут просматривать пользователей")
 
-    result = await tenant_session.execute(
-        text(
-            """
-            SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
-            FROM users
-            WHERE id = :user_id
-            """
-        ),
-        {"user_id": user_id},
-    )
-    row = result.fetchone()
-    if not row:
+    result = await tenant_session.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
-    (
-        user_id_db,
-        telegram_id,
-        username,
-        full_name,
-        phone,
-        role,
-        is_active,
-        created_at,
-        updated_at,
-    ) = row
-
-    name_parts = (full_name or "").split(maxsplit=1) if full_name else ["", ""]
-    first_name = name_parts[0] if len(name_parts) > 0 else None
-    last_name = name_parts[1] if len(name_parts) > 1 else None
-
     company_id = getattr(request.state, "company_id", None)
-    logger.info(f"🔍 Запрос пользователя: user_id={user_id}, company_id={company_id}")
-
-    return UserResponse.model_validate(
-        {
-            "id": user_id_db,
-            "telegram_id": telegram_id or 0,
-            "username": username,
-            "first_name": first_name or None,
-            "last_name": last_name or None,
-            "phone": phone,
-            "is_admin": role == "admin",
-            "is_master": role == "master",
-            "is_blocked": not bool(is_active),
-            "created_at": created_at,
-            "updated_at": updated_at or created_at,
-        }
-    )
+    logger.info("Запрос пользователя: user_id=%s, company_id=%s", user_id, company_id)
+    return _to_response(user)
 
 
 @router.post("", response_model=UserResponse, status_code=201)
@@ -199,83 +127,54 @@ async def create_user(
     tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Создать нового пользователя"""
+    """Создать нового пользователя."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут создавать пользователей")
 
-    # В tenant таблице users есть NOT NULL password_hash — генерируем служебное значение.
-    password_hash = sha256(f"tenant_user:{user_data.telegram_id}:{datetime.utcnow().isoformat()}".encode("utf-8")).hexdigest()
-
-    full_name = f"{user_data.first_name or ''} {user_data.last_name or ''}".strip() or None
-
-    if user_data.is_admin:
-        role = "admin"
-    elif user_data.is_master:
-        role = "master"
-    else:
-        role = "client"
-
-    is_active = not user_data.is_blocked
-
-    # Проверяем уникальность telegram_id
     existing_tg = await tenant_session.execute(
-        text("SELECT 1 FROM users WHERE telegram_id = :telegram_id LIMIT 1"),
-        {"telegram_id": user_data.telegram_id},
+        select(User.id).where(User.telegram_id == user_data.telegram_id).limit(1)
     )
-    if existing_tg.fetchone():
-        raise HTTPException(status_code=400, detail=f"Пользователь с telegram_id {user_data.telegram_id} уже существует")
+    if existing_tg.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Пользователь с telegram_id {user_data.telegram_id} уже существует",
+        )
 
-    # Проверяем уникальность username (если указан)
     if user_data.username:
         existing_username = await tenant_session.execute(
-            text("SELECT 1 FROM users WHERE username = :username LIMIT 1"),
-            {"username": user_data.username},
+            select(User.id).where(User.username == user_data.username).limit(1)
         )
-        if existing_username.fetchone():
-            raise HTTPException(status_code=400, detail=f"Пользователь с username {user_data.username} уже существует")
+        if existing_username.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Пользователь с username {user_data.username} уже существует",
+            )
 
     now = datetime.utcnow()
-    insert_result = await tenant_session.execute(
-        text(
-            """
-            INSERT INTO users (telegram_id, username, full_name, phone, role, is_active, password_hash, created_at, updated_at)
-            VALUES (:telegram_id, :username, :full_name, :phone, :role, :is_active, :password_hash, :created_at, :updated_at)
-            RETURNING id
-            """
-        ),
-        {
-            "telegram_id": user_data.telegram_id,
-            "username": user_data.username,
-            "full_name": full_name,
-            "phone": user_data.phone,
-            "role": role,
-            "is_active": is_active,
-            "password_hash": password_hash,
-            "created_at": now,
-            "updated_at": now,
-        },
+    user = User(
+        telegram_id=user_data.telegram_id,
+        username=user_data.username,
+        first_name=user_data.first_name,
+        last_name=user_data.last_name,
+        phone=user_data.phone,
+        is_admin=bool(user_data.is_admin),
+        is_master=bool(user_data.is_master),
+        is_blocked=bool(user_data.is_blocked),
+        created_at=now,
+        updated_at=now,
     )
+    tenant_session.add(user)
     await tenant_session.commit()
-    new_id = insert_result.scalar_one()
+    await tenant_session.refresh(user)
 
     company_id = getattr(request.state, "company_id", None)
-    logger.info(f"✅ Создан пользователь: id={new_id}, telegram_id={user_data.telegram_id}, company_id={company_id}")
-
-    return UserResponse.model_validate(
-        {
-            "id": new_id,
-            "telegram_id": user_data.telegram_id,
-            "username": user_data.username,
-            "first_name": user_data.first_name,
-            "last_name": user_data.last_name,
-            "phone": user_data.phone,
-            "is_admin": role == "admin",
-            "is_master": role == "master",
-            "is_blocked": not is_active,
-            "created_at": now,
-            "updated_at": now,
-        }
+    logger.info(
+        "Создан пользователь: id=%s, telegram_id=%s, company_id=%s",
+        user.id,
+        user.telegram_id,
+        company_id,
     )
+    return _to_response(user)
 
 
 @router.patch("/{user_id}", response_model=UserResponse)
@@ -286,97 +185,37 @@ async def update_user(
     tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Обновить информацию о пользователе"""
+    """Обновить информацию о пользователе."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут обновлять пользователей")
 
-    exists = await tenant_session.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
-    if not exists.fetchone():
+    result = await tenant_session.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-
-    update_fields: dict[str, object] = {}
 
     if "username" in user_data and user_data["username"] is not None:
-        update_fields["username"] = user_data["username"]
+        user.username = user_data["username"]
     if "phone" in user_data and user_data["phone"] is not None:
-        update_fields["phone"] = user_data["phone"]
-
-    if "first_name" in user_data or "last_name" in user_data:
-        first_name = (user_data.get("first_name") or "").strip()
-        last_name = (user_data.get("last_name") or "").strip()
-        update_fields["full_name"] = f"{first_name} {last_name}".strip() or None
-
-    is_admin = user_data.get("is_admin")
-    is_master = user_data.get("is_master")
-    if is_admin is not None or is_master is not None:
-        if bool(is_admin):
-            update_fields["role"] = "admin"
-        elif bool(is_master):
-            update_fields["role"] = "master"
-        else:
-            update_fields["role"] = "client"
-
+        user.phone = user_data["phone"]
+    if "first_name" in user_data:
+        user.first_name = user_data.get("first_name")
+    if "last_name" in user_data:
+        user.last_name = user_data.get("last_name")
+    if "is_admin" in user_data and user_data["is_admin"] is not None:
+        user.is_admin = bool(user_data["is_admin"])
+    if "is_master" in user_data and user_data["is_master"] is not None:
+        user.is_master = bool(user_data["is_master"])
     if "is_blocked" in user_data and user_data["is_blocked"] is not None:
-        update_fields["is_active"] = not bool(user_data["is_blocked"])
+        user.is_blocked = bool(user_data["is_blocked"])
 
-    update_fields["updated_at"] = datetime.utcnow()
-
-    set_parts = ", ".join([f"{k} = :{k}" for k in update_fields.keys()])
-    await tenant_session.execute(
-        text(f"UPDATE users SET {set_parts} WHERE id = :id"),
-        {"id": user_id, **update_fields},
-    )
+    user.updated_at = datetime.utcnow()
     await tenant_session.commit()
-
-    # Возвращаем актуальную строку
-    result = await tenant_session.execute(
-        text(
-            """
-            SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
-            FROM users
-            WHERE id = :user_id
-            """
-        ),
-        {"user_id": user_id},
-    )
-    row = result.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-
-    (
-        user_id_db,
-        telegram_id,
-        username,
-        full_name,
-        phone,
-        role,
-        is_active,
-        created_at,
-        updated_at,
-    ) = row
-
-    name_parts = (full_name or "").split(maxsplit=1) if full_name else ["", ""]
-    first_name = name_parts[0] if len(name_parts) > 0 else None
-    last_name = name_parts[1] if len(name_parts) > 1 else None
+    await tenant_session.refresh(user)
 
     company_id = getattr(request.state, "company_id", None)
-    logger.info(f"✅ Обновлен пользователь: user_id={user_id}, company_id={company_id}")
-
-    return UserResponse.model_validate(
-        {
-            "id": user_id_db,
-            "telegram_id": telegram_id or 0,
-            "username": username,
-            "first_name": first_name or None,
-            "last_name": last_name or None,
-            "phone": phone,
-            "is_admin": role == "admin",
-            "is_master": role == "master",
-            "is_blocked": not bool(is_active),
-            "created_at": created_at,
-            "updated_at": updated_at or created_at,
-        }
-    )
+    logger.info("Обновлен пользователь: user_id=%s, company_id=%s", user_id, company_id)
+    return _to_response(user)
 
 
 @router.patch("/{user_id}/admin", response_model=UserResponse)
@@ -387,74 +226,25 @@ async def toggle_admin(
     tenant_session: AsyncSession = Depends(get_tenant_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Назначить/снять права администратора.
-    
-    Аргументы:
-        user_id: ID пользователя
-        is_admin: флаг администратора
-        company_id: ID компании для мульти-тенантности
-    """
+    """Назначить/снять права администратора."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Только администраторы могут менять права пользователей")
-    
-    exists = await tenant_session.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id})
-    if not exists.fetchone():
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    new_role = "admin" if is_admin else "client"
-    await tenant_session.execute(
-        text("UPDATE users SET role = :role, updated_at = :updated_at WHERE id = :id"),
-        {"role": new_role, "updated_at": datetime.utcnow(), "id": user_id},
-    )
-    await tenant_session.commit()
-    
-    result = await tenant_session.execute(
-        text(
-            """
-            SELECT id, telegram_id, username, full_name, phone, role, is_active, created_at, updated_at
-            FROM users
-            WHERE id = :user_id
-            """
-        ),
-        {"user_id": user_id},
-    )
-    row = result.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    
-    (
-        user_id_db,
-        telegram_id,
-        username,
-        full_name,
-        phone,
-        role,
-        is_active,
-        created_at,
-        updated_at,
-    ) = row
-    
-    name_parts = (full_name or "").split(maxsplit=1) if full_name else ["", ""]
-    first_name = name_parts[0] if len(name_parts) > 0 else None
-    last_name = name_parts[1] if len(name_parts) > 1 else None
-    
-    company_id = getattr(request.state, "company_id", None)
-    logger.info(f"✅ Обновлены права пользователя: user_id={user_id}, company_id={company_id}, role={role}")
-    
-    return UserResponse.model_validate(
-        {
-            "id": user_id_db,
-            "telegram_id": telegram_id or 0,
-            "username": username,
-            "first_name": first_name or None,
-            "last_name": last_name or None,
-            "phone": phone,
-            "is_admin": role == "admin",
-            "is_master": role == "master",
-            "is_blocked": not bool(is_active),
-            "created_at": created_at,
-            "updated_at": updated_at or created_at,
-        }
-    )
 
+    result = await tenant_session.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    user.is_admin = bool(is_admin)
+    user.updated_at = datetime.utcnow()
+    await tenant_session.commit()
+    await tenant_session.refresh(user)
+
+    company_id = getattr(request.state, "company_id", None)
+    logger.info(
+        "Обновлены права пользователя: user_id=%s, company_id=%s, is_admin=%s",
+        user_id,
+        company_id,
+        user.is_admin,
+    )
+    return _to_response(user)
