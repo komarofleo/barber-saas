@@ -131,6 +131,55 @@ services:
       - barber_network
     restart: unless-stopped
 
+  # Напоминания клиентам в ТГ (за день / за час) + подписки SaaS
+  celery-worker:
+    build:
+      context: .
+      dockerfile: ./web/backend/Dockerfile
+    container_name: barber_celery_worker
+    command: celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=1
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      TZ: Europe/Moscow
+      PYTHONPATH: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    networks:
+      - barber_network
+    restart: unless-stopped
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: ./web/backend/Dockerfile
+    container_name: barber_celery_beat
+    command: celery -A app.celery_app.celery_app beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      TZ: Europe/Moscow
+      PYTHONPATH: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_started
+    networks:
+      - barber_network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

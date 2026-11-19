@@ -182,9 +182,12 @@
   - **Критерий готовности**: нет 500/UndefinedColumn, все списки/создания работают в tenant без ручных фиксов.
 
 ### 5) Celery: привести задачи к рабочему состоянию (или официально отказаться)
-- [ ] Принять решение: уведомления/рассылки через Celery или синхронно из API.
-  - [ ] Если через Celery: поднять `celery-worker` и `celery-beat`, проверить импорт/конфиги, прогнать тестовые задачи.
-  - [ ] Если без Celery: убрать мёртвый код/планировщик, оставить стабильный путь отправки.
+- [x] Принято: напоминания клиентам через Celery (как в avtoservis).
+  - [x] Подняты `celery-worker` и `celery-beat` в `docker-compose.prod.yml` на VDS.
+  - [x] `redis==6.1.0` / `celery==5.3.6` (kombu VersionMismatch).
+  - [x] Beat: booking-reminder-1-day (*/15), booking-reminder-hour (*/5 6–21), подписки SaaS.
+  - [x] Settings UI: `reminder_day_before_time`, `reminder_hour_before` (+ enabled-ключи).
+  - [x] Smoke 2026-11-19: day + hour ушли в TG `@komarofleo` (booking 6, tenant_1).
 
 ---
 
@@ -227,7 +230,7 @@
 
 ## 🚀 Деплой на новый VDS (2026-11-19)
 - [x] Поднят `89.127.216.83` (Ubuntu 24.04, 2CPU/2GB/20GB, swap 2GB)
-- [x] Docker + `docker-compose.prod.yml` (postgres/redis/web/frontend/bot/super-admin-bot; Celery и contract-bot пока нет)
+- [x] Docker + `docker-compose.prod.yml` (postgres/redis/web/frontend/bot/super-admin-bot/celery-worker/celery-beat; contract-bot пока нет)
 - [x] Frontend: http://89.127.216.83/  API health: http://89.127.216.83/api/health
 - [x] Боты: `@barber76_1_bot` (tenant) + `@barber76_bot` (super-admin) polling
 - [x] Аудит 2026-11-19: сверка md ↔ сервер; починены `/api/users`, `/api/export/*`, count услуг
@@ -239,7 +242,7 @@
 - [x] Бот записи: зависание на выборе времени — `create_booking` не писал `is_paid`/`discount_amount`
   - Починено в CRUD для всех tenant; DEFAULT в БД; notify админов по `is_admin`
 - [ ] Contract-bot (договоры) — не в prod compose
-- [ ] Celery worker/beat (напоминания подписок / лист-наряды) — нет в prod
+- [x] Celery worker/beat в prod: напоминания за день/за час + подписки SaaS (smoke OK)
 - [ ] Перенести данные со старого `45.144.67.47` (нет SSH-доступа)
 - [ ] SSL/домен + бэкапы по cron
 

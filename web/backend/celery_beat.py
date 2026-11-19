@@ -1,207 +1,97 @@
 """
-Конфигурация Celery Beat для планирования задач.
+Конфигурация Celery Beat для Barber SaaS.
 
-Этот файл определяет расписание автоматических задач:
-- Напоминания за 7 дней до окончания подписки (каждый день в 9:00)
-- Напоминания за 1 день до окончания подписки (каждый день в 9:00)
-- Уведомления об истечении подписки (каждый день в 9:00)
-- Уведомления о неактивных подписках (каждый день в 9:00)
-- Уведомления о неудачных платежах (каждый день в 9:00)
+Задачи:
+- напоминания клиентам о записи (за день / за час)
+- напоминания по подпискам SaaS
+- лист-наряды / уведомления админам
 """
 
 from celery.schedules import crontab
 
-from app.tasks.subscription_notifications import (
-    send_reminder_7_days_before,
-    send_reminder_day_before,
-    send_expired_notification,
-    send_inactive_subscription_notification,
-    send_failed_payment_notification
-)
-from app.tasks.notifications import (
-    send_reminder_day_before_task,
+# Импорт задач регистрирует их в Celery app
+from app.tasks.notifications import (  # noqa: F401
+    notify_admin_new_bookings_task,
     send_reminder_3_hours_before_task,
+    send_reminder_day_before_task,
     send_work_orders_to_masters_task,
-    notify_admin_new_bookings_task
+)
+from app.tasks.subscription_notifications import (  # noqa: F401
+    send_payment_reminder,
+    send_reminder_1_day_before,
+    send_reminder_3_days_before,
+    send_reminder_7_days_before,
+    send_reminder_expiration,
 )
 
-# ==================== Настройки расписания ====================
+# ==================== Подписки SaaS ====================
 
-# Задачи для подписок (SaaS)
-# Запускаются ежедневно в 9:00 по московскому времени
-
-# Напоминания за 7 дней до окончания подписки
-# Запускается каждый день в 09:00
 schedule_reminder_7_days = {
-    'task': 'app.tasks.subscription_notifications.send_reminder_7_days_before',
-    'schedule': crontab(hour=9, minute=0),  # 09:00 ежедневно
-    'options': {
-        'expires': 86400,  # 24 часа (task expires)
-    }
+    "task": "app.tasks.subscription_notifications.send_reminder_7_days_before",
+    "schedule": crontab(hour=9, minute=0),
+    "options": {"expires": 86400},
 }
 
-# Напоминания за 1 день до окончания подписки
-# Запускается каждый день в 09:00
-schedule_reminder_day_before = {
-    'task': 'app.tasks.subscription_notifications.send_reminder_day_before',
-    'schedule': crontab(hour=9, minute=0),  # 09:00 ежедневно
-    'options': {
-        'expires': 86400,  # 24 часа
-    }
+schedule_reminder_3_days = {
+    "task": "app.tasks.subscription_notifications.send_reminder_3_days_before",
+    "schedule": crontab(hour=9, minute=5),
+    "options": {"expires": 86400},
 }
 
-# Уведомления об истечении подписки
-# Запускается каждый день в 09:00
+schedule_reminder_1_day_sub = {
+    "task": "app.tasks.subscription_notifications.send_reminder_1_day_before",
+    "schedule": crontab(hour=9, minute=10),
+    "options": {"expires": 86400},
+}
+
 schedule_expired_notification = {
-    'task': 'app.tasks.subscription_notifications.send_expired_notification',
-    'schedule': crontab(hour=9, minute=0),  # 09:00 ежедневно
-    'options': {
-        'expires': 86400,  # 24 часа
-    }
+    "task": "app.tasks.subscription_notifications.send_reminder_expiration",
+    "schedule": crontab(hour=9, minute=15),
+    "options": {"expires": 86400},
 }
 
-# Уведомления о неактивных подписках
-# Запускается каждый день в 09:00
-schedule_inactive_subscription = {
-    'task': 'app.tasks.subscription_notifications.send_inactive_subscription_notification',
-    'schedule': crontab(hour=9, minute=0),  # 09:00 ежедневно
-    'options': {
-        'expires': 86400,  # 24 часа
-    }
+schedule_payment_reminder = {
+    "task": "app.tasks.subscription_notifications.send_payment_reminder",
+    "schedule": crontab(hour=10, minute=0),
+    "options": {"expires": 86400},
 }
 
-# Уведомления о неудачных платежах
-# Запускается каждый день в 09:00
-schedule_failed_payment = {
-    'task': 'app.tasks.subscription_notifications.send_failed_payment_notification',
-    'schedule': crontab(hour=9, minute=0),  # 09:00 ежедневно
-    'options': {
-        'expires': 86400,  # 24 часа
-    }
-}
+# ==================== Записи клиентов ====================
 
-# ==================== Задачи для записей (существующие) ====================
-
-# Напоминания за 1 день до записи
-# Запускается каждый день в 18:00
+# Каждые 15 мин: внутри задачи сверяем reminder_day_before_time компании
 schedule_reminder_1_day_booking = {
-    'task': 'app.tasks.notifications.send_reminder_day_before_task',
-    'schedule': crontab(hour=18, minute=0),  # 18:00 ежедневно
-    'options': {
-        'expires': 86400,  # 24 часа
-    }
+    "task": "app.tasks.notifications.send_reminder_day_before_task",
+    "schedule": crontab(minute="*/15"),
+    "options": {"expires": 900},
 }
 
-# Напоминания за 3 часа до записи
-# Запускается каждый час с 06:00 до 21:00
-schedule_reminder_3_hours_booking = {
-    'task': 'app.tasks.notifications.send_reminder_3_hours_before_task',
-    'schedule': crontab(minute='*/5', hour='6-21'),  # Каждые 5 минут с 06:00 до 21:00
-    'options': {
-        'expires': 600,  # 10 минут (task expires)
-    }
+# Каждые 5 мин 06–21: окно «через час»
+schedule_reminder_hour_booking = {
+    "task": "app.tasks.notifications.send_reminder_3_hours_before_task",
+    "schedule": crontab(minute="*/5", hour="6-21"),
+    "options": {"expires": 600},
 }
 
-# Отправка лист-нарядов мастерам
-# Запускается каждый день в 08:00
 schedule_work_orders = {
-    'task': 'app.tasks.notifications.send_work_orders_to_masters_task',
-    'schedule': crontab(hour=8, minute=0),  # 08:00 ежедневно
-    'options': {
-        'expires': 86400,  # 24 часа
-    }
+    "task": "app.tasks.notifications.send_work_orders_to_masters_task",
+    "schedule": crontab(hour=8, minute=0),
+    "options": {"expires": 86400},
 }
 
-# Уведомления администраторов о новых записях
-# Запускается каждые 10 минут
 schedule_admin_new_bookings = {
-    'task': 'app.tasks.notifications.notify_admin_new_bookings_task',
-    'schedule': crontab(minute='*/10'),  # Каждые 10 минут
-    'options': {
-        'expires': 3600,  # 1 час
-    }
+    "task": "app.tasks.notifications.notify_admin_new_bookings_task",
+    "schedule": crontab(minute="*/10"),
+    "options": {"expires": 3600},
 }
-
-# ==================== Объединение расписания ====================
 
 beat_schedule = {
-    # Задачи для подписок (новые для SaaS)
-    'subscription-reminder-7-days': schedule_reminder_7_days,
-    'subscription-reminder-1-day': schedule_reminder_day_before,
-    'subscription-expired': schedule_expired_notification,
-    'subscription-inactive': schedule_inactive_subscription,
-    'subscription-payment-failed': schedule_failed_payment,
-    
-    # Существующие задачи для записей
-    # Напоминания теперь планируются при подтверждении записи (отложенные задачи), а не периодически
-    # 'booking-reminder-1-day': schedule_reminder_1_day_booking,  # Отключено - используем отложенные задачи
-    # 'booking-reminder-3-hours': schedule_reminder_3_hours_booking,  # Отключено - используем отложенные задачи
-    'work-orders': schedule_work_orders,
-    'admin-new-bookings': schedule_admin_new_bookings,
+    "subscription-reminder-7-days": schedule_reminder_7_days,
+    "subscription-reminder-3-days": schedule_reminder_3_days,
+    "subscription-reminder-1-day": schedule_reminder_1_day_sub,
+    "subscription-expired": schedule_expired_notification,
+    "subscription-payment-reminder": schedule_payment_reminder,
+    "booking-reminder-1-day": schedule_reminder_1_day_booking,
+    "booking-reminder-hour": schedule_reminder_hour_booking,
+    "work-orders": schedule_work_orders,
+    "admin-new-bookings": schedule_admin_new_bookings,
 }
-
-# ==================== Информация о расписании ====================
-
-"""
-📅 Расписание задач Celery Beat
-
-Субсидии (SaaS):
-─────────────────────────────────────────
-⏰ Время: Ежедневно в 09:00 (по МСК)
-
-1. send_reminder_7_days_before
-   • Частота: Ежедневно в 09:00
-   • Описание: Напоминания за 7 дней до окончания подписки
-   • Затратность: ~1-2 минуты (зависит от количества компаний)
-
-2. send_reminder_day_before
-   • Частота: Ежедневно в 09:00
-   • Описание: Напоминания за 1 день до окончания подписки
-   • Затратность: ~1-2 минуты
-
-3. send_expired_notification
-   • Частота: Ежедневно в 09:00
-   • Описание: Уведомления об истечении подписки
-   • Затратность: ~1-2 минуты
-
-4. send_inactive_subscription_notification
-   • Частота: Ежедневно в 09:00
-   • Описание: Уведомления о неактивных подписках
-   • Затратность: ~1-2 минуты
-
-5. send_failed_payment_notification
-   • Частота: Ежедневно в 09:00
-   • Описание: Уведомления о неудачных платежах за 7 дней
-   • Затратность: ~1-2 минуты
-
-Записи (существующие):
-─────────────────────────────────────────
-⏰ Время: Различное
-
-6. send_reminder_day_before_task
-   • Частота: Ежедневно в 18:00
-   • Описание: Напоминания за 1 день до записи
-   • Затратность: ~2-3 минуты
-
-7. send_reminder_3_hours_before_task
-   • Частота: Каждые 5 минут с 06:00 до 21:00
-   • Описание: Напоминания за 3 часа до записи с кнопками подтверждения/отказа (отправляется один раз для каждой записи)
-   • Затратность: ~1-2 минуты каждые 5 минут
-
-8. send_work_orders_to_masters_task
-   • Частота: Ежедневно в 08:00
-   • Описание: Отправка лист-нарядов мастерам
-   • Затратность: ~5-10 минут
-
-9. notify_admin_new_bookings_task
-   • Частота: Каждые 10 минут
-   • Описание: Уведомления администраторов о новых записях
-   • Затратность: ~1-2 минуты каждые 10 минут
-
-⏰ Общая нагрузка:
-─────────────────────────────────────────
-Пиковая нагрузка: 09:00-10:00 (~5-8 задач за 10 минут)
-Время пика: ~15-25 минут выполнения всех задач
-
-Обычная нагрузка: Весь день (~10-15 минут в час)
-"""
