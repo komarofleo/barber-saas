@@ -238,6 +238,8 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/* Старый/ошибочный URL — редирект на рассылки */}
+      <Route path="/mailings" element={<Navigate to="/broadcasts" replace />} />
       <Route
         path="/billing"
         element={
