@@ -37,6 +37,59 @@ async def get_company_id_from_token(request: Request) -> Optional[int]:
         return None
 
 
+async def resolve_created_by_user_id(
+    tenant_session: AsyncSession,
+    company_id: int,
+    current_user: User,
+) -> Optional[int]:
+    """
+    Вернуть валидный users.id для bookings.created_by.
+
+    JWT company_admin кладёт в current_user.id = company_id (из public.companies),
+    а FK bookings_created_by_fkey ссылается на tenant_N.users — там такого id нет.
+    """
+    schema = f"tenant_{company_id}"
+
+    # Обычный tenant-пользователь: id уже из users
+    exists = await tenant_session.execute(
+        text(f'SELECT id FROM "{schema}".users WHERE id = :uid'),
+        {"uid": current_user.id},
+    )
+    if exists.fetchone():
+        return current_user.id
+
+    # Владелец компании: ищем по admin telegram_id
+    telegram_id = getattr(current_user, "telegram_id", None)
+    if telegram_id:
+        by_tg = await tenant_session.execute(
+            text(
+                f'SELECT id FROM "{schema}".users WHERE telegram_id = :tg ORDER BY id LIMIT 1'
+            ),
+            {"tg": telegram_id},
+        )
+        row = by_tg.fetchone()
+        if row:
+            return int(row[0])
+
+    # Fallback: любой tenant-админ
+    by_admin = await tenant_session.execute(
+        text(
+            f'SELECT id FROM "{schema}".users WHERE is_admin = true ORDER BY id LIMIT 1'
+        )
+    )
+    row = by_admin.fetchone()
+    if row:
+        return int(row[0])
+
+    # created_by nullable — лучше NULL, чем FK violation
+    logger.warning(
+        "Не найден tenant user для created_by (company_id=%s, jwt_user_id=%s)",
+        company_id,
+        current_user.id,
+    )
+    return None
+
+
 async def get_client_telegram_id(tenant_session: AsyncSession, company_id: int, client: Client) -> Optional[int]:
     """Получить telegram_id клиента из tenant схемы users"""
     if not client or not client.user_id:
@@ -941,8 +994,8 @@ async def create_booking(
     await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     tenant_session = db
     
-    # Генерируем номер записи
-    booking_number = f"BK{company_id:03d}{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    # Номер записи: секунды + микросекунды, чтобы не ловить UniqueViolation при двух кликах подряд
+    booking_number = f"BK{company_id:03d}{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
     
     # Преобразуем time в объект time, если это строка
     booking_time = booking_data.time
@@ -955,6 +1008,8 @@ async def create_booking(
     booking_datetime = datetime.combine(booking_data.service_date, booking_time)
     end_time = (booking_datetime + timedelta(minutes=duration_minutes)).time()
     
+    created_by = await resolve_created_by_user_id(tenant_session, company_id, current_user)
+
     # Создаём запись: явно задаём NOT NULL поля (на случай отсутствия DEFAULT в tenant-схеме)
     booking = Booking(
         booking_number=booking_number,
@@ -972,7 +1027,7 @@ async def create_booking(
         is_paid=False,
         discount_amount=0,
         comment=booking_data.comment,
-        created_by=current_user.id,
+        created_by=created_by,
     )
     
     tenant_session.add(booking)
