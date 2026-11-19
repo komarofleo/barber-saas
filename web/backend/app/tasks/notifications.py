@@ -48,30 +48,44 @@ def get_bot():
 
 def _run_async(coro):
     """
-    Запустить корутину в Celery-воркере.
+    Запустить корутину из Celery или из sync-кода внутри FastAPI.
 
-    После закрытия event loop asyncpg/SQLAlchemy нельзя переиспользовать —
-    dispose + новый engine на каждую задачу.
+    Если уже есть running loop (вызов из async endpoint) — крутим в отдельном
+    потоке, иначе asyncio.run падает с «cannot be called from a running event loop».
+    После выполнения dispose + новый engine (asyncpg привязан к loop).
     """
     global engine, async_session_maker
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+
+    def _execute() -> object:
+        global engine, async_session_maker
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            try:
+                loop.run_until_complete(engine.dispose())
+            except Exception as e:
+                print(f"Предупреждение: dispose async engine: {e}")
+            try:
+                loop.close()
+            except Exception:
+                pass
+            asyncio.set_event_loop(None)
+            engine = create_async_engine(DATABASE_URL, echo=False)
+            async_session_maker = async_sessionmaker(
+                engine, class_=AsyncSession, expire_on_commit=False
+            )
+
     try:
-        return loop.run_until_complete(coro)
-    finally:
-        try:
-            loop.run_until_complete(engine.dispose())
-        except Exception as e:
-            print(f"Предупреждение: dispose async engine: {e}")
-        try:
-            loop.close()
-        except Exception:
-            pass
-        asyncio.set_event_loop(None)
-        engine = create_async_engine(DATABASE_URL, echo=False)
-        async_session_maker = async_sessionmaker(
-            engine, class_=AsyncSession, expire_on_commit=False
-        )
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return _execute()
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(_execute).result()
 
 
 def _parse_hhmm(value: str, fallback: time_type) -> time_type:

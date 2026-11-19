@@ -129,16 +129,23 @@
   - **Критерий готовности**: вкладка “Клиенты” в админке компании открывается без 500, данные грузятся.
 
 ### 2) Уведомления клиенту в Telegram при смене статуса (стабилизация)
-- [ ] **Довести до “железобетона” цепочку**: `PATCH /api/bookings/{id}` → `send_booking_status_notification()` → Telegram.
-  - [ ] Проверить, что `telegram_id` действительно сохранён в `tenant_X.users.telegram_id` для клиента.
-  - [ ] Добавить явные логи-метки: `company_id`, `booking_id`, `user_id`, `telegram_id`, текст ошибки Telegram.
-  - [ ] Зафиксировать правило: **бот не может писать первым** — если клиент не нажал `/start`, логировать понятное предупреждение.
+- [x] **Довести до “железобетона” цепочку**: `PATCH /api/bookings/{id}` → `send_booking_status_notification()` → Telegram.
+  - [x] `telegram_id` в `tenant_X.users` (smoke: client 12 → 329621295).
+  - [x] Логи `company_id` / `booking_id` / `telegram_id` + ошибки Telegram.
+  - [x] Правило «бот не пишет первым»: warning при chat not found / forbidden.
+  - Smoke 2026-11-19: PATCH → `notification_sent=true`.
   - **Критерий готовности**: при смене статуса в UI приходит сообщение клиенту, а в UI показывается “✅ Сообщение отправлено”.
 
 ### 3) Уведомление администратору о новой записи (Telegram)
-- [ ] **Проверить уведомление админам при создании записи в боте** (реальный сценарий “новая заявка”).
-  - [ ] Убедиться, что выбор админов идёт из `tenant_X.users` по `role='admin'` и `telegram_id IS NOT NULL`.
+- [x] Уведомление админам при создании записи (web + bot).
+  - [x] Выбор админов: `is_admin=true` (+ fallback `companies.admin_telegram_id`), не `role='admin'`.
+  - Smoke 2026-11-19: `notify_admins_about_new_booking` → True (TG админу).
   - **Критерий готовности**: админ получает уведомление при новой записи.
+
+### 3.1) Кнопки напоминания confirm/cancel
+- [x] `confirm_attendance_*` пишет статус `confirmed` в БД (раньше только текст в TG).
+- [x] `cancel_booking_*` → `cancelled` (уже было); парсинг id через `rsplit`.
+- Smoke: CRUD update_booking_status confirm/cancel OK.
 
 ---
 

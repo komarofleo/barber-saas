@@ -527,64 +527,81 @@ async def cancel_booking(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("confirm_attendance_"))
 async def confirm_attendance(callback: CallbackQuery):
-    """Подтвердить явку на запись"""
+    """Подтвердить явку на запись (кнопка из напоминания)."""
     try:
-        booking_id = int(callback.data.split("_")[2])
+        booking_id = int(callback.data.rsplit("_", 1)[-1])
     except (ValueError, IndexError):
         await callback.answer("❌ Ошибка", show_alert=True)
         return
-    
-    # Получаем company_id из токена бота
+
     company_id = None
     try:
         from sqlalchemy import text
         from bot.database.connection import async_session_maker
+
         bot_token = callback.bot.token
         async with async_session_maker() as temp_session:
             result = await temp_session.execute(
                 text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
-                {"token": bot_token}
+                {"token": bot_token},
             )
             row = result.fetchone()
             if row:
                 company_id = row[0]
     except Exception as e:
         logger.error(f"Ошибка получения company_id: {e}")
-        pass
-    
+
     async for session in get_session():
-        from bot.database.crud import get_booking_by_id, get_user_by_telegram_id
-        
-        user = await get_user_by_telegram_id(session, callback.from_user.id, company_id=company_id)
+        from bot.database.crud import (
+            get_booking_by_id,
+            get_user_by_telegram_id,
+            update_booking_status,
+        )
+
+        user = await get_user_by_telegram_id(
+            session, callback.from_user.id, company_id=company_id
+        )
         if not user:
             await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
-        
+
         booking = await get_booking_by_id(session, booking_id, company_id=company_id)
         if not booking:
             await callback.answer("❌ Запись не найдена", show_alert=True)
             return
-        
-        # Проверяем, что это запись этого клиента
-        if booking.client.user_id != user.id:
+
+        client = getattr(booking, "client", None)
+        if not client or client.user_id != user.id:
             await callback.answer("❌ Это не ваша запись", show_alert=True)
             return
-        
-        # Обновляем сообщение
+
+        if booking.status in ("cancelled", "completed"):
+            await callback.answer("❌ Запись уже отменена или завершена", show_alert=True)
+            return
+
+        # Фиксируем подтверждение в БД (раньше менялся только текст сообщения)
+        if booking.status != "confirmed":
+            await update_booking_status(
+                session=session,
+                booking_id=booking_id,
+                status="confirmed",
+                company_id=company_id,
+            )
+
         await callback.message.edit_text(
-            f"✅ Явка подтверждена!\n\n"
+            "✅ Явка подтверждена!\n\n"
             f"📅 Дата: {booking.service_date.strftime('%d.%m.%Y')}\n"
             f"⏰ Время: {booking.time.strftime('%H:%M')}\n\n"
-            f"Ждем вас в салоне красоты!"
+            "Ждем вас в салоне красоты!"
         )
         await callback.answer("✅ Явка подтверждена")
 
 
 @router.callback_query(F.data.startswith("cancel_booking_"))
 async def cancel_booking_by_client(callback: CallbackQuery):
-    """Отменить запись клиентом"""
+    """Отменить запись клиентом (кнопка из напоминания)."""
     try:
-        booking_id = int(callback.data.split("_")[2])
+        booking_id = int(callback.data.rsplit("_", 1)[-1])
     except (ValueError, IndexError):
         await callback.answer("❌ Ошибка", show_alert=True)
         return
