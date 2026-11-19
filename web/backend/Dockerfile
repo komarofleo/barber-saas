@@ -8,7 +8,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Копирование кода
 COPY web/backend/ ./
-COPY shared/ ../shared/
+COPY shared/ ./shared/
+
+ENV PYTHONPATH=/app
 
 # Запуск FastAPI
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
