@@ -1,14 +1,25 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import './Sidebar.css'
 
-function Sidebar() {
+interface SidebarProps {
+  collapsed?: boolean
+  onToggleCollapse?: () => void
+  mobileOpen?: boolean
+  onCloseMobile?: () => void
+}
+
+function Sidebar({
+  collapsed = false,
+  onToggleCollapse,
+  mobileOpen = false,
+  onCloseMobile,
+}: SidebarProps) {
   const location = useLocation()
   const { user, logout, subscription, subscriptionLoading, canCreateBookings } = useAuth()
   const [showSubscriptionWarning, setShowSubscriptionWarning] = useState(false)
 
-  // Показываем предупреждение при истекшей подписке
   useEffect(() => {
     if (subscription && !subscriptionLoading && !canCreateBookings) {
       setShowSubscriptionWarning(true)
@@ -17,11 +28,15 @@ function Sidebar() {
     }
   }, [subscription, subscriptionLoading, canCreateBookings])
 
+  useEffect(() => {
+    onCloseMobile?.()
+  }, [location.pathname])
+
   const menuItems = [
     { path: '/', icon: '📊', label: 'Дашборд' },
     { path: '/bookings', icon: '📋', label: 'Записи', requiresSubscription: true },
     { path: '/calendar', icon: '📅', label: 'Календарь', requiresSubscription: true },
-    { path: '/work-orders', icon: '📋', label: 'Лист-наряды', adminOnly: true },
+    { path: '/work-orders', icon: '📝', label: 'Лист-наряды', adminOnly: true },
     { path: '/clients', icon: '👤', label: 'Клиенты' },
     { path: '/users', icon: '👥', label: 'Пользователи', adminOnly: true },
     { path: '/services', icon: '🔧', label: 'Услуги' },
@@ -38,13 +53,13 @@ function Sidebar() {
   const getSubscriptionStatusColor = (status: string) => {
     switch (status) {
       case 'active':
-        return '#10b981' // green
+        return '#10b981'
       case 'expired':
-        return '#ef4444' // red
+        return '#ef4444'
       case 'blocked':
-        return '#f59e0b' // orange
+        return '#f59e0b'
       case 'cancelled':
-        return '#6b7280' // gray
+        return '#6b7280'
       default:
         return '#6b7280'
     }
@@ -76,27 +91,39 @@ function Sidebar() {
 
     if (diffDays <= 0) {
       return 'Подписка истекла'
-    } else if (diffDays === 1) {
-      return 'Завтра истекает'
-    } else if (diffDays <= 7) {
-      return `Истекает через ${diffDays} дн.`
-    } else {
-      return `Истекает через ${diffDays} дн.`
     }
+    if (diffDays === 1) {
+      return 'Завтра истекает'
+    }
+    return `Истекает через ${diffDays} дн.`
   }
 
   return (
-    <aside className="sidebar">
+    <aside
+      className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''} ${mobileOpen ? 'sidebar--mobile-open' : ''}`}
+    >
       <div className="sidebar-header">
-        <h2>Barber</h2>
-        <div className="user-info">
-          <span className="user-name">{user?.first_name || user?.telegram_id}</span>
-          {user?.is_admin && <span className="user-role">Администратор</span>}
+        <div className="sidebar-brand-row">
+          <h2 title="Barber SaaS">{collapsed ? 'B' : 'Barber'}</h2>
+          <button
+            type="button"
+            className="sidebar-collapse-btn"
+            onClick={onToggleCollapse}
+            aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+            title={collapsed ? 'Развернуть' : 'Свернуть'}
+          >
+            {collapsed ? '»' : '«'}
+          </button>
         </div>
+        {!collapsed && (
+          <div className="user-info">
+            <span className="user-name">{user?.first_name || user?.telegram_id}</span>
+            {user?.is_admin && <span className="user-role">Администратор</span>}
+          </div>
+        )}
       </div>
 
-      {/* Информация о подписке */}
-      {subscription && !subscriptionLoading && (
+      {!collapsed && subscription && !subscriptionLoading && (
         <div className="subscription-info">
           <div className="subscription-header">
             <span className="subscription-label">Подписка</span>
@@ -119,8 +146,7 @@ function Sidebar() {
         </div>
       )}
 
-      {/* Предупреждение об истекшей подписке */}
-      {showSubscriptionWarning && (
+      {!collapsed && showSubscriptionWarning && (
         <div className="subscription-warning">
           <div className="warning-content">
             <span className="warning-icon">⚠️</span>
@@ -140,11 +166,9 @@ function Sidebar() {
           {menuItems
             .filter((item) => {
               if (item.adminOnly && !user?.is_admin) return false
-              if (item.masterOnly && !user?.is_master) return false
               return true
             })
             .map((item) => {
-              // Блокируем пункты меню, которые требуют активной подписки
               const isBlocked =
                 item.requiresSubscription &&
                 subscription &&
@@ -154,48 +178,44 @@ function Sidebar() {
               return (
                 <li key={item.path}>
                   {isBlocked ? (
-                    <div className="nav-link disabled">
+                    <div className="nav-link disabled" title={item.label}>
                       <span className="nav-icon">{item.icon}</span>
-                      <span className="nav-label">{item.label}</span>
-                      <span className="nav-lock">🔒</span>
+                      {!collapsed && <span className="nav-label">{item.label}</span>}
+                      {!collapsed && <span className="nav-lock">🔒</span>}
                     </div>
                   ) : (
                     <Link
                       to={item.path}
-                      className={`nav-link ${
-                        location.pathname === item.path ? 'active' : ''
-                      }`}
+                      className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
+                      title={item.label}
                     >
                       <span className="nav-icon">{item.icon}</span>
-                      <span className="nav-label">{item.label}</span>
+                      {!collapsed && <span className="nav-label">{item.label}</span>}
                     </Link>
                   )}
                 </li>
               )
             })}
-          
-          {/* Дополнительные ссылки */}
+
           <li className="nav-divider"></li>
-          
-          {/* Биллинг/Подписка */}
+
           <li>
             <Link
               to="/billing"
-              className={`nav-link ${
-                location.pathname === '/billing' ? 'active' : ''
-              }`}
+              className={`nav-link ${location.pathname === '/billing' ? 'active' : ''}`}
+              title="Биллинг"
             >
               <span className="nav-icon">💳</span>
-              <span className="nav-label">Биллинг</span>
+              {!collapsed && <span className="nav-label">Биллинг</span>}
             </Link>
           </li>
         </ul>
       </nav>
 
       <div className="sidebar-footer">
-        <button onClick={logout} className="logout-btn">
+        <button onClick={logout} className="logout-btn" title="Выход">
           <span>🚪</span>
-          <span>Выход</span>
+          {!collapsed && <span>Выход</span>}
         </button>
       </div>
     </aside>

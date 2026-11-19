@@ -6,6 +6,7 @@
 
 import React from 'react'
 import { Plan } from '../api/public'
+import { formatMoney } from '../utils/money'
 
 interface PlanCardProps {
   plan: Plan
@@ -40,11 +41,11 @@ const PlanCard: React.FC<PlanCardProps> = ({
 
       <div className="plan-pricing">
         <div className="plan-price-monthly">
-          {plan.price_monthly.toLocaleString('ru-RU')} ₽
+          {formatMoney(plan.price_monthly)}
           <span className="plan-period">/мес</span>
         </div>
         <div className="plan-price-yearly">
-          или {plan.price_yearly.toLocaleString('ru-RU')} ₽/год
+          или {formatMoney(plan.price_yearly)}/год
         </div>
       </div>
 

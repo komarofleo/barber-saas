@@ -65,7 +65,7 @@ async def get_promotions(
             if service:
                 promo_dict["service_name"] = service.name
         
-        items.append(PromotionResponse.model_validate(promotion_dict))
+        items.append(PromotionResponse.model_validate(promo_dict))
     
     return PromotionListResponse(items=items, total=total)
 
@@ -116,7 +116,7 @@ async def get_active_promotions(
             if service:
                 promo_dict["service_name"] = service.name
         
-        items.append(PromotionResponse.model_validate(promotion_dict))
+        items.append(PromotionResponse.model_validate(promo_dict))
     
     return PromotionListResponse(items=items, total=len(items))
 

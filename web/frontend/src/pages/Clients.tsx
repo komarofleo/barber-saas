@@ -5,6 +5,7 @@ import { usersApi } from '../api/users'
 import { useAuth } from '../hooks/useAuth'
 import { SuccessNotification } from '../components/SuccessNotification'
 import { broadcastsApi } from '../api/broadcasts'
+import { formatMoney } from '../utils/money'
 import './Clients.css'
 
 type SortField = 'id' | 'full_name' | 'phone' | 'total_visits' | 'total_amount' | 'created_at' | null
@@ -179,14 +180,6 @@ function Clients() {
     }
   }
 
-  const formatCurrency = (amount: number | null) => {
-    if (!amount) return '0 ₽'
-    return new Intl.NumberFormat('ru-RU', {
-      style: 'currency',
-      currency: 'RUB',
-      minimumFractionDigits: 0
-    }).format(amount)
-  }
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('ru-RU', {
@@ -335,7 +328,7 @@ function Clients() {
                     <td>{client.phone || '-'}</td>
                     <td>{client.user_telegram_id || '-'}</td>
                     <td>{client.total_visits}</td>
-                    <td>{formatCurrency(client.total_amount)}</td>
+                    <td>{formatMoney(client.total_amount)}</td>
                   <td>{formatDate(client.created_at)}</td>
                   <td>
                     <div className="action-buttons">
@@ -466,11 +459,7 @@ function ViewClientModal({ client, onClose, onAdminToggle }: ViewClientModalProp
               <div className="detail-item">
                 <div className="detail-label">Общая сумма:</div>
                 <div className="detail-value detail-value-amount">
-                  {new Intl.NumberFormat('ru-RU', {
-                    style: 'currency',
-                    currency: 'RUB',
-                    minimumFractionDigits: 0
-                  }).format(client.total_amount || 0)}
+                  {formatMoney(client.total_amount)}
                 </div>
               </div>
               <div className="detail-item">

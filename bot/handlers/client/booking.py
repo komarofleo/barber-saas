@@ -129,104 +129,87 @@ async def notify_admins_about_new_booking(bot: Bot, booking: Booking, service):
             )
             service_row = service_result.fetchone()
             
-            # Получаем всех администраторов с Telegram ID (в tenant схемах используется role='admin')
-            logger.info(f"📤 [NOTIFY_ADMIN] Ищем администраторов в tenant_{company_id}.users")
-            logger.info(f"📤 [NOTIFY_ADMIN] Условия: role='admin' AND telegram_id IS NOT NULL")
-            
+            # Tenant users: is_admin / first_name / last_name (не role / full_name)
+            logger.info(f"[NOTIFY_ADMIN] Ищем администраторов в {schema_name}.users (is_admin=true)")
             admins_result = await session.execute(
-                text(f"""
-                    SELECT id, telegram_id, username, full_name, phone, role
+                text(
+                    f"""
+                    SELECT id, telegram_id, username, first_name, last_name, phone, is_admin
                     FROM "{schema_name}".users
-                    WHERE role = 'admin' AND telegram_id IS NOT NULL
-                """)
+                    WHERE is_admin = true AND telegram_id IS NOT NULL AND telegram_id <> 0
+                    """
+                )
             )
             admin_rows = admins_result.fetchall()
-            
-            # Создаем объекты User для совместимости
+
             admins = []
             for row in admin_rows:
-                user = type('User', (), {})()
+                user = type("User", (), {})()
                 user.id = row[0]
                 user.telegram_id = row[1]
-                user.username = row[2] or ''
-                user.full_name = row[3]
-                user.phone = row[4]
-                user.role = row[5]
-                user.is_admin = True
+                user.username = row[2] or ""
+                name_parts = [p for p in [row[3], row[4]] if p]
+                user.full_name = " ".join(name_parts) if name_parts else (row[2] or f"admin#{row[0]}")
+                user.phone = row[5]
+                user.is_admin = bool(row[6])
                 admins.append(user)
-                logger.info(f"📤 [NOTIFY_ADMIN] Найден админ: user_id={user.id}, telegram_id={user.telegram_id}, full_name={user.full_name}")
-            
+                logger.info(
+                    f"[NOTIFY_ADMIN] Найден админ: user_id={user.id}, telegram_id={user.telegram_id}"
+                )
+
             if not admins:
-                logger.warning(f"⚠️ [NOTIFY_ADMIN] === НЕ НАЙДЕНО АДМИНИСТРАТОРОВ ===")
-                logger.warning(f"⚠️ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking.id if booking else None}")
-                logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: В tenant_{company_id}.users нет пользователей с role='admin' и telegram_id IS NOT NULL")
+                logger.warning(
+                    f"[NOTIFY_ADMIN] Нет админов с telegram_id в {schema_name}.users "
+                    f"(company_id={company_id}, booking_id={booking.id if booking else None})"
+                )
                 return
-            
-            logger.info(f"✅ [NOTIFY_ADMIN] === НАЙДЕНО {len(admins)} АДМИНИСТРАТОРОВ ===")
-            logger.info(f"✅ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking.id if booking else None}")
-            
-            # Формируем сообщение
-            from datetime import datetime
-            booking_date = booking_row[2]  # date
-            booking_time = booking_row[3]  # time
+
+            booking_date = booking_row[2]
+            booking_time = booking_row[3]
             date_str = booking_date.strftime("%d.%m.%Y")
             time_str = booking_time.strftime("%H:%M")
-            
-            client_name = client_row[2] if client_row[2] else "Неизвестно"  # full_name
-            client_phone = client_row[3] if client_row[3] else "Не указан"  # phone
-            service_name = service_row[1] if service_row else (service.name if service else "Не указана")  # name
-            
-            logger.info(f"📋 [NOTIFY_ADMIN] Данные записи: booking_number={booking_row[1]}, client_name={client_name}, client_phone={client_phone}, service_name={service_name}")
-            
-            message_text = f"🔔 Новая запись!\n\n"
-            message_text += f"📋 {booking_row[1]}\n"  # booking_number
-            message_text += f"   👤 {client_name}\n"
-            message_text += f"   📞 {client_phone}\n"
-            message_text += f"   📅 {date_str} в {time_str}\n"
-            message_text += f"   🛠️ {service_name}\n"
-            
-            # Отправляем уведомление всем администраторам
-            logger.info(f"📤 [NOTIFY_ADMIN] === ОТПРАВКА УВЕДОМЛЕНИЙ АДМИНИСТРАТОРАМ ===")
-            logger.info(f"📤 [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking.id if booking else None}")
-            logger.info(f"📤 [NOTIFY_ADMIN] Количество админов: {len(admins)}")
-            logger.info(f"📤 [NOTIFY_ADMIN] Текст сообщения: {message_text[:200]}...")
-            
+            client_name = client_row[2] if client_row[2] else "Неизвестно"
+            client_phone = client_row[3] if client_row[3] else "Не указан"
+            service_name = service_row[1] if service_row else (service.name if service else "Не указана")
+
+            message_text = (
+                f"🔔 Новая запись!\n\n"
+                f"📋 {booking_row[1]}\n"
+                f"   👤 {client_name}\n"
+                f"   📞 {client_phone}\n"
+                f"   📅 {date_str} в {time_str}\n"
+                f"   🛠️ {service_name}\n"
+            )
+
             sent_count = 0
             failed_count = 0
             for admin in admins:
                 try:
-                    logger.info(f"📤 [NOTIFY_ADMIN] Отправляем уведомление админу: user_id={admin.id}, telegram_id={admin.telegram_id}, full_name={admin.full_name}")
-                    result = await bot.send_message(
-                        chat_id=admin.telegram_id,
-                        text=message_text
-                    )
+                    result = await bot.send_message(chat_id=admin.telegram_id, text=message_text)
                     sent_count += 1
-                    logger.info(f"✅ [NOTIFY_ADMIN] Уведомление отправлено успешно: user_id={admin.id}, telegram_id={admin.telegram_id}, message_id={result.message_id}")
+                    logger.info(
+                        f"[NOTIFY_ADMIN] Отправлено: telegram_id={admin.telegram_id}, "
+                        f"message_id={result.message_id}"
+                    )
                 except Exception as e:
-                    error_msg = str(e)
-                    error_type = type(e).__name__
                     failed_count += 1
-                    logger.error(f"❌ [NOTIFY_ADMIN] === ОШИБКА ОТПРАВКИ АДМИНУ ===")
-                    logger.error(f"❌ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking.id if booking else None}")
-                    logger.error(f"❌ [NOTIFY_ADMIN] user_id={admin.id}, telegram_id={admin.telegram_id}, full_name={admin.full_name}")
-                    logger.error(f"❌ [NOTIFY_ADMIN] Тип ошибки: {error_type}")
-                    logger.error(f"❌ [NOTIFY_ADMIN] Текст ошибки: {error_msg}")
-                    logger.error(f"❌ [NOTIFY_ADMIN] Полный traceback:", exc_info=True)
-                    
-                    # Проверяем специфичные ошибки Telegram API
+                    error_msg = str(e)
+                    logger.error(
+                        f"[NOTIFY_ADMIN] Ошибка отправки telegram_id={admin.telegram_id}: {error_msg}",
+                        exc_info=True,
+                    )
                     error_lower = error_msg.lower()
                     if "chat not found" in error_lower or "user not found" in error_lower:
-                        logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: Админ {admin.id} не начал диалог с ботом или не найден")
+                        logger.warning(
+                            f"[NOTIFY_ADMIN] Админ {admin.id} ещё не нажал /start у бота компании"
+                        )
                     elif "blocked" in error_lower:
-                        logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: Админ {admin.id} заблокировал бота")
-                    elif "forbidden" in error_lower:
-                        logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: Бот не может отправить сообщение админу {admin.id}")
-            
-            logger.info(f"✅ [NOTIFY_ADMIN] === ИТОГИ ОТПРАВКИ ===")
-            logger.info(f"✅ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking.id if booking else None}")
-            logger.info(f"✅ [NOTIFY_ADMIN] Отправлено успешно: {sent_count} из {len(admins)}")
-            if failed_count > 0:
-                logger.warning(f"⚠️ [NOTIFY_ADMIN] Не отправлено: {failed_count} из {len(admins)}")
+                        logger.warning(f"[NOTIFY_ADMIN] Админ {admin.id} заблокировал бота")
+
+            logger.info(
+                f"[NOTIFY_ADMIN] Итог company_id={company_id}: отправлено {sent_count}/{len(admins)}, "
+                f"ошибок {failed_count}"
+            )
     except Exception as e:
         error_msg = str(e)
         error_type = type(e).__name__
@@ -473,11 +456,10 @@ async def finalize_booking(callback, state: FSMContext):
                     await callback.answer("❌ Клиент не найден. Пройдите регистрацию через /start", show_alert=True)
                 return
 
-            # Убрано поле марки автомобиля - comment всегда None
             comment = None
-            logger.info(f"Создание заявки без марки автомобиля")
+            service_amount = getattr(service, "price", None)
 
-            # Создаем запись
+            # Создаём запись (is_paid/discount_amount задаются в CRUD для всех tenant)
             booking = await create_booking(
                 session,
                 client_id=client.id,
@@ -489,44 +471,50 @@ async def finalize_booking(callback, state: FSMContext):
                 comment=comment,
                 created_by=user.id,
                 company_id=company_id,
+                amount=float(service_amount) if service_amount is not None else None,
             )
-            logger.info(f"Заявка создана: ID={booking.id}, booking_number={booking.booking_number}, comment={comment}")
+            logger.info(
+                f"Заявка создана: ID={booking.id}, booking_number={booking.booking_number}"
+            )
 
-            # Отправляем уведомление администраторам о новой записи
             try:
                 await notify_admins_about_new_booking(callback.bot, booking, service)
-                logger.info(f"Уведомление администраторам отправлено для записи {booking.id}")
             except Exception as e:
                 logger.error(f"Ошибка отправки уведомления администраторам: {e}", exc_info=True)
-                # Не пытаемся через Celery, так как уведомление уже отправлено синхронно
-                # Если не удалось - просто логируем ошибку
 
-            # Отправляем подтверждение пользователю
+            price_text = f"{service_amount}₽" if service_amount is not None else "—"
             confirmation_text = (
                 f"✅ Запись создана!\n\n"
                 f"📅 Дата: {booking.service_date.strftime('%d.%m.%Y')}\n"
                 f"⏰ Время: {booking.time.strftime('%H:%M')}\n"
                 f"🛠️ Услуга: {service.name}\n"
-                f"💰 Цена: {service.price}₽\n\n"
+                f"💰 Цена: {price_text}\n\n"
                 f"Номер записи: {booking.booking_number}\n\n"
                 f"Ожидайте подтверждения администратора."
             )
-            
-            if hasattr(callback, 'message') and hasattr(callback.message, 'edit_text'):
+
+            if hasattr(callback, "message") and hasattr(callback.message, "edit_text"):
                 await callback.message.edit_text(confirmation_text)
             else:
                 await callback.bot.send_message(
                     chat_id=callback.from_user.id,
-                    text=confirmation_text
+                    text=confirmation_text,
                 )
-            
-            if hasattr(callback, 'answer'):
+
+            if hasattr(callback, "answer"):
                 await callback.answer("✅ Запись создана!")
             await state.clear()
         except Exception as e:
             logger.error(f"Ошибка при создании записи: {e}", exc_info=True)
-            if hasattr(callback, 'answer'):
-                await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+            try:
+                await callback.message.edit_text(
+                    "❌ Не удалось создать запись.\n\n"
+                    "Попробуйте выбрать другое время или начните запись заново: «📅 Записаться»."
+                )
+            except Exception:
+                pass
+            if hasattr(callback, "answer"):
+                await callback.answer("❌ Не удалось создать запись", show_alert=True)
 
 
 @router.callback_query(F.data == "cancel")
@@ -539,64 +527,81 @@ async def cancel_booking(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("confirm_attendance_"))
 async def confirm_attendance(callback: CallbackQuery):
-    """Подтвердить явку на запись"""
+    """Подтвердить явку на запись (кнопка из напоминания)."""
     try:
-        booking_id = int(callback.data.split("_")[2])
+        booking_id = int(callback.data.rsplit("_", 1)[-1])
     except (ValueError, IndexError):
         await callback.answer("❌ Ошибка", show_alert=True)
         return
-    
-    # Получаем company_id из токена бота
+
     company_id = None
     try:
         from sqlalchemy import text
         from bot.database.connection import async_session_maker
+
         bot_token = callback.bot.token
         async with async_session_maker() as temp_session:
             result = await temp_session.execute(
                 text("SELECT id FROM public.companies WHERE telegram_bot_token = :token"),
-                {"token": bot_token}
+                {"token": bot_token},
             )
             row = result.fetchone()
             if row:
                 company_id = row[0]
     except Exception as e:
         logger.error(f"Ошибка получения company_id: {e}")
-        pass
-    
+
     async for session in get_session():
-        from bot.database.crud import get_booking_by_id, get_user_by_telegram_id
-        
-        user = await get_user_by_telegram_id(session, callback.from_user.id, company_id=company_id)
+        from bot.database.crud import (
+            get_booking_by_id,
+            get_user_by_telegram_id,
+            update_booking_status,
+        )
+
+        user = await get_user_by_telegram_id(
+            session, callback.from_user.id, company_id=company_id
+        )
         if not user:
             await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
-        
+
         booking = await get_booking_by_id(session, booking_id, company_id=company_id)
         if not booking:
             await callback.answer("❌ Запись не найдена", show_alert=True)
             return
-        
-        # Проверяем, что это запись этого клиента
-        if booking.client.user_id != user.id:
+
+        client = getattr(booking, "client", None)
+        if not client or client.user_id != user.id:
             await callback.answer("❌ Это не ваша запись", show_alert=True)
             return
-        
-        # Обновляем сообщение
+
+        if booking.status in ("cancelled", "completed"):
+            await callback.answer("❌ Запись уже отменена или завершена", show_alert=True)
+            return
+
+        # Фиксируем подтверждение в БД (раньше менялся только текст сообщения)
+        if booking.status != "confirmed":
+            await update_booking_status(
+                session=session,
+                booking_id=booking_id,
+                status="confirmed",
+                company_id=company_id,
+            )
+
         await callback.message.edit_text(
-            f"✅ Явка подтверждена!\n\n"
+            "✅ Явка подтверждена!\n\n"
             f"📅 Дата: {booking.service_date.strftime('%d.%m.%Y')}\n"
             f"⏰ Время: {booking.time.strftime('%H:%M')}\n\n"
-            f"Ждем вас в салоне красоты!"
+            "Ждем вас в салоне красоты!"
         )
         await callback.answer("✅ Явка подтверждена")
 
 
 @router.callback_query(F.data.startswith("cancel_booking_"))
 async def cancel_booking_by_client(callback: CallbackQuery):
-    """Отменить запись клиентом"""
+    """Отменить запись клиентом (кнопка из напоминания)."""
     try:
-        booking_id = int(callback.data.split("_")[2])
+        booking_id = int(callback.data.rsplit("_", 1)[-1])
     except (ValueError, IndexError):
         await callback.answer("❌ Ошибка", show_alert=True)
         return

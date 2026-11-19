@@ -1,95 +1,62 @@
 /**
- * Страница входа супер-администратора
- * 
- * Отображает форму входа с валидацией
- * После успешного входа сохраняет токен и перенаправляет на дашборд
+ * Страница входа супер-администратора.
+ * Компактный single-viewport layout под высоту ноутбука.
  */
 
-import React, { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useRef } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import { SuperAdminLoginRequest, superAdminApi } from '../api/superAdmin'
 import './SuperAdminLogin.css'
 
 const SuperAdminLogin: React.FC = () => {
   const navigate = useNavigate()
-  const isRedirecting = useRef(false) // Флаг для предотвращения множественных перенаправлений
+  const isRedirecting = useRef(false)
 
-  // Состояния формы
   const [formData, setFormData] = useState<SuperAdminLoginRequest>({
     username: '',
     password: '',
   })
 
-  // UI состояния
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState<boolean>(false)
   const [showPassword, setShowPassword] = useState<boolean>(false)
   const [rememberMe, setRememberMe] = useState<boolean>(false)
 
-  // Проверка авторизации при загрузке - убрана, чтобы избежать циклов
-  // SuperAdminProtectedRoute сам проверит токен и перенаправит при необходимости
-
-  // Валидация формы
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
 
-    // Валидация username
     if (!formData.username || formData.username.length < 3) {
-      newErrors.username = 'Имя пользователя должно содержать минимум 3 символа'
+      newErrors.username = 'Минимум 3 символа'
     } else if (formData.username.length > 100) {
-      newErrors.username = 'Имя пользователя не должно превышать 100 символов'
+      newErrors.username = 'Максимум 100 символов'
     }
 
-    // Валидация password
     if (!formData.password || formData.password.length < 6) {
-      newErrors.password = 'Пароль должен содержать минимум 6 символов'
+      newErrors.password = 'Минимум 6 символов'
     } else if (formData.password.length > 100) {
-      newErrors.password = 'Пароль не должен превышать 100 символов'
+      newErrors.password = 'Максимум 100 символов'
     }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
-  // Обработчик ввода
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
-    
-    // Очищаем ошибку поля при вводе
-    setErrors(prev => ({
-      ...prev,
-      [name]: '',
-    }))
-
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }))
+    setErrors((prev) => ({ ...prev, [name]: '' }))
+    setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  // Обработчик отправки формы
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    // Защита от множественных отправок
-    if (loading) {
-      return
-    }
-
-    // Валидация формы
-    if (!validateForm()) {
-      return
-    }
+    if (loading || !validateForm()) return
 
     setLoading(true)
     setErrors({})
 
     try {
       const response = await superAdminApi.login(formData)
-      
-      console.log('Успешный вход:', response)
 
-      // Сохраняем токен
       if (rememberMe) {
         localStorage.setItem('super_admin_token', response.access_token)
         localStorage.setItem('super_admin', JSON.stringify(response.super_admin))
@@ -98,220 +65,140 @@ const SuperAdminLogin: React.FC = () => {
         sessionStorage.setItem('super_admin', JSON.stringify(response.super_admin))
       }
 
-      console.log('Токен сохранен, перенаправление...')
-      
-      // Проверяем, что токен действительно сохранился
-      const savedToken = rememberMe 
+      const savedToken = rememberMe
         ? localStorage.getItem('super_admin_token')
         : sessionStorage.getItem('super_admin_token')
-      
+
       if (!savedToken) {
-        console.error('Ошибка: токен не был сохранен!')
         setErrors({ general: 'Ошибка сохранения токена. Попробуйте снова.' })
         setLoading(false)
         return
       }
-      
-      // Перенаправляем на дашборд только один раз
+
       if (!isRedirecting.current) {
         isRedirecting.current = true
-        // Используем navigate с replace для предотвращения циклов
         navigate('/super-admin/dashboard', { replace: true })
       }
     } catch (error: any) {
-      console.error('Ошибка входа:', error)
-      
-      // Сбрасываем флаг перенаправления при ошибке
       isRedirecting.current = false
-      
-      // Извлекаем сообщение об ошибке
       let errorMessage = 'Неверный логин или пароль'
-      
+
       if (error?.message) {
         if (typeof error.message === 'string') {
           errorMessage = error.message
         } else if (typeof error.message === 'object') {
-          // Если message - объект, пытаемся извлечь строку
-          if (error.message.message) {
-            errorMessage = String(error.message.message)
-          } else if (error.message.detail) {
-            errorMessage = String(error.message.detail)
-          } else {
-            errorMessage = 'Произошла ошибка при входе'
-          }
+          errorMessage = String(error.message.message || error.message.detail || errorMessage)
         }
       } else if (error?.response?.data) {
         const data = error.response.data
-        if (typeof data.detail === 'string') {
-          errorMessage = data.detail
-        } else if (typeof data.message === 'string') {
-          errorMessage = data.message
-        } else if (typeof data.error === 'string') {
-          errorMessage = data.error
-        }
+        errorMessage = String(data.detail || data.message || data.error || errorMessage)
       }
-      
-      setErrors({
-        general: errorMessage,
-      })
+
+      setErrors({ general: errorMessage })
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="super-admin-login-page">
-      {/* Левая панель с заголовком */}
-      <div className="login-sidebar">
-        <div className="login-sidebar-content">
-          <div className="login-icon">🔐</div>
-          <h1 className="login-title">Панель супер-администратора</h1>
-          <p className="login-subtitle">
-            Введите свои учетные данные для доступа к админ-панели
-          </p>
-        </div>
-      </div>
+    <div className="sa-login">
+      <div className="sa-login__orb sa-login__orb--a" aria-hidden />
+      <div className="sa-login__orb sa-login__orb--b" aria-hidden />
 
-      {/* Правая панель с формой */}
-      <div className="login-main">
-        <div className="login-container">
+      <div className="sa-login__card anim-fade-up">
+        <header className="sa-login__brand">
+          <div className="sa-login__badge">Barber SaaS</div>
+          <h1 className="sa-login__title">Супер-админ</h1>
+          <p className="sa-login__subtitle">Вход в панель управления платформой</p>
+        </header>
 
-        {/* Общие ошибки */}
         {errors.general && (
-          <div className="error-alert">
-            <div className="error-icon">⚠️</div>
-            <div className="error-message">{errors.general}</div>
+          <div className="sa-login__alert" role="alert">
+            {errors.general}
           </div>
         )}
 
-        {/* Форма входа */}
-        <form onSubmit={handleSubmit} className="login-form">
-          {/* Поле username */}
-          <div className="form-group">
-            <label htmlFor="username" className="form-label">
-              Имя пользователя
-            </label>
-            <div className="input-wrapper">
+        <form onSubmit={handleSubmit} className="sa-login__form">
+          <div className="sa-login__field">
+            <label htmlFor="username">Имя пользователя</label>
+            <div className="sa-login__input-wrap">
               <input
                 type="text"
                 id="username"
                 name="username"
                 value={formData.username}
                 onChange={handleChange}
-                className={`form-input ${errors.username ? 'error' : ''}`}
-                placeholder="Введите имя пользователя (например: admin)"
+                className={errors.username ? 'is-error' : ''}
+                placeholder="admin"
                 autoComplete="username"
                 required
               />
-              <span className="input-icon">👤</span>
             </div>
-            {errors.username && (
-              <div className="field-error">{errors.username}</div>
-            )}
+            {errors.username && <div className="sa-login__error">{errors.username}</div>}
           </div>
 
-          {/* Поле password */}
-          <div className="form-group">
-            <label htmlFor="password" className="form-label">
-              Пароль
-            </label>
-            <div className="input-wrapper">
+          <div className="sa-login__field">
+            <label htmlFor="password">Пароль</label>
+            <div className="sa-login__input-wrap">
               <input
                 type={showPassword ? 'text' : 'password'}
                 id="password"
                 name="password"
                 value={formData.password}
                 onChange={handleChange}
-                className={`form-input ${errors.password ? 'error' : ''}`}
-                placeholder="Введите пароль"
+                className={errors.password ? 'is-error' : ''}
+                placeholder="••••••••"
                 autoComplete="current-password"
                 required
               />
               <button
                 type="button"
-                className="toggle-password"
+                className="sa-login__eye"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
               >
-                {showPassword ? '🙈' : '👁️'}
+                {showPassword ? 'Скрыть' : 'Показать'}
               </button>
             </div>
-            {errors.password && (
-              <div className="field-error">{errors.password}</div>
-            )}
+            {errors.password && <div className="sa-login__error">{errors.password}</div>}
           </div>
 
-          {/* Checkbox "Запомнить меня" */}
-          <div className="form-options">
-            <label className="checkbox-label">
+          <div className="sa-login__row">
+            <label className="sa-login__remember">
               <input
                 type="checkbox"
-                className="checkbox-input"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
               />
-              <span className="checkbox-text">Запомнить меня</span>
+              <span>Запомнить</span>
             </label>
-
-            <a href="/super-admin/forgot-password" className="forgot-password">
+            <a href="/super-admin/forgot-password" className="sa-login__link">
               Забыли пароль?
             </a>
           </div>
 
-          {/* Кнопка входа */}
-          <button
-            type="submit"
-            className={`submit-button ${loading ? 'loading' : ''}`}
-            disabled={loading}
-          >
+          <button type="submit" className="sa-login__submit" disabled={loading}>
             {loading ? (
               <>
-                <div className="spinner"></div>
-                Вход в систему...
+                <span className="sa-login__spinner" />
+                Вход...
               </>
             ) : (
-              'Войти в панель'
+              'Войти'
             )}
           </button>
-
-          {/* Ссылка на главную */}
-          <div className="back-link">
-            <a href="/">
-              ← Вернуться на главную
-            </a>
-          </div>
         </form>
 
-        {/* Информация безопасности */}
-        <div className="security-info">
-          <h3>🔒 Безопасность</h3>
-          <ul>
-            <li>✅ Все данные шифруются при передаче</li>
-            <li>✅ Токен доступа хранится защищенно</li>
-            <li>✅ Автоматический выход через 24 часа</li>
-            <li>✅ Логи всех действий сохраняются</li>
-          </ul>
-        </div>
-
-        {/* Контакты поддержки */}
-        <div className="support-info">
-          <h3>📞 Нужна помощь?</h3>
-          <p className="support-text">
-            Если вы забыли пароль или не можете войти, свяжитесь с поддержкой
-          </p>
-          <div className="support-links">
-            <a href="mailto:support@barber-saas.com" className="support-link">
-              📧 Email поддержка
-            </a>
-            <a href="https://t.me/barber_support" className="support-link">
-              🤖 Telegram поддержка
-            </a>
+        <footer className="sa-login__footer">
+          <p className="sa-login__secure">Шифрование · токен 24ч · журнал действий</p>
+          <div className="sa-login__footer-links">
+            <Link to="/">На главную</Link>
+            <a href="mailto:support@barber-saas.com">Поддержка</a>
           </div>
-        </div>
-        </div>
+        </footer>
       </div>
     </div>
   )
 }
 
 export default SuperAdminLogin
-

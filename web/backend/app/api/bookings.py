@@ -37,6 +37,59 @@ async def get_company_id_from_token(request: Request) -> Optional[int]:
         return None
 
 
+async def resolve_created_by_user_id(
+    tenant_session: AsyncSession,
+    company_id: int,
+    current_user: User,
+) -> Optional[int]:
+    """
+    Вернуть валидный users.id для bookings.created_by.
+
+    JWT company_admin кладёт в current_user.id = company_id (из public.companies),
+    а FK bookings_created_by_fkey ссылается на tenant_N.users — там такого id нет.
+    """
+    schema = f"tenant_{company_id}"
+
+    # Обычный tenant-пользователь: id уже из users
+    exists = await tenant_session.execute(
+        text(f'SELECT id FROM "{schema}".users WHERE id = :uid'),
+        {"uid": current_user.id},
+    )
+    if exists.fetchone():
+        return current_user.id
+
+    # Владелец компании: ищем по admin telegram_id
+    telegram_id = getattr(current_user, "telegram_id", None)
+    if telegram_id:
+        by_tg = await tenant_session.execute(
+            text(
+                f'SELECT id FROM "{schema}".users WHERE telegram_id = :tg ORDER BY id LIMIT 1'
+            ),
+            {"tg": telegram_id},
+        )
+        row = by_tg.fetchone()
+        if row:
+            return int(row[0])
+
+    # Fallback: любой tenant-админ
+    by_admin = await tenant_session.execute(
+        text(
+            f'SELECT id FROM "{schema}".users WHERE is_admin = true ORDER BY id LIMIT 1'
+        )
+    )
+    row = by_admin.fetchone()
+    if row:
+        return int(row[0])
+
+    # created_by nullable — лучше NULL, чем FK violation
+    logger.warning(
+        "Не найден tenant user для created_by (company_id=%s, jwt_user_id=%s)",
+        company_id,
+        current_user.id,
+    )
+    return None
+
+
 async def get_client_telegram_id(tenant_session: AsyncSession, company_id: int, client: Client) -> Optional[int]:
     """Получить telegram_id клиента из tenant схемы users"""
     if not client or not client.user_id:
@@ -141,95 +194,130 @@ async def notify_admins_about_new_booking(company_id: int, booking_id: int, tena
         )
         service_row = service_result.fetchone()
         
-        # Получаем всех администраторов с Telegram ID
-        logger.info(f"📤 [NOTIFY_ADMIN] Ищем администраторов в {schema_name}.users")
-        logger.info(f"📤 [NOTIFY_ADMIN] Условия: role='admin' AND telegram_id IS NOT NULL")
-        
+        # Админы tenant: is_admin (колонки role/full_name в users нет)
+        logger.info(f"📤 [NOTIFY_ADMIN] Ищем администраторов в {schema_name}.users (is_admin=true)")
+
         admins_result = await tenant_session.execute(
-            sql_text(f"""
-                SELECT id, telegram_id, username, full_name, phone, role
+            sql_text(
+                f"""
+                SELECT id, telegram_id, username, first_name, last_name, phone
                 FROM "{schema_name}".users
-                WHERE role = 'admin' AND telegram_id IS NOT NULL
-            """)
+                WHERE is_admin = true
+                  AND telegram_id IS NOT NULL
+                  AND COALESCE(is_blocked, false) = false
+                """
+            )
         )
-        admin_rows = admins_result.fetchall()
-        
-        if not admin_rows:
-            logger.warning(f"⚠️ [NOTIFY_ADMIN] === НЕ НАЙДЕНО АДМИНИСТРАТОРОВ ===")
-            logger.warning(f"⚠️ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking_id}")
-            logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: В {schema_name}.users нет пользователей с role='admin' и telegram_id IS NOT NULL")
+        admin_rows = list(admins_result.fetchall())
+
+        # Fallback: admin_telegram_id компании из public
+        await tenant_session.execute(sql_text("SET search_path TO public"))
+        company_admin_result = await tenant_session.execute(
+            sql_text(
+                "SELECT admin_telegram_id FROM public.companies WHERE id = :company_id"
+            ),
+            {"company_id": company_id},
+        )
+        company_admin_tg = company_admin_result.scalar()
+        await tenant_session.execute(
+            sql_text(f'SET search_path TO "{schema_name}", public')
+        )
+
+        admin_targets: list[tuple[Optional[int], int, str]] = []
+        seen_tg: set[int] = set()
+        for admin_row in admin_rows:
+            tg_id = admin_row[1]
+            if not tg_id or tg_id in seen_tg:
+                continue
+            seen_tg.add(int(tg_id))
+            display = (
+                f"{admin_row[3] or ''} {admin_row[4] or ''}".strip()
+                or admin_row[2]
+                or "Администратор"
+            )
+            admin_targets.append((int(admin_row[0]), int(tg_id), display))
+
+        if company_admin_tg and int(company_admin_tg) not in seen_tg:
+            admin_targets.append((None, int(company_admin_tg), "Владелец компании"))
+            seen_tg.add(int(company_admin_tg))
+
+        if not admin_targets:
+            logger.warning(
+                "⚠️ [NOTIFY_ADMIN] Нет получателей: is_admin + admin_telegram_id пусты "
+                f"(company_id={company_id}, booking_id={booking_id})"
+            )
             return False
-        
-        logger.info(f"✅ [NOTIFY_ADMIN] === НАЙДЕНО {len(admin_rows)} АДМИНИСТРАТОРОВ ===")
-        logger.info(f"✅ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking_id}")
-        
-        # Формируем сообщение
-        booking_date = booking_row[2]  # date
-        booking_time = booking_row[3]  # time
+
+        logger.info(
+            f"✅ [NOTIFY_ADMIN] Получателей: {len(admin_targets)} "
+            f"(company_id={company_id}, booking_id={booking_id})"
+        )
+
+        booking_date = booking_row[2]
+        booking_time = booking_row[3]
         date_str = booking_date.strftime("%d.%m.%Y")
         time_str = booking_time.strftime("%H:%M")
-        
-        client_name = client_row[2] if client_row[2] else "Неизвестно"  # full_name
-        client_phone = client_row[3] if client_row[3] else "Не указан"  # phone
-        service_name = service_row[1] if service_row else "Не указана"  # name
-        
-        logger.info(f"📋 [NOTIFY_ADMIN] Данные записи: booking_number={booking_row[1]}, client_name={client_name}, client_phone={client_phone}, service_name={service_name}")
-        
-        message_text = f"🔔 Новая запись!\n\n"
-        message_text += f"📋 {booking_row[1]}\n"  # booking_number
-        message_text += f"   👤 {client_name}\n"
-        message_text += f"   📞 {client_phone}\n"
-        message_text += f"   📅 {date_str} в {time_str}\n"
-        message_text += f"   🛠️ {service_name}\n"
-        
-        # Отправляем уведомление всем администраторам
-        logger.info(f"📤 [NOTIFY_ADMIN] === ОТПРАВКА УВЕДОМЛЕНИЙ АДМИНИСТРАТОРАМ ===")
-        logger.info(f"📤 [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking_id}")
-        logger.info(f"📤 [NOTIFY_ADMIN] Количество админов: {len(admin_rows)}")
-        
+
+        client_name = client_row[2] if client_row[2] else "Неизвестно"
+        client_phone = client_row[3] if client_row[3] else "Не указан"
+        service_name = service_row[1] if service_row else "Не указана"
+
+        message_text = (
+            "🔔 Новая запись!\n\n"
+            f"📋 {booking_row[1]}\n"
+            f"   👤 {client_name}\n"
+            f"   📞 {client_phone}\n"
+            f"   📅 {date_str} в {time_str}\n"
+            f"   🛠️ {service_name}\n"
+        )
+
         bot = Bot(token=bot_token)
         sent_count = 0
         failed_count = 0
-        
+
         try:
-            for admin_row in admin_rows:
-                admin_telegram_id = admin_row[1]
-                admin_id = admin_row[0]
-                admin_name = admin_row[3] or "Администратор"
-                
+            for admin_id, admin_telegram_id, admin_name in admin_targets:
                 try:
-                    logger.info(f"📤 [NOTIFY_ADMIN] Отправляем уведомление админу: user_id={admin_id}, telegram_id={admin_telegram_id}, full_name={admin_name}")
+                    logger.info(
+                        f"📤 [NOTIFY_ADMIN] Отправка: user_id={admin_id}, "
+                        f"telegram_id={admin_telegram_id}, name={admin_name}"
+                    )
                     result = await bot.send_message(
-                        chat_id=admin_telegram_id,
-                        text=message_text
+                        chat_id=admin_telegram_id, text=message_text
                     )
                     sent_count += 1
-                    logger.info(f"✅ [NOTIFY_ADMIN] Уведомление отправлено успешно: user_id={admin_id}, telegram_id={admin_telegram_id}, message_id={result.message_id}")
+                    logger.info(
+                        f"✅ [NOTIFY_ADMIN] OK message_id={result.message_id}, "
+                        f"telegram_id={admin_telegram_id}"
+                    )
                 except Exception as e:
-                    error_msg = str(e)
                     failed_count += 1
-                    logger.error(f"❌ [NOTIFY_ADMIN] Ошибка отправки админу {admin_id} (telegram_id={admin_telegram_id}): {error_msg}")
-                    
-                    # Проверяем специфичные ошибки Telegram API
+                    error_msg = str(e)
+                    logger.error(
+                        f"❌ [NOTIFY_ADMIN] Ошибка админу {admin_id} "
+                        f"(telegram_id={admin_telegram_id}): {error_msg}"
+                    )
                     error_lower = error_msg.lower()
                     if "chat not found" in error_lower or "user not found" in error_lower:
-                        logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: Админ {admin_id} не начал диалог с ботом")
+                        logger.warning(
+                            f"⚠️ [NOTIFY_ADMIN] Нужен /start у бота компании "
+                            f"(telegram_id={admin_telegram_id})"
+                        )
                     elif "blocked" in error_lower:
-                        logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: Админ {admin_id} заблокировал бота")
-                    elif "forbidden" in error_lower:
-                        logger.warning(f"⚠️ [NOTIFY_ADMIN] Причина: Бот не может отправить сообщение админу {admin_id}")
+                        logger.warning(
+                            f"⚠️ [NOTIFY_ADMIN] Бот заблокирован "
+                            f"(telegram_id={admin_telegram_id})"
+                        )
         finally:
             try:
                 await bot.session.close()
             except Exception as e:
                 logger.warning(f"⚠️ [NOTIFY_ADMIN] Ошибка закрытия bot session: {e}")
-        
-        logger.info(f"✅ [NOTIFY_ADMIN] === ИТОГИ ОТПРАВКИ ===")
-        logger.info(f"✅ [NOTIFY_ADMIN] company_id={company_id}, booking_id={booking_id}")
-        logger.info(f"✅ [NOTIFY_ADMIN] Отправлено успешно: {sent_count} из {len(admin_rows)}")
-        if failed_count > 0:
-            logger.warning(f"⚠️ [NOTIFY_ADMIN] Не отправлено: {failed_count} из {len(admin_rows)}")
-        
+
+        logger.info(
+            f"✅ [NOTIFY_ADMIN] Итог: отправлено {sent_count}/{len(admin_targets)}, "
+            f"ошибок {failed_count}"
+        )
         return sent_count > 0
         
     except Exception as e:
@@ -941,8 +1029,8 @@ async def create_booking(
     await db.execute(text(f'SET search_path TO "tenant_{company_id}", public'))
     tenant_session = db
     
-    # Генерируем номер записи
-    booking_number = f"BK{company_id:03d}{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    # Номер записи: секунды + микросекунды, чтобы не ловить UniqueViolation при двух кликах подряд
+    booking_number = f"BK{company_id:03d}{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
     
     # Преобразуем time в объект time, если это строка
     booking_time = booking_data.time
@@ -955,7 +1043,9 @@ async def create_booking(
     booking_datetime = datetime.combine(booking_data.service_date, booking_time)
     end_time = (booking_datetime + timedelta(minutes=duration_minutes)).time()
     
-    # Создаем запись
+    created_by = await resolve_created_by_user_id(tenant_session, company_id, current_user)
+
+    # Создаём запись: явно задаём NOT NULL поля (на случай отсутствия DEFAULT в tenant-схеме)
     booking = Booking(
         booking_number=booking_number,
         client_id=booking_data.client_id,
@@ -969,8 +1059,10 @@ async def create_booking(
         end_time=end_time,
         status=booking_data.status or "new",
         amount=booking_data.amount,
+        is_paid=False,
+        discount_amount=0,
         comment=booking_data.comment,
-        created_by=current_user.id
+        created_by=created_by,
     )
     
     tenant_session.add(booking)

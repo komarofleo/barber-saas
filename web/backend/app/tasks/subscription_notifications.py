@@ -229,68 +229,77 @@ async def _send_reminder_7_days_before_async():
 
 
 @shared_task(name="app.tasks.subscription_notifications.send_reminder_3_days_before", bind=True)
-async def send_reminder_3_days_before():
+def send_reminder_3_days_before():
     """
     Отправить напоминание за 3 дня до окончания подписки.
-    
-    Процесс:
-    1. Получить список всех активных компаний
-    2. Для каждой компании проверить подписку
-    3. Если до окончания ≤ 3 дней → отправить напоминание
+
+    Prefork Celery не исполняет тело async def — нужен sync-обёртка + asyncio.run.
     """
+    import asyncio
+
     logger.info("Запуск задачи: send_reminder_3_days_before")
-    
     try:
-        # Получаем активные компании
+        return asyncio.run(_send_reminder_3_days_before_async())
+    except Exception as e:
+        logger.error(f"Ошибка в задаче send_reminder_3_days_before: {e}", exc_info=True)
+        raise
+
+
+async def _send_reminder_3_days_before_async():
+    """Асинхронная часть задачи send_reminder_3_days_before."""
+    try:
         companies = await get_active_companies()
-        
         reminders_sent = 0
-        
+
         async_session_maker = get_async_session_maker()
         async with async_session_maker() as session:
             for company in companies:
-                # Получаем текущую подписку
                 subscription = await get_company_subscription(session, company.id)
-                
+
                 if not subscription:
                     logger.warning(f"У компании {company.name} нет подписки")
                     continue
-                
-                # Проверяем дату окончания
+
                 if subscription.end_date:
                     days_left = (subscription.end_date - date.today()).days
-                    
-                    # Отправляем напоминание, если осталось 3 дня или меньше
+
                     if days_left <= 3 and days_left > 0:
                         if company.admin_telegram_id and company.telegram_bot_token:
                             try:
                                 bot = Bot(token=company.telegram_bot_token)
-                                
                                 reminder_text = format_reminder_text(
                                     company.name,
                                     days_left,
-                                    subscription.end_date
+                                    subscription.end_date,
                                 )
-                                
                                 await bot.send_message(
                                     chat_id=company.admin_telegram_id,
-                                    text=reminder_text
+                                    text=reminder_text,
                                 )
-                                
-                                logger.info(f"✅ Напоминание отправлено компании {company.name} (за 3 дня)")
+                                logger.info(
+                                    f"✅ Напоминание отправлено компании {company.name} (за 3 дня)"
+                                )
                                 reminders_sent += 1
-                                
                                 await bot.session.close()
                             except Exception as e:
-                                logger.error(f"❌ Ошибка отправки напоминания компании {company.name}: {e}", exc_info=True)
+                                logger.error(
+                                    f"❌ Ошибка отправки напоминания компании {company.name}: {e}",
+                                    exc_info=True,
+                                )
                         else:
-                            logger.warning(f"⚠️ У компании {company.name} нет admin_telegram_id или telegram_bot_token")
+                            logger.warning(
+                                f"⚠️ У компании {company.name} нет admin_telegram_id или telegram_bot_token"
+                            )
                     else:
-                        logger.info(f"У компании {company.name} подписка истекла или нет даты окончания")
-        
-        logger.info(f"Завершено: отправлено {reminders_sent} напоминаний из {len(companies)} компаний")
+                        logger.info(
+                            f"У компании {company.name} подписка истекла или нет даты окончания"
+                        )
+
+        logger.info(
+            f"Завершено: отправлено {reminders_sent} напоминаний из {len(companies)} компаний"
+        )
         return f"Отправлено {reminders_sent} напоминаний"
-    
+
     except Exception as e:
         logger.error(f"Ошибка в _send_reminder_3_days_before_async: {e}", exc_info=True)
         raise
@@ -381,43 +390,44 @@ async def _send_reminder_1_day_before_async():
 
 
 @shared_task(name="app.tasks.subscription_notifications.send_reminder_expiration", bind=True)
-async def send_reminder_expiration():
+def send_reminder_expiration():
     """
     Отправить напоминание об окончании подписки.
-    
-    Процесс:
-    1. Получить список всех активных компаний
-    2. Для каждой компании проверить подписку
-    3. Если подписка истекла сегодня → отправить напоминание
+
+    Prefork Celery не исполняет тело async def — нужен sync-обёртка + asyncio.run.
     """
+    import asyncio
+
     logger.info("Запуск задачи: send_reminder_expiration")
-    
     try:
-        # Получаем активные компании
+        return asyncio.run(_send_reminder_expiration_async())
+    except Exception as e:
+        logger.error(f"Ошибка в задаче send_reminder_expiration: {e}", exc_info=True)
+        raise
+
+
+async def _send_reminder_expiration_async():
+    """Асинхронная часть задачи send_reminder_expiration."""
+    try:
         companies = await get_active_companies()
-        
         reminders_sent = 0
-        
+
         async_session_maker = get_async_session_maker()
         async with async_session_maker() as session:
             for company in companies:
-                # Получаем текущую подписку
                 subscription = await get_company_subscription(session, company.id)
-                
+
                 if not subscription:
                     logger.warning(f"У компании {company.name} нет подписки")
                     continue
-                
-                # Проверяем дату окончания
+
                 if subscription.end_date:
                     days_left = (subscription.end_date - date.today()).days
-                    
-                    # Отправляем напоминание, если подписка истекла сегодня
+
                     if days_left <= 0:
                         if company.admin_telegram_id and company.telegram_bot_token:
                             try:
                                 bot = Bot(token=company.telegram_bot_token)
-                                
                                 reminder_text = f"""🚫 Подписка истекла!
 
 💼 Компания: {company.name}
@@ -429,26 +439,34 @@ async def send_reminder_expiration():
 ⚠️ Сервис создания записей заблокирован!
 
 🔗 Для продления подписки перейдите в админ-панель."""
-                                
                                 await bot.send_message(
                                     chat_id=company.admin_telegram_id,
-                                    text=reminder_text
+                                    text=reminder_text,
                                 )
-                                
-                                logger.info(f"✅ Напоминание об окончании отправлено компании {company.name}")
+                                logger.info(
+                                    f"✅ Напоминание об окончании отправлено компании {company.name}"
+                                )
                                 reminders_sent += 1
-                                
                                 await bot.session.close()
                             except Exception as e:
-                                logger.error(f"❌ Ошибка отправки напоминания компании {company.name}: {e}", exc_info=True)
+                                logger.error(
+                                    f"❌ Ошибка отправки напоминания компании {company.name}: {e}",
+                                    exc_info=True,
+                                )
                         else:
-                            logger.warning(f"⚠️ У компании {company.name} нет admin_telegram_id или telegram_bot_token")
+                            logger.warning(
+                                f"⚠️ У компании {company.name} нет admin_telegram_id или telegram_bot_token"
+                            )
                     else:
-                        logger.info(f"У компании {company.name} подписка неактивна или нет даты окончания")
-        
-        logger.info(f"Завершено: отправлено {reminders_sent} напоминаний из {len(companies)} компаний")
+                        logger.info(
+                            f"У компании {company.name} подписка неактивна или нет даты окончания"
+                        )
+
+        logger.info(
+            f"Завершено: отправлено {reminders_sent} напоминаний из {len(companies)} компаний"
+        )
         return f"Отправлено {reminders_sent} напоминаний"
-    
+
     except Exception as e:
         logger.error(f"Ошибка в _send_reminder_expiration_async: {e}", exc_info=True)
         raise

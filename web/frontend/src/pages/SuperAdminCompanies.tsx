@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom'
 import { Company, CompanyFilters, superAdminApi, SubscriptionStatus } from '../api/superAdmin'
 import { useSidebar } from '../components/SuperAdminLayout'
 import './SuperAdminCompanies.css'
+import { formatMoney } from '../utils/money'
 
 const SuperAdminCompanies: React.FC = () => {
   const navigate = useNavigate()
@@ -480,7 +481,7 @@ const SuperAdminCompanies: React.FC = () => {
                       <div className="info-row">
                         <span className="info-label">Стоимость:</span>
                         <span className="info-value">
-                          {selectedCompany.plan.price_monthly.toLocaleString('ru-RU')} ₽/мес
+                          {formatMoney(selectedCompany.plan.price_monthly)}/мес
                         </span>
                       </div>
                       <div className="info-row">
@@ -576,7 +577,7 @@ const SuperAdminCompanies: React.FC = () => {
                       {selectedCompany.payments.slice(0, 5).map((payment) => (
                         <div key={payment.id} className="payment-item">
                           <div className="payment-amount">
-                            {payment.amount.toLocaleString('ru-RU')} ₽
+                            {formatMoney(payment.amount)}
                           </div>
                           <div className="payment-info">
                             <div className="payment-status">

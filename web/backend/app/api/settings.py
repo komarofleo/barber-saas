@@ -13,8 +13,10 @@ DEFAULT_SETTINGS: dict[str, dict[str, str]] = {
     "work_start_time": {"value": "09:00", "description": "Время начала работы"},
     "work_end_time": {"value": "18:00", "description": "Время окончания работы"},
     "slot_duration": {"value": "30", "description": "Длительность слота в минутах"},
-    "reminder_day_before_time": {"value": "10:00", "description": "Время напоминания за день"},
+    "reminder_day_before_time": {"value": "18:00", "description": "Время напоминания за день"},
+    "reminder_day_enabled": {"value": "true", "description": "Напоминание за сутки"},
     "reminder_hour_before": {"value": "true", "description": "Напоминание за час"},
+    "reminder_hour_enabled": {"value": "true", "description": "Напоминание за час (legacy)"},
     "notify_admin_delay_minutes": {"value": "0", "description": "Задержка уведомления админу"},
     "work_order_time": {"value": "08:00", "description": "Время отправки лист-наряда"},
     "accepting_bookings": {"value": "true", "description": "Принимаются ли заявки (глобальная блокировка)"},
@@ -60,6 +62,8 @@ def _validate_setting_value(key: str, value: str) -> str:
     boolean_keys = {
         "accepting_bookings",
         "reminder_hour_before",
+        "reminder_hour_enabled",
+        "reminder_day_enabled",
         "enable_master_specialization",
     }
     integer_keys = {"slot_duration", "notify_admin_delay_minutes"}

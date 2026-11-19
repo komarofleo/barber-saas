@@ -5,6 +5,7 @@ import { servicesApi, Service } from '../api/services'
 import { mastersApi, Master } from '../api/masters'
 import { postsApi, Post } from '../api/posts'
 import { SuccessNotification } from '../components/SuccessNotification'
+import { formatMoney } from '../utils/money'
 import './Calendar.css'
 
 type ViewMode = 'month' | 'week' | 'day'
@@ -954,7 +955,7 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
               {booking.amount && (
                 <div className="detail-item">
                   <div className="detail-label">Сумма:</div>
-                  <div className="detail-value detail-value-amount">{booking.amount} ₽</div>
+                  <div className="detail-value detail-value-amount">{formatMoney(booking.amount)}</div>
                 </div>
               )}
               <div className="detail-item">
@@ -1234,7 +1235,7 @@ function CreateBookingModal({ onClose, onSuccess, initialDate, initialTime }: Cr
                 <option value="">Не выбрана</option>
                 {services.map(service => (
                   <option key={service.id} value={service.id}>
-                    {service.name} ({service.duration} мин, {service.price} ₽)
+                    {service.name} ({service.duration} мин, {formatMoney(service.price)})
                   </option>
                 ))}
               </select>

@@ -1,3 +1,15 @@
+
+## 🎨 UI refresh company dashboard (2026-11-19)
+- [x] Точка отката: `checkpoint/pre-dashboard-ui`
+- [x] Glass UI через 21st inspiration (minimal metrics / glass cards)
+- [x] Обновлены Layout / Sidebar / Dashboard
+- [x] Super-admin login: компактный glass-card на 100dvh (умещается на ноутбуке)
+- [x] Лист-наряды: service_date в BookingResponse (фикс 500)
+- [x] Рубли с копейками (formatMoney, 2 знака)
+- [x] Сворачиваемый sidebar влево
+- [x] Демо-данные на ноябрь 2026 для тестовой орг. (`scripts/seed_november_demo_tenant1.sql`, залито в tenant_1)
+- [ ] При желании распространить glass-токены на остальные страницы
+
 # 📌 Финальный TODO проекта Barber SaaS (Multi‑Tenant)
 **Дата обновления:** 2026-01-14  
 **Цель файла:** единый источник правды по оставшимся задачам (roadmap + реальные баги).
@@ -117,16 +129,23 @@
   - **Критерий готовности**: вкладка “Клиенты” в админке компании открывается без 500, данные грузятся.
 
 ### 2) Уведомления клиенту в Telegram при смене статуса (стабилизация)
-- [ ] **Довести до “железобетона” цепочку**: `PATCH /api/bookings/{id}` → `send_booking_status_notification()` → Telegram.
-  - [ ] Проверить, что `telegram_id` действительно сохранён в `tenant_X.users.telegram_id` для клиента.
-  - [ ] Добавить явные логи-метки: `company_id`, `booking_id`, `user_id`, `telegram_id`, текст ошибки Telegram.
-  - [ ] Зафиксировать правило: **бот не может писать первым** — если клиент не нажал `/start`, логировать понятное предупреждение.
+- [x] **Довести до “железобетона” цепочку**: `PATCH /api/bookings/{id}` → `send_booking_status_notification()` → Telegram.
+  - [x] `telegram_id` в `tenant_X.users` (smoke: client 12 → 329621295).
+  - [x] Логи `company_id` / `booking_id` / `telegram_id` + ошибки Telegram.
+  - [x] Правило «бот не пишет первым»: warning при chat not found / forbidden.
+  - Smoke 2026-11-19: PATCH → `notification_sent=true`.
   - **Критерий готовности**: при смене статуса в UI приходит сообщение клиенту, а в UI показывается “✅ Сообщение отправлено”.
 
 ### 3) Уведомление администратору о новой записи (Telegram)
-- [ ] **Проверить уведомление админам при создании записи в боте** (реальный сценарий “новая заявка”).
-  - [ ] Убедиться, что выбор админов идёт из `tenant_X.users` по `role='admin'` и `telegram_id IS NOT NULL`.
+- [x] Уведомление админам при создании записи (web + bot).
+  - [x] Выбор админов: `is_admin=true` (+ fallback `companies.admin_telegram_id`), не `role='admin'`.
+  - Smoke 2026-11-19: `notify_admins_about_new_booking` → True (TG админу).
   - **Критерий готовности**: админ получает уведомление при новой записи.
+
+### 3.1) Кнопки напоминания confirm/cancel
+- [x] `confirm_attendance_*` пишет статус `confirmed` в БД (раньше только текст в TG).
+- [x] `cancel_booking_*` → `cancelled` (уже было); парсинг id через `rsplit`.
+- Smoke: CRUD update_booking_status confirm/cancel OK.
 
 ---
 
@@ -170,9 +189,12 @@
   - **Критерий готовности**: нет 500/UndefinedColumn, все списки/создания работают в tenant без ручных фиксов.
 
 ### 5) Celery: привести задачи к рабочему состоянию (или официально отказаться)
-- [ ] Принять решение: уведомления/рассылки через Celery или синхронно из API.
-  - [ ] Если через Celery: поднять `celery-worker` и `celery-beat`, проверить импорт/конфиги, прогнать тестовые задачи.
-  - [ ] Если без Celery: убрать мёртвый код/планировщик, оставить стабильный путь отправки.
+- [x] Принято: напоминания клиентам через Celery (как в avtoservis).
+  - [x] Подняты `celery-worker` и `celery-beat` в `docker-compose.prod.yml` на VDS.
+  - [x] `redis==6.1.0` / `celery==5.3.6` (kombu VersionMismatch).
+  - [x] Beat: booking-reminder-1-day (*/15), booking-reminder-hour (*/5 6–21), подписки SaaS.
+  - [x] Settings UI: `reminder_day_before_time`, `reminder_hour_before` (+ enabled-ключи).
+  - [x] Smoke 2026-11-19: day + hour ушли в TG `@komarofleo` (booking 6, tenant_1).
 
 ---
 
@@ -211,6 +233,25 @@
 - [ ] E2E (минимум): регистрация → вход → создание записи → смена статуса → Telegram уведомления.
 
 ---
+
+
+## 🚀 Деплой на новый VDS (2026-11-19)
+- [x] Поднят `89.127.216.83` (Ubuntu 24.04, 2CPU/2GB/20GB, swap 2GB)
+- [x] Docker + `docker-compose.prod.yml` (postgres/redis/web/frontend/bot/super-admin-bot/celery-worker/celery-beat; contract-bot пока нет)
+- [x] Frontend: http://89.127.216.83/  API health: http://89.127.216.83/api/health
+- [x] Боты: `@barber76_1_bot` (tenant) + `@barber76_bot` (super-admin) polling
+- [x] Аудит 2026-11-19: сверка md ↔ сервер; починены `/api/users`, `/api/export/*`, count услуг
+- [x] Smoke ботов 2026-11-19: `scripts/bot_smoke_test.py` → OK=40 FAIL=0
+  - Починены: CRUD users (`first_name`/`is_admin`), `create_client` (`total_visits`/`total_amount`),
+    импорты edit_booking_* (клавиатуры в `keyboards/admin.py`), парсинг callback_data
+  - Примечание: исходящие сообщения `@barber76_1_bot` → tg `329621295` требуют `/start` у бота компании
+- [x] Дашборд: переключение «Сегодня/Завтра» для свободных слотов (карточки + слоты, локальные даты)
+- [x] Бот записи: зависание на выборе времени — `create_booking` не писал `is_paid`/`discount_amount`
+  - Починено в CRUD для всех tenant; DEFAULT в БД; notify админов по `is_admin`
+- [ ] Contract-bot (договоры) — не в prod compose
+- [x] Celery worker/beat в prod: напоминания за день/за час + подписки SaaS (smoke OK)
+- [ ] Перенести данные со старого `45.144.67.47` (нет SSH-доступа)
+- [ ] SSL/домен + бэкапы по cron
 
 ## 🚀 Этап 12: Деплой
 - [ ] Подготовить `.env.production` и шаблоны конфигов.

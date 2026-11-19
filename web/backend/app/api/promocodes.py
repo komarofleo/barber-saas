@@ -67,7 +67,7 @@ async def get_promocodes(
             if service:
                 promo_dict["service_name"] = service.name
         
-        items.append(PromocodeResponse.model_validate(promocode_dict))
+        items.append(PromocodeResponse.model_validate(promo_dict))
     
     return PromocodeListResponse(items=items, total=total)
 

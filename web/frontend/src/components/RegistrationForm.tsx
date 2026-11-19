@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { formatMoney } from '../utils/money'
 
 interface FormData {
     name: string;
@@ -257,7 +258,7 @@ const RegistrationForm: React.FC = () => {
                                 <option value="">Выберите тариф</option>
                                 {plans.map((plan) => (
                                     <option key={plan.id} value={plan.id.toString()}>
-                                        {plan.name} - {plan.price_monthly.toLocaleString('ru-RU')} ₽/мес
+                                        {plan.name} - {formatMoney(plan.price_monthly)}/мес
                                     </option>
                                 ))}
                             </select>
@@ -271,9 +272,9 @@ const RegistrationForm: React.FC = () => {
                                 <div key={plan.id} className="plan-card">
                                     <div className="plan-name">{plan.name}</div>
                                     <div className="plan-price">
-                                        {plan.price_monthly.toLocaleString('ru-RU')} ₽/мес
+                                        {formatMoney(plan.price_monthly)}/мес
                                         <span className="plan-yearly">
-                                            или {plan.price_yearly.toLocaleString('ru-RU')} ₽/год
+                                            или {formatMoney(plan.price_yearly)}/год
                                         </span>
                                     </div>
                                     <div className="plan-description">{plan.description}</div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { mastersApi } from '../api/masters'
 import { Booking } from '../api/bookings'
+import { formatMoney } from '../utils/money'
 import './WorkOrders.css'
 
 interface MasterWorkOrder {
@@ -231,7 +232,7 @@ function WorkOrders() {
                             {booking.amount && (
                               <div className="booking-detail">
                                 <span className="detail-label">💰 Сумма:</span>
-                                <span className="detail-value">{booking.amount} ₽</span>
+                                <span className="detail-value">{formatMoney(booking.amount)}</span>
                               </div>
                             )}
                           </div>

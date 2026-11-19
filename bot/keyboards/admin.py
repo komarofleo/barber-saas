@@ -1,5 +1,7 @@
 """Клавиатуры для администраторов"""
+from typing import Optional
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
 def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
@@ -137,3 +139,100 @@ def get_posts_keyboard(posts, booking_id: int, master_id: int) -> InlineKeyboard
     ])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"assign_master_{booking_id}_0")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_edit_service_date_keyboard(booking_id: int, current_service_date: str) -> InlineKeyboardMarkup:
+    """
+    Получить клавиатуру для редактирования даты услуги.
+    
+    Args:
+        booking_id: ID записи
+        current_service_date: Текущая дата услуги
+        
+    Returns:
+        InlineKeyboardMarkup с кнопками редактирования
+    """
+    builder = InlineKeyboardBuilder()
+    
+    # Показываем текущую дату
+    builder.button(
+        text=f"📅 Текущая: {current_service_date}",
+        callback_data=f"cancel_edit_service_date"
+    ).row()
+    
+    # Быстрые кнопки для выбора дат
+    builder.button(
+        text="-1 день",
+        callback_data=f"change_service_date_-1_{booking_id}"
+    ).button(
+        text="+1 день",
+        callback_data=f"change_service_date_+1_{booking_id}"
+    ).row()
+    
+    builder.button(
+        text="-1 неделя",
+        callback_data=f"change_service_date_-7_{booking_id}"
+    ).button(
+        text="+1 неделя",
+        callback_data=f"change_service_date_+7_{booking_id}"
+    ).row()
+    
+    # Текущая дата
+    builder.button(
+        text=f"✅ Подтвердить",
+        callback_data=f"confirm_service_date_{booking_id}"
+    ).button(
+        text="❌ Отмена",
+        callback_data=f"cancel_edit_service_date"
+    ).row()
+    
+    return builder.as_markup()
+
+
+def get_edit_request_date_keyboard(booking_id: int, current_request_date: Optional[str]) -> InlineKeyboardMarkup:
+    """
+    Получить клавиатуру для редактирования даты заявки.
+    
+    Args:
+        booking_id: ID записи
+        current_request_date: Текущая дата заявки
+        
+    Returns:
+        InlineKeyboardMarkup с кнопками редактирования
+    """
+    builder = InlineKeyboardBuilder()
+    
+    # Показываем текущую дату заявки
+    if current_request_date:
+        builder.button(
+            text=f"📝 Текущая: {current_request_date}",
+            callback_data=f"cancel_edit_request_date"
+        ).row()
+    
+    # Быстрые кнопки для выбора дат
+    builder.button(
+        text="-1 день",
+        callback_data=f"change_request_date_-1_{booking_id}"
+    ).button(
+        text="+1 день",
+        callback_data=f"change_request_date_+1_{booking_id}"
+    ).row()
+    
+    builder.button(
+        text="-1 неделя",
+        callback_data=f"change_request_date_-7_{booking_id}"
+    ).button(
+        text="+1 неделя",
+        callback_data=f"change_request_date_+7_{booking_id}"
+    ).row()
+    
+    # Текущая дата
+    builder.button(
+        text=f"✅ Подтвердить",
+        callback_data=f"confirm_request_date_{booking_id}"
+    ).button(
+        text="❌ Отмена",
+        callback_data=f"cancel_edit_request_date"
+    ).row()
+    
+    return builder.as_markup()
