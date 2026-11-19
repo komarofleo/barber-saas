@@ -1,0 +1,140 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: barber_postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-barber_db}
+      POSTGRES_USER: ${DB_USER:-barber_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: Europe/Moscow
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - max_connections=50
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    networks:
+      - barber_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-barber_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: barber_redis
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    environment:
+      TZ: Europe/Moscow
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6380:6379"
+    networks:
+      - barber_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: ./web/backend/Dockerfile
+    container_name: barber_web
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      TZ: Europe/Moscow
+      PYTHONPATH: /app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - barber_network
+    restart: unless-stopped
+
+  web-frontend:
+    build:
+      context: .
+      dockerfile: ./web/frontend/Dockerfile
+    container_name: barber_frontend
+    ports:
+      - "80:80"
+      - "3000:80"
+    depends_on:
+      - web
+    networks:
+      - barber_network
+    restart: unless-stopped
+
+
+  bot:
+    build:
+      context: .
+      dockerfile: ./bot/Dockerfile
+    container_name: barber_bot
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      PYTHONPATH: /app/web/backend:/app
+      TZ: Europe/Moscow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    networks:
+      - barber_network
+    restart: unless-stopped
+
+  super-admin-bot:
+    build:
+      context: .
+      dockerfile: ./bot/Dockerfile
+    container_name: barber_super_admin_bot
+    command: python -m bot.super_admin_bot
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      PYTHONPATH: /app/web/backend:/app
+      TZ: Europe/Moscow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    networks:
+      - barber_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  barber_network:
+    driver: bridge

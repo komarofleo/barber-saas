@@ -212,6 +212,15 @@
 
 ---
 
+
+## 🚀 Деплой на новый VDS (2026-11-19)
+- [x] Поднят `89.127.216.83` (Ubuntu 24.04, 2CPU/2GB/20GB, swap 2GB)
+- [x] Docker + `docker-compose.prod.yml` (postgres/redis/web/frontend, без Celery/ботов)
+- [x] Frontend: http://89.127.216.83/  API health: http://89.127.216.83/api/health
+- [ ] Добавить токены Telegram ботов в `.env` и запустить bot/super-admin-bot/contract-bot
+- [ ] Перенести данные со старого `45.144.67.47` (нет SSH-доступа)
+- [ ] SSL/домен
+
 ## 🚀 Этап 12: Деплой
 - [ ] Подготовить `.env.production` и шаблоны конфигов.
 - [ ] Отдельный compose для продакшена (`docker-compose.prod.yml`).
