@@ -451,7 +451,7 @@ function Dashboard() {
       </div>
       
       <div className="stats-grid">
-        <div className="stat-card stat-primary">
+        <div className="stat-card stat-primary anim-delay-1">
           <div className="stat-icon">📋</div>
           <div className="stat-content">
             <h3>Всего записей</h3>
@@ -459,7 +459,7 @@ function Dashboard() {
           </div>
         </div>
         
-        <div className="stat-card stat-warning">
+        <div className="stat-card stat-warning anim-delay-2">
           <div className="stat-icon">🆕</div>
           <div className="stat-content">
             <h3>Новых</h3>
@@ -469,7 +469,7 @@ function Dashboard() {
           </div>
         </div>
         
-        <div className="stat-card stat-success">
+        <div className="stat-card stat-success anim-delay-3">
           <div className="stat-icon">✅</div>
           <div className="stat-content">
             <h3>Подтвержденных</h3>
@@ -477,7 +477,7 @@ function Dashboard() {
           </div>
         </div>
         
-        <div className="stat-card stat-info">
+        <div className="stat-card stat-info anim-delay-4">
           <div className="stat-icon">✔️</div>
           <div className="stat-content">
             <h3>Завершенных</h3>
@@ -488,66 +488,57 @@ function Dashboard() {
 
       <div className="stats-grid">
         <div 
-          className="stat-card stat-primary stat-card-clickable stat-card-with-link" 
+          className="stat-card stat-primary stat-card-clickable stat-card-with-link anim-delay-1" 
           onClick={() => {
             const today = new Date().toISOString().split('T')[0]
             navigate(`/bookings?start_date=${today}&end_date=${today}`)
           }}
-          style={{ cursor: 'pointer' }}
           title="Перейти к записям сегодня"
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', width: '100%' }}>
+          <div>
             <div className="stat-icon">📅</div>
             <div className="stat-content">
               <h3>Записей сегодня</h3>
               <p className="stat-value">{todayStats.total}</p>
             </div>
           </div>
-          <div style={{ marginTop: '8px', fontSize: '12px', color: '#4a9eff', fontWeight: 500, textAlign: 'right', paddingTop: '8px', borderTop: '1px solid #e9ecef' }}>
-            Перейти к записям →
-          </div>
+          <div className="stat-cta">Перейти к записям →</div>
         </div>
         
         <div 
-          className="stat-card stat-warning stat-card-clickable stat-card-with-link" 
+          className="stat-card stat-warning stat-card-clickable stat-card-with-link anim-delay-2" 
           onClick={() => navigate('/bookings?status=new&sort=date&sortDir=desc')}
-          style={{ cursor: 'pointer' }}
           title="Перейти к новым записям"
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', width: '100%' }}>
+          <div>
             <div className="stat-icon">🆕</div>
             <div className="stat-content">
               <h3>Новых сегодня</h3>
               <p className="stat-value">{todayStats.new}</p>
             </div>
           </div>
-          <div style={{ marginTop: '8px', fontSize: '12px', color: '#4a9eff', fontWeight: 500, textAlign: 'right', paddingTop: '8px', borderTop: '1px solid #e9ecef' }}>
-            Перейти к записям →
-          </div>
+          <div className="stat-cta">Перейти к записям →</div>
         </div>
         
         <div 
-          className="stat-card stat-success stat-card-clickable stat-card-with-link" 
+          className="stat-card stat-success stat-card-clickable stat-card-with-link anim-delay-3" 
           onClick={() => {
             const today = new Date().toISOString().split('T')[0]
             navigate(`/bookings?status=confirmed&start_date=${today}&end_date=${today}&sort=date&sortDir=desc`)
           }}
-          style={{ cursor: 'pointer' }}
           title="Перейти к подтвержденным записям сегодня"
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', width: '100%' }}>
+          <div>
             <div className="stat-icon">✅</div>
             <div className="stat-content">
               <h3>Подтвержденных сегодня</h3>
               <p className="stat-value">{todayStats.confirmed}</p>
             </div>
           </div>
-          <div style={{ marginTop: '8px', fontSize: '12px', color: '#4a9eff', fontWeight: 500, textAlign: 'right', paddingTop: '8px', borderTop: '1px solid #e9ecef' }}>
-            Перейти к записям →
-          </div>
+          <div className="stat-cta">Перейти к записям →</div>
         </div>
         
-        <div className="stat-card stat-info">
+        <div className="stat-card stat-info anim-delay-4">
           <div className="stat-icon">💰</div>
           <div className="stat-content">
             <h3>Доход сегодня</h3>
@@ -591,35 +582,14 @@ function Dashboard() {
           <div className="loading">Загрузка слотов...</div>
         ) : (
           <>
-            {/* Статистика доступных записей */}
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
-              gap: '20px', 
-              marginBottom: '24px' 
-            }}>
-              <div style={{
-                background: 'linear-gradient(135deg, #4a9eff 0%, #2d7dd2 100%)',
-                borderRadius: '12px',
-                padding: '20px',
-                color: 'white'
-              }}>
-                <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>
-                  📊 Сегодня
-                </div>
-                <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '8px' }}>
-                  {displayTodayAvailable}
-                </div>
-                <div style={{ fontSize: '12px', opacity: 0.8 }}>
+            <div className="availability-grid">
+              <div className="availability-card today">
+                <div className="availability-label">📊 Сегодня</div>
+                <div className="availability-value">{displayTodayAvailable}</div>
+                <div className="availability-hint">
                   {todayAvailableBookings > 0 ? 'доступных записей' : 'всего записей'}
                 </div>
-                <div style={{ 
-                  marginTop: '12px', 
-                  paddingTop: '12px', 
-                  borderTop: '1px solid rgba(255,255,255,0.2)',
-                  fontSize: '11px',
-                  opacity: 0.9
-                }}>
+                <div className="availability-meta">
                   • Всего записей: <strong>{todayBookingsTotal}</strong><br/>
                   • Доступных (new/confirmed): {todayBookingsCount}<br/>
                   • Слотов: {availableSlots.today.length}<br/>
@@ -627,28 +597,13 @@ function Dashboard() {
                 </div>
               </div>
               
-              <div style={{
-                background: 'linear-gradient(135deg, #28a745 0%, #1e7e34 100%)',
-                borderRadius: '12px',
-                padding: '20px',
-                color: 'white'
-              }}>
-                <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>
-                  📊 Завтра
-                </div>
-                <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '8px' }}>
-                  {displayTomorrowAvailable}
-                </div>
-                <div style={{ fontSize: '12px', opacity: 0.8 }}>
+              <div className="availability-card tomorrow">
+                <div className="availability-label">📊 Завтра</div>
+                <div className="availability-value">{displayTomorrowAvailable}</div>
+                <div className="availability-hint">
                   {tomorrowAvailableBookings > 0 ? 'доступных записей' : 'всего записей'}
                 </div>
-                <div style={{ 
-                  marginTop: '12px', 
-                  paddingTop: '12px', 
-                  borderTop: '1px solid rgba(255,255,255,0.2)',
-                  fontSize: '11px',
-                  opacity: 0.9
-                }}>
+                <div className="availability-meta">
                   • Всего записей: <strong>{tomorrowBookingsTotal}</strong><br/>
                   • Доступных (new/confirmed): {tomorrowBookingsCount}<br/>
                   • Слотов: {availableSlots.tomorrow.length}<br/>

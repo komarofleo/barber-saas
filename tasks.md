@@ -1,3 +1,10 @@
+
+## 🎨 UI refresh company dashboard (2026-11-19)
+- [x] Точка отката: `checkpoint/pre-dashboard-ui`
+- [x] Glass UI через 21st inspiration (minimal metrics / glass cards)
+- [x] Обновлены Layout / Sidebar / Dashboard
+- [ ] При желании распространить glass-токены на остальные страницы
+
 # 📌 Финальный TODO проекта Barber SaaS (Multi‑Tenant)
 **Дата обновления:** 2026-01-14  
 **Цель файла:** единый источник правды по оставшимся задачам (roadmap + реальные баги).
