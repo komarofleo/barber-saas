@@ -7,6 +7,7 @@ import { postsApi, Post } from '../api/posts'
 import { clientsApi, Client, ClientCreateRequest } from '../api/clients'
 import { servicesApi, Service } from '../api/services'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
+import { formatMoney } from '../utils/money'
 import './Dashboard.css'
 
 function Dashboard() {
@@ -542,7 +543,7 @@ function Dashboard() {
           <div className="stat-icon">💰</div>
           <div className="stat-content">
             <h3>Доход сегодня</h3>
-            <p className="stat-value">{todayStats.revenue.toLocaleString('ru-RU')}₽</p>
+            <p className="stat-value">{formatMoney(todayStats.revenue)}</p>
           </div>
         </div>
       </div>

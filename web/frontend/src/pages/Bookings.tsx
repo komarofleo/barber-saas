@@ -6,6 +6,7 @@ import { servicesApi, Service } from '../api/services'
 import { mastersApi, Master } from '../api/masters'
 import { postsApi, Post } from '../api/posts'
 import { SuccessNotification } from '../components/SuccessNotification'
+import { formatMoney, formatMoneyValue } from '../utils/money'
 import './Bookings.css'
 
 type SortField = 'id' | 'service_date' | 'master_name' | 'service_name' | 'post_number' | 'status' | null
@@ -872,7 +873,7 @@ function CreateBookingModal({ onClose, onSuccess }: CreateBookingModalProps) {
                 <option value="">Не выбрана</option>
                 {services.map(service => (
                   <option key={service.id} value={service.id}>
-                    {service.name} ({service.duration} мин, {service.price} ₽)
+                    {service.name} ({service.duration} мин, {formatMoney(service.price)})
                   </option>
                 ))}
               </select>
@@ -1419,13 +1420,13 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
                         min="0"
                         value={editingAmount}
                         onChange={(e) => setEditingAmount(e.target.value)}
-                        placeholder={servicePrice ? `Подсказка: ${servicePrice} ₽` : 'Введите сумму'}
+                        placeholder={servicePrice ? `Подсказка: ${formatMoneyValue(servicePrice)} ₽` : 'Введите сумму'}
                         className="form-input"
                         style={{ width: '100%', maxWidth: '200px' }}
                       />
                       {servicePrice && !editingAmount && (
                         <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                          💡 Цена услуги: {servicePrice} ₽
+                          💡 Цена услуги: {formatMoney(servicePrice)}
                         </div>
                       )}
                     </div>
@@ -1475,7 +1476,7 @@ function ViewBookingModal({ booking, onClose, onStatusChange, onUpdate }: ViewBo
                   {booking.amount && (
                     <div className="detail-item">
                       <div className="detail-label">Сумма:</div>
-                      <div className="detail-value detail-value-amount">{booking.amount} ₽</div>
+                      <div className="detail-value detail-value-amount">{formatMoney(booking.amount)}</div>
                     </div>
                   )}
                   <div className="detail-item">

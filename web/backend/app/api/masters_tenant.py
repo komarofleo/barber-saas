@@ -489,7 +489,7 @@ async def get_master_schedule(
             "service_id": row[3],
             "master_id": row[4],
             "post_id": row[5],
-            "date": row[6],
+            "service_date": row[6],
             "time": row[7],
             "duration": row[8],
             "end_time": row[9],
@@ -609,7 +609,7 @@ async def get_all_work_orders(
             "service_id": row[3],
             "master_id": row[4],
             "post_id": row[5],
-            "date": row[6],
+            "service_date": row[6],
             "time": row[7],
             "duration": row[8],
             "end_time": row[9],
@@ -630,7 +630,7 @@ async def get_all_work_orders(
             "client_car_model": None,
             "service_name": row[22],
             "master_name": str(master_name) if master_name else "Неизвестный мастер",
-            "post_number": row[23] if row[23] is not None else None,  # p.number as post_number
+            "post_number": row[23] if row[23] is not None else None,
         }
         
         masters_dict[dict_key]["bookings"].append(BookingResponse.model_validate(booking_dict))

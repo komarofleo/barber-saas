@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { promocodesApi, Promocode, PromocodeCreateRequest } from '../api/promocodes'
 import { servicesApi, Service } from '../api/services'
+import { formatMoney } from '../utils/money'
 import './Promocodes.css'
 
 function Promocodes() {
@@ -147,10 +148,10 @@ function Promocodes() {
                     <td>
                       {promocode.discount_type === 'percent' 
                         ? `${promocode.discount_value}%` 
-                        : `${promocode.discount_value} ₽`}
+                        : `${formatMoney(promocode.discount_value)}`}
                     </td>
                     <td>{promocode.service_name || 'Все услуги'}</td>
-                    <td>{promocode.min_amount} ₽</td>
+                    <td>{formatMoney(promocode.min_amount)}</td>
                     <td>
                       {promocode.current_uses} / {promocode.max_uses || '∞'}
                     </td>

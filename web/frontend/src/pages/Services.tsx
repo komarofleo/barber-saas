@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { servicesApi, Service, ServiceCreateRequest } from '../api/services'
+import { formatMoney } from '../utils/money'
 import './Services.css'
 
 function Services() {
@@ -157,7 +158,7 @@ function Services() {
                     <td>{service.id}</td>
                     <td>{service.name}</td>
                     <td>{service.description || '-'}</td>
-                    <td>{service.price.toLocaleString('ru-RU')} ₽</td>
+                    <td>{formatMoney(service.price)}</td>
                     <td>{service.duration}</td>
                     <td>
                       <span className={`badge ${service.is_active ? 'badge-success' : 'badge-default'}`}>

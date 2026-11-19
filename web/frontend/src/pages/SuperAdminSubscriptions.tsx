@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom'
 import { Company, Subscription, SubscriptionStatus, superAdminApi } from '../api/superAdmin'
 import { useSidebar } from '../components/SuperAdminLayout'
 import './SuperAdminSubscriptions.css'
+import { formatMoney } from '../utils/money'
 
 const SuperAdminSubscriptions: React.FC = () => {
   const navigate = useNavigate()
@@ -322,7 +323,7 @@ const SuperAdminSubscriptions: React.FC = () => {
                       <div className="plan-info">
                         <div className="plan-name">{subscription.plan.name}</div>
                         <div className="plan-price">
-                          {subscription.plan.price_monthly.toLocaleString('ru-RU')} ₽/мес
+                          {formatMoney(subscription.plan.price_monthly)}/мес
                         </div>
                       </div>
                     </div>
@@ -397,13 +398,13 @@ const SuperAdminSubscriptions: React.FC = () => {
                       <div className="price-item">
                         <span className="price-label">Месяц:</span>
                         <span className="price-value">
-                          {selectedSubscription.plan.price_monthly.toLocaleString('ru-RU')} ₽
+                          {formatMoney(selectedSubscription.plan.price_monthly)}
                         </span>
                       </div>
                       <div className="price-item">
                         <span className="price-label">Год:</span>
                         <span className="price-value">
-                          {selectedSubscription.plan.price_yearly.toLocaleString('ru-RU')} ₽
+                          {formatMoney(selectedSubscription.plan.price_yearly)}
                         </span>
                       </div>
                     </div>

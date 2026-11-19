@@ -4,6 +4,7 @@ import { Plan } from '../api/public'
 import { billingApi, BillingPayment, BillingPeriod } from '../api/billing'
 import PlanCard from '../components/PlanCard'
 import '../components/PlanCard.css'
+import { formatMoney } from '../utils/money'
 import './Billing.css'
 
 function Billing() {
@@ -293,8 +294,8 @@ function Billing() {
                   <span>Стоимость:</span>
                   <strong>
                     {selectedPlan
-                      ? `${(billingPeriod === 'monthly' ? selectedPlan.price_monthly : selectedPlan.price_yearly)
-                          .toLocaleString('ru-RU')} ₽`
+                      ? `${formatMoney((billingPeriod === 'monthly' ? selectedPlan.price_monthly : selectedPlan.price_yearly)
+                          )}`
                       : '—'}
                   </strong>
                 </div>

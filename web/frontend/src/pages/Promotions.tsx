@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { promotionsApi, Promotion, PromotionCreateRequest } from '../api/promotions'
 import { servicesApi, Service } from '../api/services'
+import { formatMoney } from '../utils/money'
 import './Promotions.css'
 
 function Promotions() {
@@ -147,7 +148,7 @@ function Promotions() {
                     <td>
                       {promotion.discount_type === 'percent' 
                         ? `${promotion.discount_value}%` 
-                        : `${promotion.discount_value} ₽`}
+                        : `${formatMoney(promotion.discount_value)}`}
                     </td>
                     <td>{promotion.service_name || 'Все услуги'}</td>
                     <td>
