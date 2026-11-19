@@ -114,8 +114,7 @@ const SuperAdminLogin: React.FC = () => {
 
         {errors.general && (
           <div className="sa-login__alert" role="alert">
-            <span>⚠️</span>
-            <span>{errors.general}</span>
+            {errors.general}
           </div>
         )}
 
@@ -123,9 +122,6 @@ const SuperAdminLogin: React.FC = () => {
           <div className="sa-login__field">
             <label htmlFor="username">Имя пользователя</label>
             <div className="sa-login__input-wrap">
-              <span className="sa-login__leading" aria-hidden>
-                👤
-              </span>
               <input
                 type="text"
                 id="username"
@@ -161,7 +157,7 @@ const SuperAdminLogin: React.FC = () => {
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
               >
-                {showPassword ? '🙈' : '👁️'}
+                {showPassword ? 'Скрыть' : 'Показать'}
               </button>
             </div>
             {errors.password && <div className="sa-login__error">{errors.password}</div>}
@@ -194,9 +190,9 @@ const SuperAdminLogin: React.FC = () => {
         </form>
 
         <footer className="sa-login__footer">
-          <p className="sa-login__secure">🔒 Шифрование · токен 24ч · журнал действий</p>
+          <p className="sa-login__secure">Шифрование · токен 24ч · журнал действий</p>
           <div className="sa-login__footer-links">
-            <Link to="/">← На главную</Link>
+            <Link to="/">На главную</Link>
             <a href="mailto:support@barber-saas.com">Поддержка</a>
           </div>
         </footer>
